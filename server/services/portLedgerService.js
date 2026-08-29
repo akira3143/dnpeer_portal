@@ -72,9 +72,9 @@ export class PortLedgerService {
         if (candidate + RULES.port.conflictStep <= RULES.port.max) {
           candidate += RULES.port.conflictStep;
         } else {
-          // If exceeding max, start searching from min port
+          // P2-2 Fix: Search the full valid range 1024..65535 when shifted beyond max
           let found = false;
-          for (let p = RULES.port.baseOffset + 1; p <= RULES.port.max; p++) {
+          for (let p = RULES.port.min; p <= RULES.port.max; p++) {
             if (!occupiedSet.has(p)) {
               candidate = p;
               found = true;

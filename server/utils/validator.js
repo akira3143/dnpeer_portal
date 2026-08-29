@@ -238,12 +238,20 @@ export function validatePeeringSubmission(payload = {}) {
     normalized.endpoint = '';
   }
 
-  // ListenPort (auto or integer)
+  // ListenPort (Server-side hostPort, auto or integer)
   const portRes = validatePort(payload.listenPort || payload.port, true);
   if (!portRes.valid) {
     fieldErrors.listenPort = portRes.error;
   } else {
     normalized.listenPort = portRes.value;
+  }
+
+  // ClientPort (Client-side port, auto or integer)
+  const clientPortRes = validatePort(payload.clientPort, true);
+  if (!clientPortRes.valid) {
+    fieldErrors.clientPort = clientPortRes.error;
+  } else {
+    normalized.clientPort = clientPortRes.value || 'auto';
   }
 
   // MTU

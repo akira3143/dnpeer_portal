@@ -13,6 +13,7 @@ export class ConfigEngine {
     clientIpv6Ula = '',
     clientLinkLocal = '',
     hostPort,
+    clientPort = 'auto',
     mtu = 1420,
     bgpMode = 'mpbgp_enh'
   }) {
@@ -40,14 +41,19 @@ export class ConfigEngine {
       'fe80::/64'
     ];
 
+    // Client ListenPort line: only written if client specified a custom port (not auto)
+    const clientPortNum = parseInt(clientPort, 10);
+    const clientListenPortLine = (!isNaN(clientPortNum) && clientPort !== 'auto')
+      ? `ListenPort = ${clientPortNum}\n`
+      : '';
+
     // Client WireGuard Configuration
     const clientWireguard = `[Interface]
 # AkiLab DN42 - Client WireGuard Tunnel Configuration
 # Node: ${node.name || node.id} (${node.city || ''}, ${node.country || ''})
 PrivateKey = <YOUR_PRIVATE_KEY>
 Address = ${clientAddressLine}
-ListenPort = ${hostPort}
-MTU = ${mtu}
+${clientListenPortLine}MTU = ${mtu}
 
 [Peer]
 # AkiLab Server Peer
@@ -125,6 +131,7 @@ AllowedIPs = ${peerAllowedIps.join(', ')}
 
     return {
       hostPort,
+      clientPort: !isNaN(clientPortNum) && clientPort !== 'auto' ? clientPortNum : 'auto',
       serverEndpoint: `${node.endpointDomain || 'jp1.akilab.dn42'}:${hostPort}`,
       serverPublicKey: node.wgPublicKey || '',
       serverIpv4: node.tunnelIpv4 || '',

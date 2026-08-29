@@ -40,7 +40,7 @@ export class SessionService {
   }
 
   /**
-   * Authoritative Peer Submission: Validates, assigns port, generates configs, persists session
+   * Authoritative Peer Submission: Validates, assigns server port, generates configs, persists session
    */
   static async submitPeering(rawPayload) {
     // 1. Authoritative Format Validation
@@ -74,7 +74,7 @@ export class SessionService {
       ? `sess_${norm.asn}_${norm.nodeId.toLowerCase().replace(/[^a-z0-9]/g, '_')}`
       : sessions[existingIndex].id;
 
-    // 4. Atomic Port Verdict
+    // 4. Atomic Port Verdict (Server HostPort)
     const portResult = await PortLedgerService.allocateAndLockPort({
       nodeId: norm.nodeId,
       asn: norm.asn,
@@ -83,7 +83,7 @@ export class SessionService {
       description: `Peering for AS${norm.asn}`
     });
 
-    // 5. Generate Configuration Finished Products
+    // 5. Generate Configuration Finished Products (Dual port: server hostPort & clientPort)
     const generatedConfigs = ConfigEngine.generateFullConfig({
       asn: norm.asn,
       nodeId: norm.nodeId,
@@ -93,6 +93,7 @@ export class SessionService {
       clientIpv6Ula: norm.ipv6Ula,
       clientLinkLocal: norm.linkLocal,
       hostPort: portResult.port,
+      clientPort: norm.clientPort,
       mtu: norm.mtu,
       bgpMode: norm.bgpMode
     });
@@ -104,7 +105,7 @@ export class SessionService {
     const newSession = {
       id: sessionId,
       asn: norm.asn,
-      asName: registryInfo.asName || `AS${norm.asn}`,
+      asName: registryInfo?.asName || `AS${norm.asn}`,
       nodeId: norm.nodeId,
       status: 'pending',
       createdAt: isNew ? now : sessions[existingIndex].createdAt,
@@ -117,6 +118,7 @@ export class SessionService {
         ipv6Ula: norm.ipv6Ula,
         linkLocal: norm.linkLocal,
         listenPort: portResult.port,
+        clientPort: norm.clientPort || 'auto',
         mtu: norm.mtu,
         bgpMode: norm.bgpMode
       },
@@ -206,7 +208,6 @@ export class SessionService {
     let updated = false;
 
     for (const peer of reportedPeers) {
-      // Find matching session by public key on this node
       const session = sessions.find(s => s.nodeId === nodeId && s.peering?.publicKey === peer.publicKey);
       if (session) {
         if (!session.runtime) session.runtime = {};

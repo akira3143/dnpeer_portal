@@ -8,22 +8,15 @@ import { DATA_DIR } from '../../server/config.js';
 describe('SessionService Unit Tests', () => {
   const sessionsFile = path.join(DATA_DIR, 'peering_sessions.json');
   const ledgerFile = path.join(DATA_DIR, 'port_ledger.json');
-  let originalSessions = null;
-  let originalLedger = null;
 
   beforeEach(() => {
-    if (fs.existsSync(sessionsFile)) originalSessions = fs.readFileSync(sessionsFile, 'utf8');
-    if (fs.existsSync(ledgerFile)) originalLedger = fs.readFileSync(ledgerFile, 'utf8');
     fs.writeFileSync(sessionsFile, JSON.stringify([]), 'utf8');
     fs.writeFileSync(ledgerFile, JSON.stringify({}), 'utf8');
   });
 
   afterEach(() => {
-    if (originalSessions !== null) fs.writeFileSync(sessionsFile, originalSessions, 'utf8');
-    else if (fs.existsSync(sessionsFile)) fs.unlinkSync(sessionsFile);
-
-    if (originalLedger !== null) fs.writeFileSync(ledgerFile, originalLedger, 'utf8');
-    else if (fs.existsSync(ledgerFile)) fs.unlinkSync(ledgerFile);
+    fs.writeFileSync(sessionsFile, JSON.stringify([]), 'utf8');
+    fs.writeFileSync(ledgerFile, JSON.stringify({}), 'utf8');
   });
 
   test('submits valid peering and returns configs and acknowledgement', async () => {

@@ -8,22 +8,13 @@ import { DATA_DIR } from '../../server/config.js';
 
 describe('PortLedgerService Unit Tests', () => {
   const ledgerFile = path.join(DATA_DIR, 'port_ledger.json');
-  let originalLedgerContent = null;
 
   beforeEach(() => {
-    if (fs.existsSync(ledgerFile)) {
-      originalLedgerContent = fs.readFileSync(ledgerFile, 'utf8');
-    }
-    // Clean test ledger
     fs.writeFileSync(ledgerFile, JSON.stringify({}), 'utf8');
   });
 
   afterEach(() => {
-    if (originalLedgerContent !== null) {
-      fs.writeFileSync(ledgerFile, originalLedgerContent, 'utf8');
-    } else if (fs.existsSync(ledgerFile)) {
-      fs.unlinkSync(ledgerFile);
-    }
+    fs.writeFileSync(ledgerFile, JSON.stringify({}), 'utf8');
   });
 
   test('allocates default formula port 20000 + (asn % 10000)', async () => {
@@ -72,6 +63,30 @@ describe('PortLedgerService Unit Tests', () => {
     });
     assert.equal(res3.port, 43143);
     assert.equal(res3.isShifted, true);
+  });
+
+  test('P2-2: fallback linear search covers 1024-20000 range when 20000-65535 are occupied', async () => {
+    const ledger = await PortLedgerService.getLedger();
+    ledger['JP-TYO-1'] = [];
+    // Occupy 20000..65535
+    for (let p = 20000; p <= 65535; p++) {
+      ledger['JP-TYO-1'].push({ port: p, source: 'test_fill' });
+    }
+    // Also occupy 1024..1050
+    for (let p = 1024; p <= 1050; p++) {
+      ledger['JP-TYO-1'].push({ port: p, source: 'test_fill' });
+    }
+    await PortLedgerService.saveLedger(ledger);
+
+    const res = await PortLedgerService.allocateAndLockPort({
+      nodeId: 'JP-TYO-1',
+      asn: 4242423143,
+      requestedPort: 'auto',
+      sessionId: 'sess_fallback_test'
+    });
+
+    assert.equal(res.port, 1051, 'Fallback must find first free port starting at RULES.port.min (1024)');
+    assert.equal(res.isShifted, true);
   });
 
   test('releases port when session is deleted', async () => {
