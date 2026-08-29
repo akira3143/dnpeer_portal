@@ -65,23 +65,33 @@ async function main() {
   const server = createServer();
   await new Promise(r => server.listen(4242, '127.0.0.1', r));
 
-  // Seed test accounts in server/data/auth_users.json
-  const testPass = hashPassword('test12345');
-  const authUsers = {
-    '4242423143': {
+  // Ensure test accounts exist in server/data/auth_users.json
+  const authUsersFile = path.join(ROOT_DIR, 'server/data/auth_users.json');
+  let authUsers = {};
+  try {
+    if (fs.existsSync(authUsersFile)) authUsers = JSON.parse(fs.readFileSync(authUsersFile, 'utf8'));
+  } catch {}
+  if (!authUsers['4242423143']) {
+    const testPass = hashPassword('test12345');
+    authUsers['4242423143'] = {
       asn: 4242423143,
       asName: 'AKILAB-MNT',
       role: 'admin',
       salt: testPass.salt,
       hash: testPass.hash,
       createdAt: new Date().toISOString()
-    }
-  };
-  fs.writeFileSync(path.join(ROOT_DIR, 'server/data/auth_users.json'), JSON.stringify(authUsers, null, 2), 'utf8');
+    };
+    fs.writeFileSync(authUsersFile, JSON.stringify(authUsers, null, 2), 'utf8');
+  }
 
-  // Seed registry cache
-  const registry = {
-    'AS4242423143': {
+  // Ensure registry cache exists
+  const registryFile = path.join(ROOT_DIR, 'server/data/registry_cache.json');
+  let registry = {};
+  try {
+    if (fs.existsSync(registryFile)) registry = JSON.parse(fs.readFileSync(registryFile, 'utf8'));
+  } catch {}
+  if (!registry['AS4242423143']) {
+    registry['AS4242423143'] = {
       asn: 4242423143,
       asName: 'AKILAB-MNT',
       descr: 'AkiLab Backbone Autonomous System',
@@ -89,9 +99,9 @@ async function main() {
       adminContact: 'AKIRA-DN42',
       personName: 'Akira',
       authKeys: []
-    }
-  };
-  fs.writeFileSync(path.join(ROOT_DIR, 'server/data/registry_cache.json'), JSON.stringify(registry, null, 2), 'utf8');
+    };
+    fs.writeFileSync(registryFile, JSON.stringify(registry, null, 2), 'utf8');
+  }
 
   const debugPort = 11000 + Math.floor(Math.random() * 5000);
   console.log(`--- 2. Launching Headless Chrome Browser on debug port ${debugPort} ---`);
@@ -229,16 +239,10 @@ async function main() {
     console.log(`Saved screenshot to artifacts dir: ${artPath}`);
   }
 
-  // Clean up
+  // Clean up Chrome process & user data
   await cdp.close();
   chromeProc.kill();
   try { fs.rmSync(userDataDir, { recursive: true, force: true }); } catch {}
-
-  // Clean data dir back
-  try {
-    fs.unlinkSync(path.join(ROOT_DIR, 'server/data/auth_users.json'));
-    fs.unlinkSync(path.join(ROOT_DIR, 'server/data/registry_cache.json'));
-  } catch {}
 
   await server.closeAll();
   console.log('Verification Finished Successfully!');
