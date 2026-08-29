@@ -1,0 +1,76 @@
+:root {
+  --bg-main: #0b0f19;
+  --bg-card: #131b2e;
+  --bg-card-hover: #1a243d;
+  --border-color: #1e293b;
+  --primary: #00ffaa;
+  --primary-glow: rgba(0, 255, 170, 0.15);
+  --accent: #38bdf8;
+  --danger: #f43f5e;
+  --warning: #fbbf24;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--bg-main);
+  color: #e2e8f0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  margin: 0;
+  padding: 0;
+  line-height: 1.5;
+}
+
+code, pre, .font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0b0f19;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+.glass-card {
+  background: rgba(19, 27, 46, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+}
+
+.neon-border {
+  box-shadow: 0 0 15px var(--primary-glow);
+  border-color: rgba(0, 255, 170, 0.4);
+}
+
+.terminal-badge {
+  background: rgba(0, 255, 170, 0.1);
+  color: #00ffaa;
+  border: 1px solid rgba(0, 255, 170, 0.25);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+input, select, textarea {
+  font-family: inherit;
+  color: inherit;
+}
