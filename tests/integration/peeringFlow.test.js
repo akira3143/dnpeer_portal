@@ -1,12 +1,19 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { createServer } from '../../server/index.js';
+import { DATA_DIR } from '../../server/config.js';
 
 describe('Peering Flow API Integration Tests', () => {
   let server;
   let baseUrl;
 
   before(async () => {
+    // Reset test data
+    fs.writeFileSync(path.join(DATA_DIR, 'port_ledger.json'), JSON.stringify({}), 'utf8');
+    fs.writeFileSync(path.join(DATA_DIR, 'peering_sessions.json'), JSON.stringify([]), 'utf8');
+
     server = createServer();
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const port = server.address().port;
@@ -14,7 +21,9 @@ describe('Peering Flow API Integration Tests', () => {
   });
 
   after(async () => {
-    await new Promise(resolve => server.close(resolve));
+    if (server && server.closeAll) {
+      await server.closeAll();
+    }
   });
 
   test('GET /api/network-meta returns active metadata and nodes', async () => {
@@ -59,6 +68,7 @@ describe('Peering Flow API Integration Tests', () => {
         ipv4: '172.20.150.100',
         ipv6Ula: 'fd00:4242:3143::1',
         listenPort: 'auto',
+        clientPort: 'auto',
         mtu: 1420
       })
     });

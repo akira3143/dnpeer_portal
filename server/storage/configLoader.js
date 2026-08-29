@@ -77,6 +77,7 @@ const DEFAULT_CONFIG = {
 
 let cachedConfig = null;
 let watcherInitialized = false;
+let watcherInstance = null;
 let reloadTimer = null;
 
 export function loadPortalConfig() {
@@ -126,7 +127,7 @@ export function initConfigWatcher() {
   }
 
   try {
-    fs.watch(configDir, (eventType, filename) => {
+    watcherInstance = fs.watch(configDir, (eventType, filename) => {
       if (filename && filename.includes('portal.config')) {
         if (reloadTimer) clearTimeout(reloadTimer);
         reloadTimer = setTimeout(() => {
@@ -135,7 +136,25 @@ export function initConfigWatcher() {
         }, 200);
       }
     });
+    // Unref so watcher does not keep process alive during unit tests
+    if (typeof watcherInstance?.unref === 'function') {
+      watcherInstance.unref();
+    }
   } catch (err) {
     console.warn('[ConfigLoader] Could not watch config file:', err.message);
   }
+}
+
+export function stopConfigWatcher() {
+  if (reloadTimer) {
+    clearTimeout(reloadTimer);
+    reloadTimer = null;
+  }
+  if (watcherInstance) {
+    try {
+      watcherInstance.close();
+    } catch {}
+    watcherInstance = null;
+  }
+  watcherInitialized = false;
 }

@@ -1,12 +1,18 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from '../../server/index.js';
+import { AuthService } from '../../server/services/authService.js';
+import { createTestUsers } from '../fixtures/testUsers.js';
 
 describe('Auth Flow API Integration Tests', () => {
   let server;
   let baseUrl;
 
   before(async () => {
+    // Seed test users fixture
+    const testUsers = createTestUsers();
+    await AuthService.saveAuthUsers(testUsers);
+
     server = createServer();
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const port = server.address().port;
@@ -14,7 +20,9 @@ describe('Auth Flow API Integration Tests', () => {
   });
 
   after(async () => {
-    await new Promise(resolve => server.close(resolve));
+    if (server && server.closeAll) {
+      await server.closeAll();
+    }
   });
 
   test('GET /api/auth/challenge returns challenge with commands', async () => {
@@ -35,7 +43,7 @@ describe('Auth Flow API Integration Tests', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         username: '4242423143',
-        password: 'akira831143',
+        password: 'test12345',
         rememberMe: true
       })
     });

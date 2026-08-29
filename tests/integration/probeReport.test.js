@@ -15,7 +15,9 @@ describe('Probe Report API Integration Tests', () => {
   });
 
   after(async () => {
-    await new Promise(resolve => server.close(resolve));
+    if (server && server.closeAll) {
+      await server.closeAll();
+    }
   });
 
   test('POST /api/probe/report rejects unauthorized request', async () => {
