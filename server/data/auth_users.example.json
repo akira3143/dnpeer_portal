@@ -1,0 +1,12 @@
+{
+  "_comment": "auth_users.json: Storage for users with password-based login enabled (admin + users who ran passwd)",
+  "4242423143": {
+    "asn": 4242423143,
+    "asName": "AKILAB-MNT",
+    "role": "admin",
+    "salt": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+    "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85553e1a06574f8846c4f0da9976bb2d35817c1bf209268305c742f1cf4461c3905",
+    "createdAt": "2026-08-28T08:00:00.000Z",
+    "updatedAt": "2026-08-28T08:00:00.000Z"
+  }
+}
