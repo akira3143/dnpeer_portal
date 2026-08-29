@@ -1,0 +1,21 @@
+{
+  "name": "dn42-portal",
+  "version": "2.0.0",
+  "description": "DN42 Peering Portal (Refactored 2.0) - High Performance Single Source of Truth Dual-Frontend System",
+  "type": "module",
+  "scripts": {
+    "build:rules": "node shared/rules/generator.js",
+    "build:cli": "npm run build:rules && node cli/build_rootfs.js",
+    "build:gui": "npm --prefix gui run build",
+    "build": "npm run build:rules && npm run build:gui && npm run build:cli",
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test tests/unit/*.test.js tests/integration/*.test.js"
+  },
+  "dependencies": {
+    "js-yaml": "^4.3.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
