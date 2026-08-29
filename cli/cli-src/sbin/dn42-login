@@ -32,6 +32,7 @@ enter_shell() {
   echo "  nodes / whois     AkiLab node matrix / DN42 registry"
   echo "  whoami / logout   Current identity / sign out"
   echo "  help              Full command list"
+  echo -e "  \033[90mCopy: Ctrl+C (select) · Paste: Ctrl+V · Interrupt: Ctrl+C (no select)\033[0m"
   printf "\033[90m===============================================================================\033[0m\n\n"
   export PS1="\[\033[32m\]peer@$disp\[\033[0m\]:\[\033[36m\]~\[\033[0m\]# "
   export HOME=/root
@@ -186,6 +187,8 @@ do_ssh_login() {
 # ---------- Main Login Loop ----------
 main() {
   try_autologin && return 0
+
+  echo -e "\033[90mCopy: Ctrl+C (select) · Paste: Ctrl+V · Interrupt: Ctrl+C (no select)\033[0m"
 
   local asn_in clean remember rem_in ret
   while true; do

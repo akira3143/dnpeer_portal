@@ -73,7 +73,7 @@
     } else {
       term.writeln("\x1b[33m[*] Cross-Origin Isolation: Registering ServiceWorker fallback...\x1b[0m");
     }
-    term.writeln("\x1b[90m[*] Loading VirtIO Drivers & Linux WebAssembly Kernel (vmlinux.wasm)...\x1b[0m");
+    term.writeln("\x1b[90m[*] Shortcuts: Copy: Ctrl+C (select) · Paste: Ctrl+V · Interrupt: Ctrl+C (no select)\x1b[0m");
 
     // --- 📋 剪贴板与原生快捷键深度适配 ---
     let stdinController = null;
@@ -90,17 +90,20 @@
       }
     };
 
-    // 1. 划选即复制 (Auto-Copy on Selection)
-    term.onSelectionChange(() => {
-      const selection = term.getSelection();
-      if (selection && selection.trim().length > 0) {
-        navigator.clipboard.writeText(selection).catch(() => {});
-      }
-    });
-
-    // 2. 自定义键盘快捷键拦截器 (智能 Ctrl+C 复制 / Ctrl+V 拦截防双重输入 / F1~F12 全局放行)
+    // 1. 自定义键盘快捷键拦截器 (快捷键定案)
     term.attachCustomKeyEventHandler((event) => {
-      // (A) Ctrl+C: 如果屏幕上有选中文本，则执行复制，阻止向 Linux 终端发送 ^C
+      // (A) Ctrl+Shift+C: 强制复制当前选区，无条件拦截
+      if (event.ctrlKey && event.shiftKey && (event.key === 'c' || event.key === 'C')) {
+        if (term.hasSelection()) {
+          const selection = term.getSelection();
+          if (selection) {
+            navigator.clipboard.writeText(selection).catch(() => {});
+          }
+        }
+        return false; // 无条件拦截
+      }
+
+      // (B) Ctrl+C: 如果屏幕上有选中文本，则执行复制并拦截（^C 不进终端）；无选区则放行（^C 进入终端中断输入）
       if (event.ctrlKey && (event.key === 'c' || event.key === 'C') && !event.shiftKey && !event.altKey) {
         if (term.hasSelection()) {
           const selection = term.getSelection();
@@ -109,16 +112,7 @@
           }
           return false; // 拦截！不向 Linux 发送 ^C
         }
-        return true;
-      }
-
-      // (B) Ctrl+Shift+C: 强制复制选中文本
-      if (event.ctrlKey && event.shiftKey && (event.key === 'c' || event.key === 'C')) {
-        const selection = term.getSelection();
-        if (selection) {
-          navigator.clipboard.writeText(selection).catch(() => {});
-        }
-        return false;
+        return true; // 放行！^C 进入终端中断当前输入
       }
 
       // (C) Ctrl+V / Ctrl+Shift+V / Shift+Insert: 拦截按键本身，交由 paste 事件单路径处理（防双份粘贴）
@@ -151,7 +145,7 @@
 
     const terminalElement = document.getElementById("terminal");
 
-    // 3. 浏览器原生 paste 事件监听器（单一可信粘贴路径）
+    // 2. 浏览器原生 paste 事件监听器（单一可信粘贴路径）
     window.addEventListener("paste", (e) => {
       e.preventDefault();
       const clipboardData = e.clipboardData || window.clipboardData;
@@ -164,25 +158,9 @@
       }
     });
 
-    // 4. 鼠标右键：有选中区域时执行复制，无选中区域时执行粘贴
-    terminalElement.addEventListener("contextmenu", async (e) => {
+    // 3. 鼠标右键：彻底砍除所有行为（不粘贴、不复制、不弹菜单）
+    terminalElement.addEventListener("contextmenu", (e) => {
       e.preventDefault();
-      if (term.hasSelection()) {
-        const selection = term.getSelection();
-        if (selection) {
-          await navigator.clipboard.writeText(selection).catch(() => {});
-        }
-        return;
-      }
-      try {
-        const text = await navigator.clipboard.readText();
-        if (text && window.sendTerminalInput) {
-          const sanitized = sanitizePasteText(text);
-          if (sanitized) {
-            window.sendTerminalInput(sanitized);
-          }
-        }
-      } catch {}
     });
 
     // 2. 异步动态加载 WASM 机器与内核驱动
