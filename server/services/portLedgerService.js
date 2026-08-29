@@ -1,11 +1,11 @@
 import path from 'node:path';
-import { DATA_DIR } from '../config.js';
+import { getDataDir } from '../config.js';
 import { FileStore } from '../storage/fileStore.js';
 import { RULES } from '../utils/validator.js';
 
 export class PortLedgerService {
   static getLedgerPath() {
-    return path.join(DATA_DIR, 'port_ledger.json');
+    return path.join(getDataDir(), 'port_ledger.json');
   }
 
   static async getLedger() {

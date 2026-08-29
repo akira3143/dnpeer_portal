@@ -2,17 +2,20 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+
+const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dn42-test-peeringflow-'));
+process.env.PORTAL_DATA_DIR = testDataDir;
+
 import { createServer } from '../../server/index.js';
-import { DATA_DIR } from '../../server/config.js';
 
 describe('Peering Flow API Integration Tests', () => {
   let server;
   let baseUrl;
 
   before(async () => {
-    // Reset test data
-    fs.writeFileSync(path.join(DATA_DIR, 'port_ledger.json'), JSON.stringify({}), 'utf8');
-    fs.writeFileSync(path.join(DATA_DIR, 'peering_sessions.json'), JSON.stringify([]), 'utf8');
+    fs.writeFileSync(path.join(testDataDir, 'port_ledger.json'), JSON.stringify({}), 'utf8');
+    fs.writeFileSync(path.join(testDataDir, 'peering_sessions.json'), JSON.stringify([]), 'utf8');
 
     server = createServer();
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -24,6 +27,9 @@ describe('Peering Flow API Integration Tests', () => {
     if (server && server.closeAll) {
       await server.closeAll();
     }
+    try {
+      fs.rmSync(testDataDir, { recursive: true, force: true });
+    } catch {}
   });
 
   test('GET /api/network-meta returns active metadata and nodes', async () => {

@@ -1,5 +1,12 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+
+const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dn42-test-probereport-'));
+process.env.PORTAL_DATA_DIR = testDataDir;
+
 import { createServer } from '../../server/index.js';
 import { ENV } from '../../server/config.js';
 
@@ -18,6 +25,9 @@ describe('Probe Report API Integration Tests', () => {
     if (server && server.closeAll) {
       await server.closeAll();
     }
+    try {
+      fs.rmSync(testDataDir, { recursive: true, force: true });
+    } catch {}
   });
 
   test('POST /api/probe/report rejects unauthorized request', async () => {

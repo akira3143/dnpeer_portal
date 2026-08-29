@@ -3,13 +3,17 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+
+const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dn42-test-auth-'));
+process.env.PORTAL_DATA_DIR = testDataDir;
 
 import { AuthService, hashPassword, verifyPassword } from '../../server/services/authService.js';
 import { createTestUsers } from '../fixtures/testUsers.js';
 
 test('AuthService Unit Tests', async (t) => {
-  // Setup test users & registry cache
+  // Setup test users & registry cache in isolated testDataDir
   const testUsers = createTestUsers();
   await AuthService.saveAuthUsers(testUsers);
 
@@ -43,15 +47,23 @@ test('AuthService Unit Tests', async (t) => {
     try {
       fs.rmSync(tempDir, { recursive: true, force: true });
     } catch {}
+    try {
+      fs.rmSync(testDataDir, { recursive: true, force: true });
+    } catch {}
   });
 
-  await t.test('creates challenge with 5min TTL and zero-trace commands', async () => {
+  await t.test('creates challenge with 5min TTL and flat/nested zero-trace commands', async () => {
     const challenge = await AuthService.createChallenge(4242423143);
     assert.equal(challenge.asn, 4242423143);
     assert.ok(challenge.challengeText.startsWith('akilab:4242423143:'));
     assert.equal(challenge.expiresInSeconds, 300);
-    assert.ok(challenge.commands.ssh_powershell.includes('ssh-keygen'));
-    assert.ok(challenge.commands.ssh_linux.includes('ssh-keygen'));
+    // Flat command fields (N2)
+    assert.ok(challenge.commandLinux);
+    assert.ok(challenge.commandPowershell);
+    assert.equal(challenge.commandLinux, challenge.commands.ssh_linux);
+    assert.equal(challenge.commandPowershell, challenge.commands.ssh_powershell);
+    assert.ok(challenge.commandLinux.includes('ssh-keygen'));
+    assert.ok(challenge.commandPowershell.includes('ssh-keygen'));
   });
 
   await t.test('signs and verifies JWT with correct claims', () => {

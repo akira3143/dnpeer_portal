@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import yaml from 'js-yaml';
-import { CONFIG_YAML_PATH, DATA_DIR } from '../config.js';
+import { getConfigYamlPath, getDataDir } from '../config.js';
 import { FileStore } from './fileStore.js';
 
 const DEFAULT_CONFIG = {
@@ -81,11 +81,12 @@ let watcherInstance = null;
 let reloadTimer = null;
 
 export function loadPortalConfig() {
-  FileStore.ensureDirectory(DATA_DIR);
+  FileStore.ensureDirectory(getDataDir());
 
+  const configPath = getConfigYamlPath();
   try {
-    if (fs.existsSync(CONFIG_YAML_PATH)) {
-      const raw = fs.readFileSync(CONFIG_YAML_PATH, 'utf8');
+    if (fs.existsSync(configPath)) {
+      const raw = fs.readFileSync(configPath, 'utf8');
       const parsed = yaml.load(raw);
       if (parsed && typeof parsed === 'object') {
         cachedConfig = {
@@ -101,7 +102,7 @@ export function loadPortalConfig() {
       }
     }
   } catch (err) {
-    console.error(`[ConfigLoader] Failed to parse ${CONFIG_YAML_PATH}:`, err.message);
+    console.error(`[ConfigLoader] Failed to parse ${configPath}:`, err.message);
   }
 
   cachedConfig = DEFAULT_CONFIG;
@@ -121,7 +122,8 @@ export function initConfigWatcher() {
 
   loadPortalConfig();
 
-  const configDir = path.dirname(CONFIG_YAML_PATH);
+  const configPath = getConfigYamlPath();
+  const configDir = path.dirname(configPath);
   if (!fs.existsSync(configDir)) {
     fs.mkdirSync(configDir, { recursive: true });
   }

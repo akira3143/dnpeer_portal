@@ -1,5 +1,12 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+
+const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dn42-test-authflow-'));
+process.env.PORTAL_DATA_DIR = testDataDir;
+
 import { createServer } from '../../server/index.js';
 import { AuthService } from '../../server/services/authService.js';
 import { createTestUsers } from '../fixtures/testUsers.js';
@@ -9,7 +16,7 @@ describe('Auth Flow API Integration Tests', () => {
   let baseUrl;
 
   before(async () => {
-    // Seed test users fixture
+    // Seed test users fixture into isolated testDataDir
     const testUsers = createTestUsers();
     await AuthService.saveAuthUsers(testUsers);
 
@@ -23,9 +30,12 @@ describe('Auth Flow API Integration Tests', () => {
     if (server && server.closeAll) {
       await server.closeAll();
     }
+    try {
+      fs.rmSync(testDataDir, { recursive: true, force: true });
+    } catch {}
   });
 
-  test('GET /api/auth/challenge returns challenge with commands', async () => {
+  test('GET /api/auth/challenge returns challenge with flat and nested commands', async () => {
     const res = await fetch(`${baseUrl}/api/auth/challenge?asn=4242423143`);
     assert.equal(res.status, 200);
     const body = await res.json();
@@ -33,6 +43,8 @@ describe('Auth Flow API Integration Tests', () => {
     assert.equal(body.success, true);
     assert.equal(body.data.asn, 4242423143);
     assert.ok(body.data.challengeText);
+    assert.ok(body.data.commandPowershell);
+    assert.ok(body.data.commandLinux);
     assert.ok(body.data.commands.ssh_powershell);
     assert.ok(body.data.commands.ssh_linux);
   });

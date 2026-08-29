@@ -1,6 +1,6 @@
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { DATA_DIR } from '../config.js';
+import { getDataDir } from '../config.js';
 import { FileStore } from '../storage/fileStore.js';
 import { getActiveConfig } from '../storage/configLoader.js';
 import { validatePeeringSubmission } from '../utils/validator.js';
@@ -11,7 +11,7 @@ import { NotificationService } from './notificationService.js';
 
 export class SessionService {
   static getSessionsPath() {
-    return path.join(DATA_DIR, 'peering_sessions.json');
+    return path.join(getDataDir(), 'peering_sessions.json');
   }
 
   static async getSessions() {

@@ -1,13 +1,23 @@
-import { test, describe, beforeEach, afterEach } from 'node:test';
+import { test, describe, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+
+const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dn42-test-sessions-'));
+process.env.PORTAL_DATA_DIR = testDataDir;
+
 import { SessionService } from '../../server/services/sessionService.js';
-import { DATA_DIR } from '../../server/config.js';
 
 describe('SessionService Unit Tests', () => {
-  const sessionsFile = path.join(DATA_DIR, 'peering_sessions.json');
-  const ledgerFile = path.join(DATA_DIR, 'port_ledger.json');
+  const sessionsFile = path.join(testDataDir, 'peering_sessions.json');
+  const ledgerFile = path.join(testDataDir, 'port_ledger.json');
+
+  after(() => {
+    try {
+      fs.rmSync(testDataDir, { recursive: true, force: true });
+    } catch {}
+  });
 
   beforeEach(() => {
     fs.writeFileSync(sessionsFile, JSON.stringify([]), 'utf8');

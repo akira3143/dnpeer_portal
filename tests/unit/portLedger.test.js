@@ -1,13 +1,22 @@
-import { test, describe, beforeEach, afterEach } from 'node:test';
+import { test, describe, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+
+const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dn42-test-portledger-'));
+process.env.PORTAL_DATA_DIR = testDataDir;
+
 import { PortLedgerService } from '../../server/services/portLedgerService.js';
-import { DATA_DIR } from '../../server/config.js';
 
 describe('PortLedgerService Unit Tests', () => {
-  const ledgerFile = path.join(DATA_DIR, 'port_ledger.json');
+  const ledgerFile = path.join(testDataDir, 'port_ledger.json');
+
+  after(() => {
+    try {
+      fs.rmSync(testDataDir, { recursive: true, force: true });
+    } catch {}
+  });
 
   beforeEach(() => {
     fs.writeFileSync(ledgerFile, JSON.stringify({}), 'utf8');

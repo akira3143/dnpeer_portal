@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { ENV, DATA_DIR } from '../config.js';
+import { ENV, getDataDir } from '../config.js';
 import { getActiveConfig } from '../storage/configLoader.js';
 import { FileStore } from '../storage/fileStore.js';
 
@@ -46,11 +46,11 @@ export function verifyPassword(password, salt, storedHash) {
 
 export class AuthService {
   static getRegistryPath() {
-    return path.join(DATA_DIR, 'registry_cache.json');
+    return path.join(getDataDir(), 'registry_cache.json');
   }
 
   static getAuthUsersPath() {
-    return path.join(DATA_DIR, 'auth_users.json');
+    return path.join(getDataDir(), 'auth_users.json');
   }
 
   static async getRegistryData() {
@@ -131,11 +131,13 @@ export class AuthService {
       expiresAt: Date.now() + (expiresInSeconds * 1000),
       expiresInSeconds,
       authTypes: ['ssh'],
+      commandLinux: sshLinux,
+      commandPowershell: sshPowershell,
       commands: {
         ssh_powershell: sshPowershell,
         ssh_linux: sshLinux
       },
-      // Backward-compatible fields for older CLI scripts
+      // Backward-compatible fields
       unixCommand: sshLinux,
       powershellCommand: sshPowershell
     };
