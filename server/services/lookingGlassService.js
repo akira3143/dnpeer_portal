@@ -6,7 +6,7 @@ export class LookingGlassService {
    */
   static async query({ nodeId, command = 'summary', target = '' }) {
     const config = getActiveConfig();
-    const node = config.nodes.find(n => n.id === nodeId) || config.nodes[0];
+    const node = nodeId ? config.nodes.find(n => n.id === nodeId) : config.nodes[0];
 
     if (!node) {
       return {

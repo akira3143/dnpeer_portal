@@ -75,7 +75,22 @@ api_delete() {
 }
 
 json_field() {
-  echo "$1" | sed -n "s/.*\"$2\":\"\([^\"]*\)\".*/\1/p"
+  echo "$1" | awk -v field="$2" '
+  {
+    target = "\"" field "\":\""
+    idx = index($0, target)
+    if (idx > 0) {
+      rest = substr($0, idx + length(target))
+      out = ""
+      for (i = 1; i <= length(rest); i++) {
+        c = substr(rest, i, 1)
+        prev = (i > 1) ? substr(rest, i-1, 1) : ""
+        if (c == "\"" && prev != "\\") break
+        out = out c
+      }
+      print out
+    }
+  }'
 }
 
 json_num() {
@@ -95,5 +110,7 @@ require_login() {
 }
 
 flush_after_input() {
-  read -r -t 0.2 _dn42_flush 2>/dev/null
+  while read -r -t 0.05 _dn42_flush 2>/dev/null; do
+    :
+  done
 }

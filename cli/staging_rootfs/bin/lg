@@ -38,14 +38,19 @@ payload="{\"nodeId\":\"$node\",\"commandType\":\"$cmd\",\"target\":\"$target\"}"
 resp=$(api_post "/api/looking-glass" "$payload")
 
 if [ -z "$resp" ]; then
-  echo -e "\033[31merror: Looking Glass query failed or timed out.\033[0m"
+  printf '\033[31merror: Looking Glass query failed or timed out.\033[0m\n'
+  exit 1
+fi
+
+if ! echo "$resp" | grep -q '"success":true'; then
+  err_msg=$(json_field "$resp" message)
+  [ -z "$err_msg" ] && err_msg=$(echo "$resp" | sed -n 's/.*"message":"\([^"]*\)".*/\1/p')
+  [ -z "$err_msg" ] && err_msg="Looking Glass query failed."
+  printf '\033[31merror: %s\033[0m\n' "$err_msg"
   exit 1
 fi
 
 echo ""
-out=$(echo "$resp" | sed -n 's/.*"output":"\(.*\)","durationMs".*/\1/p')
-if [ -z "$out" ]; then
-  out=$(echo "$resp" | sed -n 's/.*"output":"\(.*\)".*/\1/p')
-fi
+out=$(json_field "$resp" output)
 echo "$out" | sed 's/\\n/\n/g; s/\\r//g; s/\\"/"/g; s/\\\\/\\/g; s/\\t/\t/g'
 echo ""
