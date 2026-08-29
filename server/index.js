@@ -302,7 +302,7 @@ export function createServer() {
   return server;
 }
 
-// Start standalone if executed directly
+// Start standalone if executed directly (normalize windows path separator via pathToFileURL)
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const server = createServer();
   server.listen(ENV.PORT, ENV.HOST, () => {
