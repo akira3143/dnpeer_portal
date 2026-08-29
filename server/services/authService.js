@@ -2,27 +2,46 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { execFile } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { ENV, DATA_DIR } from '../config.js';
 import { getActiveConfig } from '../storage/configLoader.js';
 import { FileStore } from '../storage/fileStore.js';
 
-// In-memory active challenges map: challengeId -> challengeData
+// In-memory active challenges map: challengeText -> challengeData
 const activeChallenges = new Map();
 
-// Test users for development & testing sandbox
-const SANDBOX_USERS = new Map([
-  ['akira', { asn: 4242423143, asName: 'AKILAB-MNT', passwordHash: hashPassword('akira831143'), role: 'admin' }],
-  ['4242423143', { asn: 4242423143, asName: 'AKILAB-MNT', passwordHash: hashPassword('akira831143'), role: 'admin' }],
-  ['AS4242423143', { asn: 4242423143, asName: 'AKILAB-MNT', passwordHash: hashPassword('akira831143'), role: 'admin' }],
-  ['4141410001', { asn: 4141410001, asName: 'TEST-MNT-1', passwordHash: hashPassword('test12345'), role: 'user' }],
-  ['AS4141410001', { asn: 4141410001, asName: 'TEST-MNT-1', passwordHash: hashPassword('test12345'), role: 'user' }],
-  ['4141410002', { asn: 4141410002, asName: 'TEST-MNT-2', passwordHash: hashPassword('test12345'), role: 'user' }],
-  ['AS4141410002', { asn: 4141410002, asName: 'TEST-MNT-2', passwordHash: hashPassword('test12345'), role: 'user' }]
-]);
+// Periodic cleanup of expired challenges
+const challengeCleanupTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of activeChallenges) {
+    if (now > val.expiresAt) activeChallenges.delete(key);
+  }
+}, 60 * 1000);
+if (typeof challengeCleanupTimer?.unref === 'function') {
+  challengeCleanupTimer.unref();
+}
 
-function hashPassword(pwd) {
-  return crypto.createHash('sha256').update(`dn42-salt-${pwd}`).digest('hex');
+/**
+ * Scrypt password hashing with unique salt
+ */
+export function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
+  const key = crypto.scryptSync(password, salt, 64);
+  return {
+    salt,
+    hash: key.toString('hex')
+  };
+}
+
+export function verifyPassword(password, salt, storedHash) {
+  if (!password || !salt || !storedHash) return false;
+  try {
+    const key = crypto.scryptSync(password, salt, 64);
+    const expected = Buffer.from(storedHash, 'hex');
+    if (key.length !== expected.length) return false;
+    return crypto.timingSafeEqual(key, expected);
+  } catch {
+    return false;
+  }
 }
 
 export class AuthService {
@@ -30,8 +49,20 @@ export class AuthService {
     return path.join(DATA_DIR, 'registry_cache.json');
   }
 
+  static getAuthUsersPath() {
+    return path.join(DATA_DIR, 'auth_users.json');
+  }
+
   static async getRegistryData() {
     return FileStore.readJson(this.getRegistryPath(), {});
+  }
+
+  static async getAuthUsers() {
+    return FileStore.readJson(this.getAuthUsersPath(), {});
+  }
+
+  static async saveAuthUsers(users) {
+    return FileStore.writeJson(this.getAuthUsersPath(), users);
   }
 
   static async getAsnRegistryInfo(asn) {
@@ -41,15 +72,10 @@ export class AuthService {
     if (registry[key]) {
       return registry[key];
     }
-    // Fallback default structure
-    return {
-      asn: cleanAsn,
-      asName: `AS${cleanAsn}`,
-      mnt: `${cleanAsn}-MNT`,
-      ipv4: [`172.20.${(cleanAsn % 200)}.0/26`],
-      ipv6: [`fd00:4242:${cleanAsn % 10000}::/48`],
-      authKeys: []
-    };
+    if (registry[cleanAsn]) {
+      return registry[cleanAsn];
+    }
+    return null;
   }
 
   static signJwt(payload, rememberMe = false) {
@@ -103,57 +129,72 @@ export class AuthService {
       asn: cleanAsn,
       challengeText,
       expiresAt: Date.now() + (expiresInSeconds * 1000),
+      expiresInSeconds,
       authTypes: ['ssh'],
       commands: {
         ssh_powershell: sshPowershell,
         ssh_linux: sshLinux
-      }
+      },
+      // Backward-compatible fields for older CLI scripts
+      unixCommand: sshLinux,
+      powershellCommand: sshPowershell
     };
 
     activeChallenges.set(challengeText, challengeData);
     return challengeData;
   }
 
+  /**
+   * Authoritative OpenSSH signature verification against allowed keys
+   */
   static verifySshSignatureOffline(challengeText, signatureArmored, allowedKeys = []) {
-    // If allowedKeys are present and ssh-keygen is available on system, execute verify
     return new Promise((resolve) => {
-      // Basic check of signature format
       if (!signatureArmored || !signatureArmored.includes('BEGIN SSH SIGNATURE')) {
-        return resolve({ success: false, error: 'Invalid SSH signature format' });
+        return resolve({ success: false, error: 'Invalid SSH signature armor format' });
+      }
+      if (!allowedKeys || allowedKeys.length === 0) {
+        return resolve({ success: false, error: 'No authorized SSH keys provided for verification' });
       }
 
       const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dnp-verify-'));
-      const dataFile = path.join(tempDir, 'data.txt');
-      const sigFile = path.join(tempDir, 'data.sig');
+      const msgFile = path.join(tempDir, 'msg.txt');
+      const sigFile = path.join(tempDir, 'msg.txt.sig');
       const allowedKeysFile = path.join(tempDir, 'allowed_signers');
 
       try {
-        fs.writeFileSync(dataFile, challengeText, 'utf8');
+        fs.writeFileSync(msgFile, challengeText, 'utf8');
         fs.writeFileSync(sigFile, signatureArmored.trim(), 'utf8');
 
-        // Build allowed signers line
         const config = getActiveConfig();
         const namespace = config.network.shortName || 'akilab';
-        const signersContent = allowedKeys.map(k => `${namespace} ${k}`).join('\n');
+
+        // Format allowed signers: <principal> <key-type> <key-data>
+        const signersContent = allowedKeys.map(k => {
+          const cleanKey = k.trim();
+          return `${namespace} ${cleanKey}`;
+        }).join('\n') + '\n';
+
         fs.writeFileSync(allowedKeysFile, signersContent, 'utf8');
 
-        execFile('ssh-keygen', [
+        const res = spawnSync('ssh-keygen', [
           '-Y', 'verify',
           '-f', allowedKeysFile,
           '-I', namespace,
           '-n', namespace,
           '-s', sigFile
-        ], { input: challengeText, timeout: 5000 }, (err) => {
-          // Cleanup temp files immediately
-          try {
-            fs.rmSync(tempDir, { recursive: true, force: true });
-          } catch {}
+        ], { input: challengeText, encoding: 'utf8', timeout: 5000 });
 
-          if (err) {
-            return resolve({ success: false, error: 'Signature verification failed against registry keys' });
-          }
-          return resolve({ success: true });
-        });
+        try {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        } catch {}
+
+        if (res.status !== 0) {
+          return resolve({
+            success: false,
+            error: `Signature verification failed: ${res.stderr || res.stdout || 'invalid signature'}`
+          });
+        }
+        return resolve({ success: true, output: res.stdout });
       } catch (err) {
         try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
         resolve({ success: false, error: err.message });
@@ -161,9 +202,15 @@ export class AuthService {
     });
   }
 
+  /**
+   * Verify SSH signature with strict DN42 registry key binding
+   */
   static async verifySignature({ asn, challengeText, signature, rememberMe = false }) {
     const cleanAsn = parseInt(String(asn).replace(/^AS/i, ''), 10);
     const challenge = activeChallenges.get(challengeText);
+
+    // Unconditionally delete challenge to prevent replay attacks
+    activeChallenges.delete(challengeText);
 
     if (!challenge) {
       return { success: false, error: 'Challenge not found or expired' };
@@ -172,19 +219,37 @@ export class AuthService {
       return { success: false, error: 'ASN does not match challenge' };
     }
     if (Date.now() > challenge.expiresAt) {
-      activeChallenges.delete(challengeText);
-      return { success: false, error: 'Challenge expired' };
+      return { success: false, error: 'Challenge has expired' };
+    }
+    if (!signature || typeof signature !== 'string' || !signature.trim()) {
+      return { success: false, error: 'Signature is required' };
     }
 
-    // In testing sandbox or when signature is verified
-    activeChallenges.delete(challengeText);
+    // 1. Authoritative lookup in DN42 Registry Cache
+    const registryInfo = await this.getAsnRegistryInfo(cleanAsn);
+    if (!registryInfo || !Array.isArray(registryInfo.authKeys) || registryInfo.authKeys.length === 0) {
+      return {
+        success: false,
+        error: `No SSH public keys registered in DN42 registry for AS${cleanAsn}`
+      };
+    }
 
+    // 2. Authoritative OpenSSH Verification
+    const verifyRes = await this.verifySshSignatureOffline(challengeText, signature, registryInfo.authKeys);
+    if (!verifyRes.success) {
+      return {
+        success: false,
+        error: verifyRes.error || 'SSH signature verification failed against registry keys'
+      };
+    }
+
+    // 3. Issue Token
     const config = getActiveConfig();
     const isAdmin = Array.isArray(config.admins) && config.admins.includes(cleanAsn);
 
     const tokenData = this.signJwt({
       asn: cleanAsn,
-      asName: `AS${cleanAsn}`,
+      asName: registryInfo.asName || `AS${cleanAsn}`,
       role: isAdmin ? 'admin' : 'user'
     }, rememberMe);
 
@@ -198,39 +263,81 @@ export class AuthService {
     };
   }
 
-  static async loginWithPassword({ username, password, rememberMe = false }) {
-    if (!username || !password) {
-      return { success: false, error: 'Username and password are required' };
+  /**
+   * Password login loaded from server/data/auth_users.json with scrypt verification
+   */
+  static async loginWithPassword({ username, asn, password, rememberMe = false }) {
+    const rawUser = String(username || asn || '').trim();
+    if (!rawUser || !password) {
+      return { success: false, error: 'Username/ASN and password are required' };
     }
-    const cleanUser = String(username).trim();
-    const user = SANDBOX_USERS.get(cleanUser);
 
-    if (!user) {
+    const cleanAsn = parseInt(rawUser.replace(/^AS/i, ''), 10);
+    const authUsers = await this.getAuthUsers();
+
+    // Match by key: username or AS<asn> or numeric asn
+    let userEntry = authUsers[rawUser] || (cleanAsn ? authUsers[String(cleanAsn)] : null) || (cleanAsn ? authUsers[`AS${cleanAsn}`] : null);
+
+    if (!userEntry) {
       return { success: false, error: 'Invalid username or password' };
     }
 
-    const hashedInput = hashPassword(password);
-    if (hashedInput !== user.passwordHash) {
+    const isMatch = verifyPassword(password, userEntry.salt, userEntry.hash);
+    if (!isMatch) {
       return { success: false, error: 'Invalid username or password' };
     }
 
+    const userAsn = userEntry.asn || cleanAsn;
     const config = getActiveConfig();
-    const isAdmin = user.role === 'admin' || (Array.isArray(config.admins) && config.admins.includes(user.asn));
+    const isAdmin = userEntry.role === 'admin' || (Array.isArray(config.admins) && config.admins.includes(userAsn));
 
     const tokenData = this.signJwt({
-      asn: user.asn,
-      asName: user.asName,
+      asn: userAsn,
+      asName: userEntry.asName || `AS${userAsn}`,
       role: isAdmin ? 'admin' : 'user'
     }, rememberMe);
 
     return {
       success: true,
       data: {
-        asn: user.asn,
-        asName: user.asName,
+        asn: userAsn,
+        asName: userEntry.asName || `AS${userAsn}`,
         role: isAdmin ? 'admin' : 'user',
         ...tokenData
       }
     };
+  }
+
+  /**
+   * Set or update password for authenticated user in auth_users.json
+   */
+  static async setPassword(asn, newPassword) {
+    const cleanAsn = parseInt(String(asn).replace(/^AS/i, ''), 10);
+    if (!cleanAsn || isNaN(cleanAsn)) {
+      return { success: false, error: 'Invalid ASN' };
+    }
+    if (!newPassword || newPassword.length < 8) {
+      return { success: false, error: 'Password must be at least 8 characters long' };
+    }
+
+    const { salt, hash } = hashPassword(newPassword);
+    const authUsers = await this.getAuthUsers();
+
+    const config = getActiveConfig();
+    const isAdmin = Array.isArray(config.admins) && config.admins.includes(cleanAsn);
+
+    const now = new Date().toISOString();
+    authUsers[String(cleanAsn)] = {
+      asn: cleanAsn,
+      asName: `AS${cleanAsn}`,
+      role: isAdmin ? 'admin' : 'user',
+      salt,
+      hash,
+      createdAt: authUsers[String(cleanAsn)]?.createdAt || now,
+      updatedAt: now
+    };
+
+    await this.saveAuthUsers(authUsers);
+    return { success: true, message: 'Password updated successfully' };
   }
 }
