@@ -77,6 +77,13 @@
 
     // --- 📋 剪贴板与原生快捷键深度适配 ---
     let stdinController = null;
+
+    function sanitizePasteText(text) {
+      if (!text || typeof text !== 'string') return '';
+      // 剥离末尾换行，保留内部多行换行
+      return text.replace(/[\r\n]+$/, '');
+    }
+
     window.sendTerminalInput = (text) => {
       if (stdinController && text) {
         stdinController.enqueue(text);
@@ -91,7 +98,7 @@
       }
     });
 
-    // 2. 自定义键盘快捷键拦截器 (智能 Ctrl+C 复制 / Ctrl+V 粘贴 / F1~F12 全局放行)
+    // 2. 自定义键盘快捷键拦截器 (智能 Ctrl+C 复制 / Ctrl+V 拦截防双重输入 / F1~F12 全局放行)
     term.attachCustomKeyEventHandler((event) => {
       // (A) Ctrl+C: 如果屏幕上有选中文本，则执行复制，阻止向 Linux 终端发送 ^C
       if (event.ctrlKey && (event.key === 'c' || event.key === 'C') && !event.shiftKey && !event.altKey) {
@@ -114,20 +121,13 @@
         return false;
       }
 
-      // (C) Ctrl+V / Ctrl+Shift+V / Shift+Insert: 从系统剪贴板读取并粘贴到终端
+      // (C) Ctrl+V / Ctrl+Shift+V / Shift+Insert: 拦截按键本身，交由 paste 事件单路径处理（防双份粘贴）
       if (
         (event.ctrlKey && (event.key === 'v' || event.key === 'V')) ||
         (event.ctrlKey && event.shiftKey && (event.key === 'v' || event.key === 'V')) ||
         (event.shiftKey && event.key === 'Insert')
       ) {
-        if (event.type === 'keydown') {
-          navigator.clipboard.readText().then((text) => {
-            if (text && window.sendTerminalInput) {
-              window.sendTerminalInput(text);
-            }
-          }).catch(() => {});
-        }
-        return false; // 拦截！不发送按键本身的字符
+        return false; // 彻底拦截按键事件，防止 xterm 注入原始字符
       }
 
       // (D) 彻底放行 F 区功能键 (F1 ~ F12) 与浏览器原生快捷键 (F5/Ctrl+F5刷新、F12控制台、F11全屏、Ctrl+R等)
@@ -149,14 +149,38 @@
       return true;
     });
 
-    // 3. 鼠标右键一键粘贴 (Right Click to Paste)
     const terminalElement = document.getElementById("terminal");
+
+    // 3. 浏览器原生 paste 事件监听器（单一可信粘贴路径）
+    window.addEventListener("paste", (e) => {
+      e.preventDefault();
+      const clipboardData = e.clipboardData || window.clipboardData;
+      const text = clipboardData ? clipboardData.getData('text') : '';
+      if (text && window.sendTerminalInput) {
+        const sanitized = sanitizePasteText(text);
+        if (sanitized) {
+          window.sendTerminalInput(sanitized);
+        }
+      }
+    });
+
+    // 4. 鼠标右键：有选中区域时执行复制，无选中区域时执行粘贴
     terminalElement.addEventListener("contextmenu", async (e) => {
       e.preventDefault();
+      if (term.hasSelection()) {
+        const selection = term.getSelection();
+        if (selection) {
+          await navigator.clipboard.writeText(selection).catch(() => {});
+        }
+        return;
+      }
       try {
         const text = await navigator.clipboard.readText();
         if (text && window.sendTerminalInput) {
-          window.sendTerminalInput(text);
+          const sanitized = sanitizePasteText(text);
+          if (sanitized) {
+            window.sendTerminalInput(sanitized);
+          }
         }
       } catch {}
     });
