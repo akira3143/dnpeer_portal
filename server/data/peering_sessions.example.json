@@ -1,0 +1,75 @@
+[
+  {
+    "_comment": "Example Peering Session: Active Peer on Node JP-TYO-1 with Port 23143 locked in port_ledger.example.json",
+    "id": "sess_4242423143_jp_tyo_1",
+    "asn": 4242423143,
+    "asName": "AKILAB-DN42",
+    "nodeId": "JP-TYO-1",
+    "status": "active",
+    "createdAt": "2026-08-28T08:00:00.000Z",
+    "updatedAt": "2026-08-28T08:05:00.000Z",
+    "contact": "admin@akilab.dn42",
+    "peering": {
+      "publicKey": "yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=",
+      "endpoint": "peer.akilab.dn42:23143",
+      "ipv4": "172.20.150.100",
+      "ipv6Ula": "fd00:4242:3143:100::1",
+      "linkLocal": "fe80::4242:3143",
+      "listenPort": 23143,
+      "mtu": 1420,
+      "bgpMode": "mpbgp_enh"
+    },
+    "assigned": {
+      "hostPort": 23143,
+      "isShifted": false,
+      "serverEndpoint": "jp1.akilab.dn42:23143",
+      "serverPublicKey": "akilab_tokyo_wg_pubkey_replace_in_config_111111=",
+      "serverIpv4": "172.20.150.1",
+      "serverIpv6Ula": "fd00:4242:3143::1",
+      "serverLinkLocal": "fe80::3143"
+    },
+    "runtime": {
+      "stage": 4,
+      "stageText": "BGP Established",
+      "latestHandshake": 1724832000,
+      "rxBytes": 10485760,
+      "txBytes": 20971520,
+      "bgpState": "Established"
+    }
+  },
+  {
+    "_comment": "Example Peering Session 2: Conflict resolved peer (20001 was taken, shifted to 30001)",
+    "id": "sess_4242420001_jp_tyo_1",
+    "asn": 4242420001,
+    "asName": "TEST-PEER-1",
+    "nodeId": "JP-TYO-1",
+    "status": "pending",
+    "createdAt": "2026-08-29T10:00:00.000Z",
+    "updatedAt": "2026-08-29T10:00:00.000Z",
+    "peering": {
+      "publicKey": "K8xN64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=",
+      "endpoint": "peer1.test.dn42:20001",
+      "ipv4": "172.20.150.101",
+      "ipv6Ula": "fd00:4242:1:100::1",
+      "linkLocal": "fe80::4242:1",
+      "listenPort": 30001,
+      "mtu": 1420,
+      "bgpMode": "mpbgp_enh"
+    },
+    "assigned": {
+      "hostPort": 30001,
+      "isShifted": true,
+      "serverEndpoint": "jp1.akilab.dn42:30001",
+      "serverPublicKey": "akilab_tokyo_wg_pubkey_replace_in_config_111111=",
+      "serverIpv4": "172.20.150.1",
+      "serverIpv6Ula": "fd00:4242:3143::1",
+      "serverLinkLocal": "fe80::3143"
+    },
+    "runtime": {
+      "stage": 1,
+      "stageText": "Awaiting admin configuration",
+      "latestHandshake": 0,
+      "bgpState": "Idle"
+    }
+  }
+]

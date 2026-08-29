@@ -1,0 +1,77 @@
+# ==============================================================================
+# 🌐 AkiLab DN42 Peering Portal - Configuration File (portal.config.yaml)
+# ==============================================================================
+# This file is the ONLY configuration file administrators need to maintain manually.
+# Hot-reloaded automatically within 200ms upon save (zero downtime, no restart required).
+
+guiPath: "/gui"
+
+network:
+  asn: "AS4242423143"
+  asnNumber: 4242423143
+  networkName: "AkiLab DN42 Network"
+  shortName: "akilab"
+  tagline: "High Performance DN42 Experimental Autonomous System"
+  description: "AkiLab DN42 multi-region backbone with MP-BGP Extended Next Hop."
+  maintainer: "AKIRA-MNT"
+  ipv4Pool: "172.20.150.0/24"
+  ipv6Pool: "fd00:4242:3143::/48"
+  routingPolicy: "Open for all DN42 participants / MP-BGP (ENH) / Strict ROA Validation"
+  bgpMode: "MP-BGP + Extended Next Hop (ENH)"
+  portFormulaDisplay: "20000 + (ASN % 10000) [Auto-increments +10000 on conflict]"
+  lookingGlassUrl: "https://lg.akilab.dn42"
+  dn42WhoisUrl: "https://explorer.burble.com/#/AS4242423143"
+  lastUpdated: "2026-08-29"
+
+nodes:
+  - id: "JP-TYO-1"
+    code: "JP-1"
+    name: "Tokyo Hub 01 (Japan)"
+    flag: "🇯🇵"
+    city: "Tokyo"
+    country: "Japan"
+    region: "apac"
+    status: "active"
+    isp: "AkiLab Datacenter Tokyo"
+    endpointDomain: "jp1.akilab.dn42"
+    wgPublicKey: "akilab_tokyo_wg_pubkey_replace_in_config_111111="
+    tunnelIpv4: "172.20.150.1"
+    tunnelIpv6ULA: "fd00:4242:3143::1"
+    tunnelIpv6LLA: "fe80::3143"
+    mtu: 1420
+    features:
+      - "★ Core Hub"
+      - "MP-BGP"
+      - "ENH"
+    lgProxyUrl: "http://127.0.0.1:5000"
+
+  - id: "US-SJC-1"
+    code: "US-1"
+    name: "Silicon Valley 01 (US West)"
+    flag: "🇺🇸"
+    city: "San Jose"
+    country: "United States"
+    region: "na"
+    status: "active"
+    isp: "AkiLab Datacenter US-West"
+    endpointDomain: "us1.akilab.dn42"
+    wgPublicKey: "akilab_sjc_wg_pubkey_replace_in_config_2222222="
+    tunnelIpv4: "172.20.150.2"
+    tunnelIpv6ULA: "fd00:4242:3143::2"
+    tunnelIpv6LLA: "fe80::3143"
+    mtu: 1420
+    features:
+      - "MP-BGP"
+      - "ENH"
+      - "Trans-Pacific"
+    lgProxyUrl: "http://127.0.0.1:5001"
+
+contacts:
+  - platform: "Telegram"
+    handle: "@akira_dn42"
+    link: "https://t.me/akira_dn42"
+    type: "telegram"
+    preferred: true
+
+admins:
+  - 4242423143
