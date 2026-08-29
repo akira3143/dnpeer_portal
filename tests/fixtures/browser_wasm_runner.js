@@ -1,4 +1,4 @@
-import { spawn, execSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -93,7 +93,7 @@ async function main() {
   };
   fs.writeFileSync(path.join(ROOT_DIR, 'server/data/registry_cache.json'), JSON.stringify(registry, null, 2), 'utf8');
 
-  const debugPort = 12000 + Math.floor(Math.random() * 5000);
+  const debugPort = 11000 + Math.floor(Math.random() * 5000);
   console.log(`--- 2. Launching Headless Chrome Browser on debug port ${debugPort} ---`);
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chrome-wasm-'));
   const chromeProc = spawn(CHROME_PATH, [
@@ -133,8 +133,6 @@ async function main() {
   await cdp.send('Runtime.enable');
 
   console.log('--- 3. Waiting for Linux Kernel and RootFS to Boot in WASM ---');
-  let booted = false;
-  let termBuffer = '';
 
   const getBuffer = async () => {
     return await cdp.evaluate(`
@@ -155,66 +153,62 @@ async function main() {
     await cdp.evaluate(`window.sendTerminalInput(${JSON.stringify(text)})`);
   };
 
-  // Wait for login prompt
-  for (let i = 0; i < 60; i++) {
-    await delay(500);
-    termBuffer = await getBuffer();
-    if (termBuffer.includes('DN42 ASN or Account:') || termBuffer.includes('AkiLab DN42')) {
-      booted = true;
-      console.log('WASM Linux Boot Complete! Login prompt detected.');
-      break;
+  const waitForPrompt = async (target, timeoutSec = 30) => {
+    for (let i = 0; i < timeoutSec * 2; i++) {
+      const buf = await getBuffer();
+      if (buf.includes(target)) return buf;
+      await delay(500);
     }
-  }
+    const finalBuf = await getBuffer();
+    throw new Error(`Timeout waiting for prompt "${target}". Buffer was:\n${finalBuf}`);
+  };
 
-  if (!booted) {
-    console.log('Current buffer snapshot:\n', termBuffer);
-    throw new Error('Timeout waiting for WASM Linux login prompt');
-  }
+  // 1. Wait for Login Prompt
+  await waitForPrompt('DN42 ASN or Account:');
+  console.log('WASM Linux Boot Complete! Login prompt detected.');
 
-  console.log('\n--- 4. Executing User Login: AS4242423143 ---');
+  // 2. Submit ASN
   await sendInput('4242423143\n');
-  await delay(1000);
+  await waitForPrompt('Remember login for 30 days?');
 
-  termBuffer = await getBuffer();
-  if (termBuffer.includes('Remember login')) {
-    console.log('Entering remember login choice (y)...');
-    await sendInput('y\n');
-    await delay(1000);
-  }
+  // 3. Remember Login Choice
+  await sendInput('y\n');
+  await waitForPrompt('Password for 4242423143:');
 
-  console.log('Entering password (test12345)...');
+  // 4. Submit Password
   await sendInput('test12345\n');
-  await delay(2000);
+  await waitForPrompt('peer@AS4242423143:~#');
+  console.log('Authenticated into WASM Linux Shell: peer@AS4242423143:~#');
 
-  // Wait for shell prompt
-  for (let i = 0; i < 20; i++) {
-    termBuffer = await getBuffer();
-    if (termBuffer.includes('peer@AS4242423143') || termBuffer.includes('peer@')) {
-      console.log('Authenticated into WASM Linux Shell: peer@AS4242423143:~#');
-      break;
-    }
-    await delay(500);
-  }
-
-  console.log('\n--- 5. Executing: nodes ---');
+  // 5. Execute: nodes
+  console.log('Executing: nodes');
   await sendInput('nodes\n');
-  await delay(2500);
+  await delay(2000);
+  await waitForPrompt('peer@AS4242423143:~#');
 
-  console.log('\n--- 6. Executing: whois 4242423143 ---');
+  // 6. Execute: whois 4242423143
+  console.log('Executing: whois 4242423143');
   await sendInput('whois 4242423143\n');
-  await delay(2500);
+  await delay(2000);
+  await waitForPrompt('peer@AS4242423143:~#');
 
-  console.log('\n--- 7. Executing: whoami ---');
+  // 7. Execute: whoami
+  console.log('Executing: whoami');
   await sendInput('whoami\n');
   await delay(1500);
+  await waitForPrompt('peer@AS4242423143:~#');
 
-  console.log('\n--- 8. Executing: peer ls ---');
+  // 8. Execute: peer ls
+  console.log('Executing: peer ls');
   await sendInput('peer ls\n');
-  await delay(2000);
+  await delay(1500);
+  await waitForPrompt('peer@AS4242423143:~#');
 
-  console.log('\n--- 9. Executing: lg status ---');
+  // 9. Execute: lg status
+  console.log('Executing: lg status');
   await sendInput('lg status\n');
-  await delay(2500);
+  await delay(2000);
+  await waitForPrompt('peer@AS4242423143:~#');
 
   const finalBuffer = await getBuffer();
   console.log('\n================== REAL WASM LINUX XTERM BUFFER OUTPUT ==================');
