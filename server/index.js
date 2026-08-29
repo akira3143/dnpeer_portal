@@ -1,7 +1,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { URL } from 'node:url';
+import { URL, pathToFileURL } from 'node:url';
 
 import { ENV, ROOT_DIR } from './config.js';
 import { getActiveConfig, initConfigWatcher, stopConfigWatcher } from './storage/configLoader.js';
@@ -121,122 +121,106 @@ export function createServer() {
           });
         }
 
-        // Peering Submit
-        if (pathname === '/api/peering/submit' && method === 'POST') {
-          const body = await parseJsonBody(req);
-          const resp = await PeeringController.submitPeering(body);
+        // Auth
+        if (pathname === '/api/auth/challenge' && (method === 'GET' || method === 'POST')) {
+          let body = {};
+          if (method === 'POST') body = await parseJsonBody(req);
+          const resp = await AuthController.getChallenge({ query: Object.fromEntries(parsedUrl.searchParams), body });
           return sendJson(res, 200, resp);
         }
 
-        // Auth: Challenge (supports GET and POST)
-        if (pathname === '/api/auth/challenge') {
-          if (method === 'GET') {
-            const query = Object.fromEntries(parsedUrl.searchParams.entries());
-            const resp = await AuthController.getChallenge(query);
-            return sendJson(res, 200, resp);
-          } else if (method === 'POST') {
-            const body = await parseJsonBody(req);
-            const resp = await AuthController.getChallenge(body);
-            return sendJson(res, 200, resp);
-          }
-        }
-
-        // Auth: Verify Signature (and verify-ssh alias)
         if ((pathname === '/api/auth/verify-signature' || pathname === '/api/auth/verify-ssh') && method === 'POST') {
           const body = await parseJsonBody(req);
-          const resp = await AuthController.verifySignature(body);
+          const resp = await AuthController.verifySignature({ body });
           return sendJson(res, 200, resp);
         }
 
-        // Auth: Password Login
         if (pathname === '/api/auth/login-password' && method === 'POST') {
           const body = await parseJsonBody(req);
-          const resp = await AuthController.loginPassword(body);
+          const resp = await AuthController.loginPassword({ body });
           return sendJson(res, 200, resp);
         }
 
-        // Auth: Set Password (authenticated)
         if (pathname === '/api/auth/set-password' && method === 'POST') {
           const user = extractUser(req);
+          if (!user) return sendJson(res, 401, errorEnvelope('Unauthorized', null, 401));
           const body = await parseJsonBody(req);
-          const resp = await AuthController.setPassword(user, body);
-          return sendJson(res, resp.success ? 200 : (resp.code || 401), resp);
-        }
-
-        // Auth: Status
-        if (pathname === '/api/auth/status' && method === 'GET') {
-          const user = extractUser(req);
-          const resp = await AuthController.getStatus(user);
+          const resp = await AuthController.setPassword({ user, body });
           return sendJson(res, 200, resp);
         }
 
-        // Auth: Me
         if (pathname === '/api/auth/me' && method === 'GET') {
           const user = extractUser(req);
-          const resp = await AuthController.getMe(user);
-          return sendJson(res, resp.success ? 200 : 401, resp);
+          const resp = await AuthController.getMe({ user });
+          return sendJson(res, 200, resp);
         }
 
-        // Sessions: List
+        if (pathname === '/api/auth/status' && method === 'GET') {
+          const user = extractUser(req);
+          const resp = await AuthController.getStatus({ user });
+          return sendJson(res, 200, resp);
+        }
+
+        // Peering Submissions
+        if (pathname === '/api/peering/submit' && method === 'POST') {
+          const user = extractUser(req);
+          const body = await parseJsonBody(req);
+          const resp = await PeeringController.submitPeering({ user, body });
+          return sendJson(res, 200, resp);
+        }
+
+        // Peering Sessions List & Delete
         if (pathname === '/api/sessions' && method === 'GET') {
           const user = extractUser(req);
-          const resp = await SessionController.listSessions(user);
-          return sendJson(res, resp.success ? 200 : 401, resp);
+          const resp = await SessionController.listSessions({ user });
+          return sendJson(res, 200, resp);
         }
 
-        // Sessions: Delete
         if (pathname.startsWith('/api/sessions/') && method === 'DELETE') {
-          const sessionId = pathname.slice('/api/sessions/'.length);
           const user = extractUser(req);
-          const resp = await SessionController.deleteSession(sessionId, user);
-          return sendJson(res, resp.success ? 200 : 401, resp);
+          const id = pathname.slice('/api/sessions/'.length);
+          const resp = await SessionController.deleteSession({ user, params: { id } });
+          return sendJson(res, 200, resp);
         }
 
-        // Sessions: Sync
-        if (pathname === '/api/sessions/sync' && method === 'POST') {
+        if (pathname.startsWith('/api/sessions/') && pathname.endsWith('/recheck') && method === 'POST') {
           const user = extractUser(req);
-          const resp = await SessionController.syncMaster(user);
-          return sendJson(res, resp.success ? 200 : 403, resp);
+          const id = pathname.slice('/api/sessions/'.length, -'/recheck'.length);
+          const resp = await SessionController.recheckSession({ user, params: { id } });
+          return sendJson(res, 200, resp);
         }
 
-        // Probe: Report
-        if (pathname === '/api/probe/report' && method === 'POST') {
+        // Looking Glass
+        if ((pathname === '/api/looking-glass' || pathname === '/api/looking-glass/query') && method === 'POST') {
           const body = await parseJsonBody(req);
-          const authHeader = req.headers['authorization'] || '';
-          const resp = await ProbeController.handleReport(authHeader, body);
-          return sendJson(res, resp.success ? 200 : (resp.code || 401), resp);
+          const resp = await LookingGlassController.query(body);
+          return sendJson(res, 200, resp);
         }
 
-        // Probe: Status
+        // Probe Reports
+        if (pathname === '/api/probe/report' && method === 'POST') {
+          const authHeader = req.headers['authorization'] || '';
+          const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+          const body = await parseJsonBody(req);
+          const resp = await ProbeController.report({ token, body });
+          return sendJson(res, resp.code || 200, resp);
+        }
+
         if (pathname === '/api/probe/status' && method === 'GET') {
           const resp = await ProbeController.getStatus();
           return sendJson(res, 200, resp);
         }
 
-        // Looking Glass (and query alias)
-        if (pathname === '/api/looking-glass' || pathname === '/api/looking-glass/query') {
-          if (method === 'POST') {
-            const body = await parseJsonBody(req);
-            const resp = await LookingGlassController.query(body);
-            return sendJson(res, 200, resp);
-          } else if (method === 'GET') {
-            const query = Object.fromEntries(parsedUrl.searchParams.entries());
-            const resp = await LookingGlassController.query(query);
-            return sendJson(res, 200, resp);
-          }
-        }
-
-        // Unknown API route
-        return sendJson(res, 404, errorEnvelope(`API endpoint ${pathname} not found`, null, 404));
+        return sendJson(res, 404, errorEnvelope('Endpoint Not Found', null, 404));
       }
 
       // -------------------------------------------------------------
-      // Static File & Dual-Frontend Hosting
+      // Static Hosting: Web GUI (/gui or custom guiPath) & WASM CLI (/)
       // -------------------------------------------------------------
-      const activeCfg = getActiveConfig();
-      const guiRoute = (activeCfg.guiPath || '/gui').replace(/\/+$/, '');
+      const config = getActiveConfig();
+      const guiRoute = config.guiPath || '/gui';
 
-      // 1. Web GUI (Easter egg route, e.g. /gui or /gui/*)
+      // 1. Web GUI (React Vite SPA)
       if (pathname === guiRoute || pathname.startsWith(`${guiRoute}/`)) {
         const guiDist = path.join(ROOT_DIR, 'gui/dist');
         let relPath = pathname.slice(guiRoute.length).replace(/^\/+/, '');
@@ -250,10 +234,15 @@ export function createServer() {
         if (fs.existsSync(targetFile)) {
           const ext = path.extname(targetFile);
           const mime = MIME_TYPES[ext] || 'application/octet-stream';
-          res.writeHead(200, {
+          const headers = {
             'Content-Type': mime,
             'Cache-Control': 'no-cache, no-store, must-revalidate'
-          });
+          };
+          if (ext === '.dat' || ext === '.wasm') {
+            const filename = path.basename(targetFile);
+            headers['Content-Disposition'] = `inline; filename="${filename}"`;
+          }
+          res.writeHead(200, headers);
           return fs.createReadStream(targetFile).pipe(res);
         } else {
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -270,10 +259,15 @@ export function createServer() {
       if (fs.existsSync(cliFile) && !fs.statSync(cliFile).isDirectory()) {
         const ext = path.extname(cliFile);
         const mime = MIME_TYPES[ext] || 'application/octet-stream';
-        res.writeHead(200, {
+        const headers = {
           'Content-Type': mime,
           'Cache-Control': 'no-cache, no-store, must-revalidate'
-        });
+        };
+        if (ext === '.dat' || ext === '.wasm') {
+          const filename = path.basename(cliFile);
+          headers['Content-Disposition'] = `inline; filename="${filename}"`;
+        }
+        res.writeHead(200, headers);
         return fs.createReadStream(cliFile).pipe(res);
       }
 
@@ -309,7 +303,7 @@ export function createServer() {
 }
 
 // Start standalone if executed directly
-if (process.argv[1] && process.argv[1].endsWith('server/index.js')) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const server = createServer();
   server.listen(ENV.PORT, ENV.HOST, () => {
     console.log(`[DN42-Portal-2.0] Server running at http://${ENV.HOST}:${ENV.PORT}`);
