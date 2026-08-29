@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch /etc/wireguard for changes and trigger probe agent
+After=network.target
+
+[Path]
+PathModified=/etc/wireguard
+Unit=dn42-probe.service
+
+[Install]
+WantedBy=multi-user.target

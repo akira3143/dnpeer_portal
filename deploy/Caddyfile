@@ -1,0 +1,29 @@
+# ==============================================================================
+# AkiLab DN42 Peering Portal - Caddy Configuration
+# ==============================================================================
+# Terminal CLI (/) as primary entry, Web GUI (/gui) as easter egg entry
+
+portal.akilab.dn42, peer.akilab.dn42, :80 {
+    encode gzip zstd
+
+    # Global Security & WASM Multi-threading (SharedArrayBuffer) Headers
+    header {
+        Cross-Origin-Opener-Policy "same-origin"
+        Cross-Origin-Embedder-Policy "require-corp"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # Disable immutable caching on CLI static assets to ensure zero-stale updates
+    @cli_assets path /rootfs.dat /vendor/* /coi-serviceworker.min.js /fetch-network.js /hostfs.js
+    header @cli_assets Cache-Control "no-cache, no-store, must-revalidate"
+
+    # Reverse proxy all requests to Node authoritative server
+    reverse_proxy 127.0.0.1:4242 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}

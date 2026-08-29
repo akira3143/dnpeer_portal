@@ -1,0 +1,25 @@
+[Unit]
+Description=AkiLab DN42 Peering Portal 2.0 (Authoritative Backend & Frontend Gateway)
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/dn42-portal
+ExecStart=/usr/bin/node server/index.js
+Restart=always
+RestartSec=3s
+
+# Environment variables
+Environment=NODE_ENV=production
+Environment=PORT=4242
+Environment=HOST=127.0.0.1
+EnvironmentFile=-/opt/dn42-portal/.env
+
+# Security limits
+LimitNOFILE=65536
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

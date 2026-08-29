@@ -1,0 +1,7 @@
+#!/bin/busybox sh
+# logout —— 退出登录（同时清除持久化会话，防止下次自动登录）
+
+rm -f /tmp/dn42_token /tmp/dn42_asn
+rm -f /mnt/persist/.dn42/token /mnt/persist/.dn42/asn 2>/dev/null
+echo -e "\033[32m Signed out.\033[0m"
+exec /sbin/dn42-login

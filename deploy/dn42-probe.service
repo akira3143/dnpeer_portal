@@ -1,0 +1,9 @@
+[Unit]
+Description=AkiLab DN42 Node Probe Report Service
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/dn42-portal
+EnvironmentFile=-/opt/dn42-portal/.env
+ExecStart=/usr/bin/node scripts/probe-agent.js

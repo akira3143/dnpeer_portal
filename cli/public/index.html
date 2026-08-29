@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>AkiLab Linux TTY (AS4242423143)</title>
+  
+  <link rel="stylesheet" href="./vendor/xterm/xterm.css" />
+  <link rel="stylesheet" href="./css/terminal.css" />
+  <script>
+    // 服务端已直接下发 COOP/COEP 头时跳过 sw 注册（避免首访 reload）；
+    // 否则注册 coi-serviceworker 兜底（静态托管无隔离头场景）
+    if (!window.crossOriginIsolated) {
+      var s = document.createElement('script');
+      s.src = 'coi-serviceworker.min.js';
+      document.head.appendChild(s);
+    }
+  </script>
+</head>
+<body>
+  <!-- 纯终端容器：全屏无边框、无导航栏、原汁原味 Linux Console -->
+  <div id="terminal"></div>
+
+  <script type="module">
+    import { FitAddon, Terminal } from "./vendor/xterm/dist.js";
+
+    // 1. 同步首屏第 0 毫秒立即初始化并挂载纯正 Linux TTY xterm 视口
+    const term = new Terminal({
+      convertEol: true,
+      fontFamily: "Monaco, Menlo, Consolas, 'Liberation Mono', 'Courier New', monospace",
+      fontSize: 14,
+      letterSpacing: 0,
+      lineHeight: 1.2,
+      cursorBlink: true,
+      cursorStyle: 'block',
+      theme: {
+        background: "#000000",
+        foreground: "#cccccc",
+        cursor: "#ffffff",
+        cursorAccent: "#000000",
+        selectionBackground: "#333333",
+        black: "#000000",
+        red: "#cd0000",
+        green: "#00cd00",
+        yellow: "#cdcd00",
+        blue: "#0000ee",
+        magenta: "#cd00cd",
+        cyan: "#00cdcd",
+        white: "#e5e5e5",
+        brightBlack: "#7f7f7f",
+        brightRed: "#ff0000",
+        brightGreen: "#00ff00",
+        brightYellow: "#ffff00",
+        brightBlue: "#5c5cff",
+        brightMagenta: "#ff00ff",
+        brightCyan: "#00ffff",
+        brightWhite: "#ffffff"
+      }
+    });
+
+    const termFit = new FitAddon();
+    term.loadAddon(termFit);
+    term.open(document.getElementById("terminal"));
+    termFit.fit();
+    term.focus();
+    window.addEventListener("resize", () => termFit.fit());
+
+    // 早期引导日志
+    term.writeln("\x1b[90m[  0.000000] Initializing AkiLab DN42 WebAssembly Linux 6.1 Kernel...\x1b[0m");
+    if (window.crossOriginIsolated) {
+      term.writeln("\x1b[32m[✓] Cross-Origin Isolation: Active (vCPU Worker threads enabled)\x1b[0m");
+    } else {
+      term.writeln("\x1b[33m[*] Cross-Origin Isolation: Registering ServiceWorker fallback...\x1b[0m");
+    }
+    term.writeln("\x1b[90m[*] Loading VirtIO Drivers & Linux WebAssembly Kernel (vmlinux.wasm)...\x1b[0m");
+
+    // --- 📋 剪贴板与原生快捷键深度适配 ---
+    let stdinController = null;
+    window.sendTerminalInput = (text) => {
+      if (stdinController && text) {
+        stdinController.enqueue(text);
+      }
+    };
+
+    // 1. 划选即复制 (Auto-Copy on Selection)
+    term.onSelectionChange(() => {
+      const selection = term.getSelection();
+      if (selection && selection.trim().length > 0) {
+        navigator.clipboard.writeText(selection).catch(() => {});
+      }
+    });
+
+    // 2. 自定义键盘快捷键拦截器 (智能 Ctrl+C 复制 / Ctrl+V 粘贴 / F1~F12 全局放行)
+    term.attachCustomKeyEventHandler((event) => {
+      // (A) Ctrl+C: 如果屏幕上有选中文本，则执行复制，阻止向 Linux 终端发送 ^C
+      if (event.ctrlKey && (event.key === 'c' || event.key === 'C') && !event.shiftKey && !event.altKey) {
+        if (term.hasSelection()) {
+          const selection = term.getSelection();
+          if (selection) {
+            navigator.clipboard.writeText(selection).catch(() => {});
+          }
+          return false; // 拦截！不向 Linux 发送 ^C
+        }
+        return true;
+      }
+
+      // (B) Ctrl+Shift+C: 强制复制选中文本
+      if (event.ctrlKey && event.shiftKey && (event.key === 'c' || event.key === 'C')) {
+        const selection = term.getSelection();
+        if (selection) {
+          navigator.clipboard.writeText(selection).catch(() => {});
+        }
+        return false;
+      }
+
+      // (C) Ctrl+V / Ctrl+Shift+V / Shift+Insert: 从系统剪贴板读取并粘贴到终端
+      if (
+        (event.ctrlKey && (event.key === 'v' || event.key === 'V')) ||
+        (event.ctrlKey && event.shiftKey && (event.key === 'v' || event.key === 'V')) ||
+        (event.shiftKey && event.key === 'Insert')
+      ) {
+        if (event.type === 'keydown') {
+          navigator.clipboard.readText().then((text) => {
+            if (text && window.sendTerminalInput) {
+              window.sendTerminalInput(text);
+            }
+          }).catch(() => {});
+        }
+        return false; // 拦截！不发送按键本身的字符
+      }
+
+      // (D) 彻底放行 F 区功能键 (F1 ~ F12) 与浏览器原生快捷键 (F5/Ctrl+F5刷新、F12控制台、F11全屏、Ctrl+R等)
+      if (/^F([1-9]|1[0-2])$/.test(event.key)) {
+        if (event.key === 'F5' && event.type === 'keydown') {
+          window.location.reload();
+        }
+        return false;
+      }
+
+      if (event.ctrlKey && (event.key === 'r' || event.key === 'R')) {
+        return false; // 放行 Ctrl+R 刷新
+      }
+
+      if (event.ctrlKey && (event.key === 'w' || event.key === 'W')) {
+        return false; // 放行 Ctrl+W 关闭标签
+      }
+
+      return true;
+    });
+
+    // 3. 鼠标右键一键粘贴 (Right Click to Paste)
+    const terminalElement = document.getElementById("terminal");
+    terminalElement.addEventListener("contextmenu", async (e) => {
+      e.preventDefault();
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text && window.sendTerminalInput) {
+          window.sendTerminalInput(text);
+        }
+      } catch {}
+    });
+
+    // 2. 异步动态加载 WASM 机器与内核驱动
+    async function bootNativeLinux() {
+      let linuxDist, fetchNetworkMod, hostfsMod;
+      // 带时间戳绕过 immutable 缓存：cli 资源无构建 hash，更新必须即时生效
+      const BUILD = Date.now();
+      try {
+        linuxDist = await import(`./vendor/linux/dist/index.js?v=${BUILD}`);
+        fetchNetworkMod = await import(`./fetch-network.js?v=${BUILD}`);
+        try {
+          hostfsMod = await import(`./hostfs.js?v=${BUILD}`);
+        } catch (e) {}
+      } catch (err) {
+        term.writeln(`\x1b[31m[-] Failed to load Linux driver modules: ${err.message}\x1b[0m`);
+        return;
+      }
+
+      const { consoleDevice, entropyDevice, spawnMachine, ethernetDevice, ethernetNetwork, fileSystemDevice } = linuxDist;
+      const { fetchInternetGateway } = fetchNetworkMod;
+      const { createHostDirectoryFS, HOSTFS_SUPPORTED } = hostfsMod || {};
+
+      const HOSTFS_TAG = "hostfs";
+      const PERSIST_TAG = "persist";
+      let hostfs = HOSTFS_SUPPORTED ? createHostDirectoryFS() : null;
+
+      // 持久层：浏览器 OPFS 自动挂载（免授权），供 Linux 侧 rememberMe 会话持久化
+      let persistFs = null;
+      try {
+        if (createHostDirectoryFS) {
+          persistFs = createHostDirectoryFS();
+          const opfsDir = await navigator.storage.getDirectory();
+          await persistFs.attach(opfsDir);
+        }
+      } catch (e) {
+        persistFs = null;
+      }
+
+      const stdin = new ReadableStream({
+        start(controller) {
+          stdinController = controller;
+          term.onData((data) => {
+            controller.enqueue(data);
+          });
+        }
+      }).pipeThrough(new TextEncoderStream());
+
+      const toTerminal = (data) => new Promise((resolve) => term.write(data, resolve));
+      const stdout = new WritableStream({
+        write(chunk) {
+          return toTerminal(chunk);
+        }
+      });
+
+      const ttyConsole = consoleDevice(stdin, stdout);
+      const resizeConsole = () => ttyConsole.resize(term.cols, term.rows);
+      term.onResize(resizeConsole);
+      resizeConsole();
+
+      const bootOut = new WritableStream({
+        write(chunk) {
+          return toTerminal(new TextEncoder().encode("\x1b[2m" + new TextDecoder().decode(chunk) + "\x1b[0m"));
+        }
+      });
+
+      term.writeln("\x1b[90m[*] Downloading Root Filesystem (rootfs.dat)...\x1b[0m");
+
+      // 下载根文件系统 rootfs.dat (带时间戳防缓存)
+      let initcpio;
+      try {
+        const res = await fetch(`rootfs.dat?t=${Date.now()}`, { cache: "no-cache" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        initcpio = await res.arrayBuffer();
+      } catch (err) {
+        term.writeln(`\x1b[31m[-] Failed to load rootfs.dat: ${err.message}\x1b[0m`);
+        return;
+      }
+
+      const network = ethernetNetwork();
+      function randMac() {
+        const h = () => Math.floor(Math.random() * 256).toString(16).padStart(2, "0");
+        return "02:" + h() + ":" + h() + ":" + h() + ":" + h() + ":" + h();
+      }
+
+      try {
+        await fetchInternetGateway(network, {
+          gatewayIp: "10.0.2.2",
+          gatewayMac: randMac(),
+          syntheticIp: "203.0.113.1",
+          forceHttps: false,
+          execPort: 20728,
+          fetch: (...args) => {
+            const urlStr = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url ? args[0].url : '');
+            if (urlStr.includes('/api/trigger-gui')) {
+              setTimeout(() => {
+                window.location.href = '/panel';
+              }, 400);
+              return new Response(null, { status: 204 });
+            }
+            // 把发往虚拟网关(10.0.2.2)的请求重写为同源路径：
+            // Linux 内视角不变(10.0.2.2:4242)，宿主侧直接打本域 API，零 CORS 问题。
+            // cache:no-store —— API 响应绝不能进浏览器缓存（否则认证数据会串）
+            const rewritten = urlStr.replace(/^https?:\/\/10\.0\.2\.2(?::\d+)?\//, '/');
+            return fetch(rewritten, { ...(args[1] || {}), cache: 'no-store' });
+          },
+          debug: false
+        });
+        term.writeln("\x1b[32m[✓] Fetch Network Gateway: Online (10.0.2.2 bridge)\x1b[0m");
+      } catch (err) {
+        term.writeln(`\x1b[31m[-] Gateway init FAILED: ${err && err.message}\x1b[0m`);
+        console.warn("Gateway init warning:", err);
+      }
+
+      const devices = [
+        ttyConsole,
+        entropyDevice(),
+        ethernetDevice(network)
+      ];
+      if (hostfs) {
+        devices.push(fileSystemDevice(hostfs.fs, { tag: HOSTFS_TAG, cache: true }));
+      }
+      if (persistFs) {
+        devices.push(fileSystemDevice(persistFs.fs, { tag: PERSIST_TAG, cache: true }));
+      }
+
+      term.writeln("\x1b[32m[✓] Spawning Linux 6.1 WASM Virtual Machine...\x1b[0m\r\n");
+      term.writeln("\x1b[90m[*] First boot compiles the 4.3MB kernel, may take a few seconds...\x1b[0m");
+      try {
+        // 30s 超时自愈：spawn 挂起时提示并自动重载（间歇性 worker 初始化卡顿）
+        const spawnTimer = setTimeout(() => {
+          term.writeln("\x1b[33m[*] Kernel spawn timed out, auto-reloading...\x1b[0m");
+          setTimeout(() => window.location.reload(), 1500);
+        }, 30000);
+        const machine = await spawnMachine({
+          cpus: Math.min(4, navigator.hardwareConcurrency || 2),
+          cmdline: "quiet",
+          devices,
+          initcpio: new Uint8Array(initcpio),
+        });
+        clearTimeout(spawnTimer);
+
+        machine.bootConsole.pipeTo(bootOut);
+        termFit.fit();
+        term.focus();
+      } catch (err) {
+        term.writeln(`\x1b[31m[-] Linux Kernel Boot Error: ${err.message}\x1b[0m`);
+      }
+    }
+
+    bootNativeLinux().catch((err) => {
+      term.writeln(`\x1b[31m[-] System Error: ${err.message}\x1b[0m`);
+    });
+  </script>
+</body>
+</html>

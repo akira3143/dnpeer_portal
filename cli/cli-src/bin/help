@@ -1,0 +1,15 @@
+#!/bin/busybox sh
+# help —— 命令速查
+
+echo -e "Available commands:"
+echo -e "  \033[32mpeer new\033[0m          - Request a new peering session"
+echo -e "  \033[32mpeer ls\033[0m           - List my peering sessions & status"
+echo -e "  \033[32mpeer rm <ID>\033[0m      - Revoke a session and release its port"
+echo -e "  \033[32mnodes\033[0m             - Show the AkiLab global node matrix"
+echo -e "  \033[32mwhois <ASN>\033[0m       - Query the DN42 registry"
+echo -e "  \033[32mlg <cmd> <target>\033[0m - BIRD Looking Glass (route/bgp/ping/trace/status)"
+echo -e "  \033[32mwhoami\033[0m            - Show current identity"
+echo -e "  \033[32mpasswd\033[0m            - Change login password"
+echo -e "  \033[32mlogout\033[0m            - Sign out"
+echo -e "  \033[32mstartx\033[0m            - Launch the Web GUI \033[90m(beta)\033[0m"
+echo -e "  \033[90mdmesg / uname -a\033[0m  - Kernel info (real Linux commands)"

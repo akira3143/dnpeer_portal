@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic fallback probe reporter (every 5 minutes)
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+Unit=dn42-probe.service
+
+[Install]
+WantedBy=timers.target

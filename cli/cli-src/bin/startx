@@ -1,0 +1,15 @@
+#!/bin/busybox sh
+# startx —— Easter egg: Launch Web GUI
+
+. /etc/dn42-lib.sh
+
+echo -e "\033[90mQuerying network metadata and dynamic GUI route...\033[0m"
+meta=$(api_get "/api/network-meta")
+gui_path=$(json_field "$meta" guiPath)
+[ -z "$gui_path" ] && gui_path="/gui"
+
+echo ""
+echo -e "\033[32mWeb GUI Graphic Portal is available:\033[0m"
+echo -e "  \033[1;36m${gui_path}\033[0m"
+echo ""
+echo -e "\033[90mOpen the above path in your browser to access the graphical desktop.\033[0m"

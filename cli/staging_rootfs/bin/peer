@@ -1,0 +1,314 @@
+#!/bin/busybox sh
+# peer —— Peering session management (new / ls / rm)
+# Authoritative backend calculates port and config finished products.
+
+. /etc/dn42-lib.sh
+
+usage() {
+  echo -e "\033[36mUsage:\033[0m"
+  echo -e "  \033[32mpeer new\033[0m        Request a new peering session"
+  echo -e "  \033[32mpeer ls\033[0m         List my peering sessions & status"
+  echo -e "  \033[32mpeer rm <ID>\033[0m    Revoke a session and release its port"
+}
+
+# ---------- peer new ----------
+do_new() {
+  require_login || return 1
+
+  local meta resp line node_idx i choice v confirm
+  echo -e "\033[90mQuerying AkiLab node matrix...\033[0m"
+  meta=$(api_get "/api/network-meta")
+  if ! echo "$meta" | grep -q '"success":true'; then
+    echo -e "\033[31merror: Cannot fetch node list, try again later.\033[0m"
+    return 1
+  fi
+
+  # Extract nodes array into /tmp/dn42_nodes
+  echo "$meta" | sed 's/},{/}\n{/g' | grep '"endpointDomain"' > /tmp/dn42_nodes_raw
+  rm -f /tmp/dn42_nodes
+  node_idx=0
+  while IFS= read -r line; do
+    node_idx=$((node_idx + 1))
+    nid=${line#*\"id\":\"}; nid=${nid%%\"*}
+    ncode=${line#*\"code\":\"}; ncode=${ncode%%\"*}
+    nname=${line#*\"name\":\"}; nname=${nname%%\"*}
+    ncity=${line#*\"city\":\"}; [ "$ncity" = "$line" ] && ncity=""; ncity=${ncity%%\"*}
+    nend=${line#*\"endpointDomain\":\"}; nend=${nend%%\"*}
+    nv4=${line#*\"tunnelIpv4\":\"}; [ "$nv4" = "$line" ] && nv4=""; nv4=${nv4%%\"*}
+    nlla=${line#*\"tunnelIpv6LLA\":\"}; [ "$nlla" = "$line" ] && nlla=""; nlla=${nlla%%\"*}
+    nmtu=${line#*\"mtu\":}; [ "$nmtu" = "$line" ] && nmtu=""; nmtu=${nmtu%%,*}; nmtu=${nmtu%%\}*}
+    echo "$nid|$ncode|$nname|$ncity|$nend|$nv4|$nlla|${nmtu:-1420}" >> /tmp/dn42_nodes
+  done < /tmp/dn42_nodes_raw
+
+  if [ ! -s /tmp/dn42_nodes ]; then
+    echo -e "\033[31merror: Node list is empty.\033[0m"
+    return 1
+  fi
+
+  # Form variables
+  nid=""; ncode=""; nname=""; ncity=""; nend=""; nv4=""; nlla=""; nmtu="1420"
+  lla=""; ipv4=""; ula=""; pubkey=""; peer_ep=""; mtu="1420"; host_port="auto"
+
+  clean_asn=$(dn42_asn | tr -cd '0-9')
+  default_peer_port=$(calc_default_port "$clean_asn")
+  [ -z "$default_peer_port" ] && default_peer_port=$((20000 + (clean_asn % 10000)))
+
+  while true; do
+    echo ""
+    echo -e "\033[36m------ AKILAB DN42 PEERING WIZARD -----\033[0m"
+    echo ""
+    echo -e "Available Nodes:"
+    i=0
+    while IFS='|' read -r _nid _ncode _nname _ncity _nend _nv4 _nlla _nmtu; do
+      i=$((i + 1))
+      echo -e "  \033[32m[$i]\033[0m \033[1m$_nid\033[0m - $_nname"
+    done < /tmp/dn42_nodes
+
+    echo ""
+    echo -e "\033[90mPeer port formula: 20000 + ($clean_asn % 10000) = $default_peer_port by default.\033[0m"
+    echo -e "\033[90mType q at any field to cancel.\033[0m"
+    echo ""
+
+    # Node Selection
+    if [ -n "$nid" ]; then
+      printf "\033[33mSelect target node [1-%s] (current: %s):\033[0m " "$i" "$nid"
+    else
+      printf "\033[33mSelect target node [1-%s]:\033[0m " "$i"
+    fi
+    read -r choice
+    flush_after_input
+    { [ "$choice" = "q" ] || [ "$choice" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
+    if [ -n "$choice" ]; then
+      if ! echo "$choice" | grep -q '^[0-9][0-9]*$' || [ "$choice" -lt 1 ] || [ "$choice" -gt "$i" ]; then
+        echo -e "\033[31merror: Invalid selection.\033[0m"
+        continue
+      fi
+      sel_line=$(sed -n "${choice}p" /tmp/dn42_nodes)
+      nid=$(echo "$sel_line" | cut -d'|' -f1)
+      ncode=$(echo "$sel_line" | cut -d'|' -f2)
+      nname=$(echo "$sel_line" | cut -d'|' -f3)
+      ncity=$(echo "$sel_line" | cut -d'|' -f4)
+      nend=$(echo "$sel_line" | cut -d'|' -f5)
+      nv4=$(echo "$sel_line" | cut -d'|' -f6)
+      nlla=$(echo "$sel_line" | cut -d'|' -f7)
+      nmtu=$(echo "$sel_line" | cut -d'|' -f8)
+    elif [ -z "$nid" ]; then
+      echo -e "\033[31merror: Target node is required.\033[0m"
+      continue
+    fi
+
+    # Link-Local
+    [ -z "$lla" ] && lla="fe80::$clean_asn"
+    while true; do
+      printf "\033[33mYour IPv6 Link-Local [%s]:\033[0m " "$lla"
+      read -r v
+      flush_after_input
+      { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
+      [ -n "$v" ] && lla="$v"
+      if ! validate_link_local "$lla"; then
+        echo -e "\033[31merror: Link-Local must start with fe80: (e.g. fe80::$clean_asn)\033[0m"
+        continue
+      fi
+      break
+    done
+
+    # IPv4
+    while true; do
+      if [ -n "$ipv4" ]; then
+        printf "\033[33mYour DN42 IPv4 (optional) [%s]:\033[0m " "$ipv4"
+      else
+        printf "\033[33mYour DN42 IPv4 (optional):\033[0m "
+      fi
+      read -r v
+      flush_after_input
+      { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
+      [ -n "$v" ] && ipv4="$v"
+      if [ -n "$ipv4" ] && ! validate_ipv4 "$ipv4"; then
+        echo -e "\033[31merror: Invalid IPv4 address or CIDR.\033[0m"
+        continue
+      fi
+      break
+    done
+
+    # IPv6 ULA
+    while true; do
+      if [ -n "$ula" ]; then
+        printf "\033[33mYour DN42 IPv6 ULA (optional) [%s]:\033[0m " "$ula"
+      else
+        printf "\033[33mYour DN42 IPv6 ULA (optional):\033[0m "
+      fi
+      read -r v
+      flush_after_input
+      { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
+      [ -n "$v" ] && ula="$v"
+      if [ -n "$ula" ] && ! validate_ipv6_ula "$ula"; then
+        echo -e "\033[31merror: IPv6 ULA must start with fd (e.g. fd00:4242:$clean_asn::1)\033[0m"
+        continue
+      fi
+      break
+    done
+
+    # WireGuard Public Key
+    while true; do
+      if [ -n "$pubkey" ]; then
+        printf "\033[33mYour WireGuard Public Key (44 chars Base64) [%s]:\033[0m " "$pubkey"
+      else
+        printf "\033[33mYour WireGuard Public Key (44 chars Base64):\033[0m "
+      fi
+      read -r v
+      flush_after_input
+      { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
+      [ -n "$v" ] && pubkey="$v"
+      if [ -z "$pubkey" ] || ! validate_pubkey "$pubkey"; then
+        echo -e "\033[31merror: Public key must be 44-character Base64 ending with =\033[0m"
+        pubkey=""
+        continue
+      fi
+      break
+    done
+
+    # Peer Endpoint
+    if [ -n "$peer_ep" ]; then
+      printf "\033[33mYour Endpoint hostname:port (optional) [%s]:\033[0m " "$peer_ep"
+    else
+      printf "\033[33mYour Endpoint hostname:port (optional):\033[0m "
+    fi
+    read -r v
+    flush_after_input
+    { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
+    [ -n "$v" ] && peer_ep="$v"
+
+    # ListenPort
+    while true; do
+      printf "\033[33mListenPort (default auto, or type 1024-65535) [%s]:\033[0m " "$host_port"
+      read -r v
+      flush_after_input
+      { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
+      [ -n "$v" ] && host_port="$v"
+      if [ "$host_port" != "auto" ] && ! validate_port "$host_port"; then
+        echo -e "\033[31merror: Port must be an integer between 1024 and 65535 or auto.\033[0m"
+        continue
+      fi
+      break
+    done
+
+    # MTU
+    while true; do
+      printf "\033[33mMTU (default 1420) [%s]:\033[0m " "$mtu"
+      read -r v
+      flush_after_input
+      { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
+      [ -n "$v" ] && mtu="$v"
+      if ! validate_mtu "$mtu"; then
+        echo -e "\033[31merror: MTU must be between 1280 and 1500.\033[0m"
+        continue
+      fi
+      break
+    done
+
+    # Review Summary
+    echo ""
+    printf "\033[36m%s\033[0m\n" "-------- REVIEW --------"
+    echo -e "  Node        $nid ($nname)"
+    echo -e "  LLA         $lla"
+    [ -n "$ipv4" ] && echo -e "  IPv4        $ipv4"
+    [ -n "$ula" ] && echo -e "  IPv6 ULA    $ula"
+    echo -e "  WG PubKey   $pubkey"
+    [ -n "$peer_ep" ] && echo -e "  Endpoint    $peer_ep"
+    echo -e "  ListenPort  $host_port"
+    echo -e "  MTU         $mtu"
+    echo ""
+
+    printf "\033[33mConfirm and submit? [Y/n]:\033[0m "
+    read -r confirm
+    flush_after_input
+    { [ "$confirm" = "q" ] || [ "$confirm" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
+    if [ "$confirm" = "n" ] || [ "$confirm" = "N" ]; then
+      echo -e "\033[90mRe-enter the form. Press Enter to retain current value.\033[0m"
+      continue
+    fi
+    break
+  done
+
+  # Construct and submit payload
+  payload="{\"asn\":$clean_asn,\"nodeId\":\"$nid\",\"publicKey\":\"$pubkey\",\"linkLocal\":\"$lla\",\"ipv4\":\"$ipv4\",\"ipv6Ula\":\"$ula\",\"endpoint\":\"$peer_ep\",\"listenPort\":\"$host_port\",\"mtu\":$mtu,\"bgpMode\":\"mpbgp_enh\"}"
+
+  echo ""
+  echo -e "\033[90mSubmitting peering application to AkiLab Authority...\033[0m"
+  resp=$(api_post "/api/peering/submit" "$payload")
+
+  if ! echo "$resp" | grep -q '"success":true'; then
+    echo -e "\033[31merror: $(json_field "$resp" message)\033[0m"
+    return 1
+  fi
+
+  sess_id=$(json_field "$resp" sessionId)
+  assigned_port=$(json_num "$resp" port)
+  is_shifted=$(json_bool "$resp" isShifted)
+  conflict_msg=$(json_field "$resp" conflictMessage)
+
+  echo ""
+  echo -e "\033[32m===============================================================================\033[0m"
+  echo -e "\033[1;32mSession ID: $sess_id\033[0m"
+  echo -e "\033[32mAssigned Port: $assigned_port\033[0m"
+  if [ "$is_shifted" = "true" ] && [ -n "$conflict_msg" ]; then
+    echo -e "\033[33m[!] $conflict_msg\033[0m"
+  fi
+  echo ""
+  echo -e "\033[36mReceived your peering info. We'll establish the peer with you within 24 hours!\033[0m"
+  echo -e "\033[32m===============================================================================\033[0m"
+  echo ""
+}
+
+# ---------- peer ls ----------
+do_ls() {
+  require_login || return 1
+  local resp line id asn node status port stage
+  echo -e "\033[90mFetching peering sessions...\033[0m"
+  resp=$(api_get "/api/sessions")
+  if ! echo "$resp" | grep -q '"success":true'; then
+    echo -e "\033[31merror: $(json_field "$resp" message)\033[0m"
+    return 1
+  fi
+
+  echo ""
+  printf "%-28s %-12s %-12s %-8s %s\n" "SESSION ID" "ASN" "NODE" "PORT" "STATUS"
+  printf "\033[90m-------------------------------------------------------------------------------\033[0m\n"
+
+  echo "$resp" | sed 's/},{/}\n{/g' | grep '"id"' | while IFS= read -r line; do
+    id=${line#*\"id\":\"}; id=${id%%\"*}
+    asn=${line#*\"asn\":}; asn=${asn%%,*}; asn=${asn%%\}*}
+    node=${line#*\"nodeId\":\"}; node=${node%%\"*}
+    port=${line#*\"hostPort\":}; port=${port%%,*}; port=${port%%\}*}
+    status=${line#*\"status\":\"}; status=${status%%\"*}
+    stage=${line#*\"stageText\":\"}; [ "$stage" = "$line" ] && stage="$status"; stage=${stage%%\"*}
+
+    printf "%-28s %-12s %-12s %-8s %s\n" "$id" "AS$asn" "$node" "$port" "$stage"
+  done
+  echo ""
+}
+
+# ---------- peer rm ----------
+do_rm() {
+  require_login || return 1
+  local target_id="$1"
+  if [ -z "$target_id" ]; then
+    echo -e "\033[31merror: Session ID is required. Usage: peer rm <SESSION_ID>\033[0m"
+    return 1
+  fi
+
+  echo -e "\033[90mRevoking session $target_id and releasing port...\033[0m"
+  resp=$(api_delete "/api/sessions/$target_id")
+  if echo "$resp" | grep -q '"success":true'; then
+    echo -e "\033[32mSession $target_id revoked successfully.\033[0m"
+  else
+    echo -e "\033[31merror: $(json_field "$resp" message)\033[0m"
+  fi
+}
+
+case "$1" in
+  new) do_new ;;
+  ls|list) do_ls ;;
+  rm|remove|delete) do_rm "$2" ;;
+  *) usage ;;
+esac
