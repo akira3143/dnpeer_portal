@@ -125,19 +125,19 @@ export function createServer() {
         if (pathname === '/api/auth/challenge' && (method === 'GET' || method === 'POST')) {
           let body = {};
           if (method === 'POST') body = await parseJsonBody(req);
-          const resp = await AuthController.getChallenge({ query: Object.fromEntries(parsedUrl.searchParams), body });
+          const resp = await AuthController.getChallenge({ ...Object.fromEntries(parsedUrl.searchParams), ...body });
           return sendJson(res, 200, resp);
         }
 
         if ((pathname === '/api/auth/verify-signature' || pathname === '/api/auth/verify-ssh') && method === 'POST') {
           const body = await parseJsonBody(req);
-          const resp = await AuthController.verifySignature({ body });
+          const resp = await AuthController.verifySignature(body);
           return sendJson(res, 200, resp);
         }
 
         if (pathname === '/api/auth/login-password' && method === 'POST') {
           const body = await parseJsonBody(req);
-          const resp = await AuthController.loginPassword({ body });
+          const resp = await AuthController.loginPassword(body);
           return sendJson(res, 200, resp);
         }
 
@@ -145,49 +145,44 @@ export function createServer() {
           const user = extractUser(req);
           if (!user) return sendJson(res, 401, errorEnvelope('Unauthorized', null, 401));
           const body = await parseJsonBody(req);
-          const resp = await AuthController.setPassword({ user, body });
-          return sendJson(res, 200, resp);
+          const resp = await AuthController.setPassword(user, body);
+          return sendJson(res, resp.code || 200, resp);
         }
 
         if (pathname === '/api/auth/me' && method === 'GET') {
           const user = extractUser(req);
-          const resp = await AuthController.getMe({ user });
-          return sendJson(res, 200, resp);
+          if (!user) return sendJson(res, 401, errorEnvelope('Unauthorized', null, 401));
+          const resp = await AuthController.getMe(user);
+          return sendJson(res, resp.code || 200, resp);
         }
 
         if (pathname === '/api/auth/status' && method === 'GET') {
           const user = extractUser(req);
-          const resp = await AuthController.getStatus({ user });
+          const resp = await AuthController.getStatus(user);
           return sendJson(res, 200, resp);
         }
 
         // Peering Submissions
         if (pathname === '/api/peering/submit' && method === 'POST') {
-          const user = extractUser(req);
           const body = await parseJsonBody(req);
-          const resp = await PeeringController.submitPeering({ user, body });
+          const resp = await PeeringController.submitPeering(body);
           return sendJson(res, 200, resp);
         }
 
         // Peering Sessions List & Delete
         if (pathname === '/api/sessions' && method === 'GET') {
           const user = extractUser(req);
-          const resp = await SessionController.listSessions({ user });
-          return sendJson(res, 200, resp);
+          if (!user) return sendJson(res, 401, errorEnvelope('Unauthorized', null, 401));
+          const resp = await SessionController.listSessions(user);
+          return sendJson(res, resp.code || 200, resp);
         }
 
         if (pathname.startsWith('/api/sessions/') && method === 'DELETE') {
           const user = extractUser(req);
+          if (!user) return sendJson(res, 401, errorEnvelope('Unauthorized', null, 401));
           const id = pathname.slice('/api/sessions/'.length);
-          const resp = await SessionController.deleteSession({ user, params: { id } });
-          return sendJson(res, 200, resp);
-        }
-
-        if (pathname.startsWith('/api/sessions/') && pathname.endsWith('/recheck') && method === 'POST') {
-          const user = extractUser(req);
-          const id = pathname.slice('/api/sessions/'.length, -'/recheck'.length);
-          const resp = await SessionController.recheckSession({ user, params: { id } });
-          return sendJson(res, 200, resp);
+          const resp = await SessionController.deleteSession(id, user);
+          return sendJson(res, resp.code || 200, resp);
         }
 
         // Looking Glass
@@ -200,10 +195,9 @@ export function createServer() {
         // Probe Reports
         if (pathname === '/api/probe/report' && method === 'POST') {
           const authHeader = req.headers['authorization'] || '';
-          const token = authHeader.replace(/^Bearer\s+/i, '').trim();
           const body = await parseJsonBody(req);
-          const resp = await ProbeController.report({ token, body });
-          return sendJson(res, resp.code || 200, resp);
+          const resp = await ProbeController.handleReport(authHeader, body);
+          return sendJson(res, resp.code || (resp.success ? 200 : 401), resp);
         }
 
         if (pathname === '/api/probe/status' && method === 'GET') {

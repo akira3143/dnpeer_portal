@@ -1,4 +1,4 @@
-import { test, describe, before, after } from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,21 +9,16 @@ process.env.PORTAL_DATA_DIR = testDataDir;
 
 import { createServer } from '../../server/index.js';
 
-describe('Peering Flow API Integration Tests', () => {
-  let server;
-  let baseUrl;
+test('Peering Flow API Integration Tests', async (t) => {
+  fs.writeFileSync(path.join(testDataDir, 'port_ledger.json'), JSON.stringify({}), 'utf8');
+  fs.writeFileSync(path.join(testDataDir, 'peering_sessions.json'), JSON.stringify([]), 'utf8');
 
-  before(async () => {
-    fs.writeFileSync(path.join(testDataDir, 'port_ledger.json'), JSON.stringify({}), 'utf8');
-    fs.writeFileSync(path.join(testDataDir, 'peering_sessions.json'), JSON.stringify([]), 'utf8');
+  const server = createServer();
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  const baseUrl = `http://127.0.0.1:${port}`;
 
-    server = createServer();
-    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-    const port = server.address().port;
-    baseUrl = `http://127.0.0.1:${port}`;
-  });
-
-  after(async () => {
+  t.after(async () => {
     if (server && server.closeAll) {
       await server.closeAll();
     }
@@ -32,7 +27,7 @@ describe('Peering Flow API Integration Tests', () => {
     } catch {}
   });
 
-  test('GET /api/network-meta returns active metadata and nodes', async () => {
+  await t.test('GET /api/network-meta returns active metadata and nodes', async () => {
     const res = await fetch(`${baseUrl}/api/network-meta`);
     assert.equal(res.status, 200);
     const body = await res.json();
@@ -43,7 +38,7 @@ describe('Peering Flow API Integration Tests', () => {
     assert.equal(body.data.guiPath, '/gui');
   });
 
-  test('POST /api/peering/submit with invalid payload returns HTTP 200 with fieldErrors', async () => {
+  await t.test('POST /api/peering/submit with invalid payload returns HTTP 200 with fieldErrors', async () => {
     const res = await fetch(`${baseUrl}/api/peering/submit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -62,7 +57,7 @@ describe('Peering Flow API Integration Tests', () => {
     assert.ok(body.error.fieldErrors.publicKey);
   });
 
-  test('POST /api/peering/submit with valid payload creates session and returns configs', async () => {
+  await t.test('POST /api/peering/submit with valid payload creates session and returns configs', async () => {
     const res = await fetch(`${baseUrl}/api/peering/submit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

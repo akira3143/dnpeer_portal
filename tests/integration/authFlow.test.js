@@ -1,4 +1,4 @@
-import { test, describe, before, after } from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -11,22 +11,17 @@ import { createServer } from '../../server/index.js';
 import { AuthService } from '../../server/services/authService.js';
 import { createTestUsers } from '../fixtures/testUsers.js';
 
-describe('Auth Flow API Integration Tests', () => {
-  let server;
-  let baseUrl;
+test('Auth Flow API Integration Tests', async (t) => {
+  // Seed test users fixture into isolated testDataDir
+  const testUsers = createTestUsers();
+  await AuthService.saveAuthUsers(testUsers);
 
-  before(async () => {
-    // Seed test users fixture into isolated testDataDir
-    const testUsers = createTestUsers();
-    await AuthService.saveAuthUsers(testUsers);
+  const server = createServer();
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  const baseUrl = `http://127.0.0.1:${port}`;
 
-    server = createServer();
-    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-    const port = server.address().port;
-    baseUrl = `http://127.0.0.1:${port}`;
-  });
-
-  after(async () => {
+  t.after(async () => {
     if (server && server.closeAll) {
       await server.closeAll();
     }
@@ -35,7 +30,7 @@ describe('Auth Flow API Integration Tests', () => {
     } catch {}
   });
 
-  test('GET /api/auth/challenge returns challenge with flat and nested commands', async () => {
+  await t.test('GET /api/auth/challenge returns challenge with flat and nested commands', async () => {
     const res = await fetch(`${baseUrl}/api/auth/challenge?asn=4242423143`);
     assert.equal(res.status, 200);
     const body = await res.json();
@@ -49,7 +44,7 @@ describe('Auth Flow API Integration Tests', () => {
     assert.ok(body.data.commands.ssh_linux);
   });
 
-  test('POST /api/auth/login-password and verify /api/auth/me', async () => {
+  await t.test('POST /api/auth/login-password and verify /api/auth/me', async () => {
     const loginRes = await fetch(`${baseUrl}/api/auth/login-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

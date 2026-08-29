@@ -1,4 +1,4 @@
-import { test, describe, before, after } from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -10,18 +10,13 @@ process.env.PORTAL_DATA_DIR = testDataDir;
 import { createServer } from '../../server/index.js';
 import { ENV } from '../../server/config.js';
 
-describe('Probe Report API Integration Tests', () => {
-  let server;
-  let baseUrl;
+test('Probe Report API Integration Tests', async (t) => {
+  const server = createServer();
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  const baseUrl = `http://127.0.0.1:${port}`;
 
-  before(async () => {
-    server = createServer();
-    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-    const port = server.address().port;
-    baseUrl = `http://127.0.0.1:${port}`;
-  });
-
-  after(async () => {
+  t.after(async () => {
     if (server && server.closeAll) {
       await server.closeAll();
     }
@@ -30,7 +25,7 @@ describe('Probe Report API Integration Tests', () => {
     } catch {}
   });
 
-  test('POST /api/probe/report rejects unauthorized request', async () => {
+  await t.test('POST /api/probe/report rejects unauthorized request', async () => {
     const res = await fetch(`${baseUrl}/api/probe/report`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -39,7 +34,7 @@ describe('Probe Report API Integration Tests', () => {
     assert.equal(res.status, 401);
   });
 
-  test('POST /api/probe/report accepts valid authorized snapshot', async () => {
+  await t.test('POST /api/probe/report accepts valid authorized snapshot', async () => {
     const res = await fetch(`${baseUrl}/api/probe/report`, {
       method: 'POST',
       headers: {
