@@ -64,6 +64,7 @@
     termFit.fit();
     term.focus();
     window.addEventListener("resize", () => termFit.fit());
+    window.term = term;
 
     // 早期引导日志
     term.writeln("\x1b[90m[  0.000000] Initializing AkiLab DN42 WebAssembly Linux 6.1 Kernel...\x1b[0m");
