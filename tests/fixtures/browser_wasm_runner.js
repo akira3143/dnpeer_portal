@@ -93,10 +93,11 @@ async function main() {
   };
   fs.writeFileSync(path.join(ROOT_DIR, 'server/data/registry_cache.json'), JSON.stringify(registry, null, 2), 'utf8');
 
-  console.log('--- 2. Launching Headless Chrome Browser with WASM & COOP/COEP support ---');
+  const debugPort = 12000 + Math.floor(Math.random() * 5000);
+  console.log(`--- 2. Launching Headless Chrome Browser on debug port ${debugPort} ---`);
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chrome-wasm-'));
   const chromeProc = spawn(CHROME_PATH, [
-    '--remote-debugging-port=9222',
+    `--remote-debugging-port=${debugPort}`,
     '--headless=new',
     '--window-size=1280,900',
     '--no-sandbox',
@@ -109,7 +110,7 @@ async function main() {
   for (let i = 0; i < 30; i++) {
     await delay(500);
     try {
-      const vRes = await fetch('http://127.0.0.1:9222/json/list');
+      const vRes = await fetch(`http://127.0.0.1:${debugPort}/json/list`);
       const list = await vRes.json();
       const page = list.find(t => t.type === 'page' && t.url.includes('4242'));
       if (page && page.webSocketDebuggerUrl) {
