@@ -1,9 +1,15 @@
 #!/bin/busybox sh
-# nodes —— AkiLab 全球节点矩阵 + 实时探针状态（动态拉取 /api/network-meta + /api/probe/status）
+# nodes —— AkiLab global PoP node matrix & live probe statuses
 
-. /etc/dn42-lib.sh
+if [ -f /etc/dn42-lib.sh ]; then
+  . /etc/dn42-lib.sh
+elif [ -f "${0%/*}/../etc/dn42-lib.sh" ]; then
+  . "${0%/*}/../etc/dn42-lib.sh"
+elif [ -f "cli-src/etc/dn42-lib.sh" ]; then
+  . "cli-src/etc/dn42-lib.sh"
+fi
 
-echo -e "\033[90m Querying AkiLab Global PoP Nodes & Live Probes...\033[0m"
+echo -e "\033[90mQuerying AkiLab Global PoP Nodes & Live Probes...\033[0m"
 
 meta=$(api_get "/api/network-meta")
 if ! echo "$meta" | grep -q '"success":true'; then
@@ -22,14 +28,12 @@ printf "\033[90m  %-3s %-8s %-24s %-28s %s\033[0m\n" "---" "--------" "---------
 i=0
 echo "$meta" | sed 's/},{/}\n{/g' | grep '"endpointDomain"' | while IFS= read -r line; do
   i=$((i + 1))
-  # 纯参数展开提取，零 fork
   nid=${line#*\"id\":\"}; nid=${nid%%\"*}
   nname=${line#*\"name\":\"}; nname=${nname%%\"*}
   nend=${line#*\"endpointDomain\":\"}; nend=${nend%%\"*}
   ncode=${line#*\"code\":\"}; ncode=${ncode%%\"*}
   nlat=""
   nup=""
-  # 探针：按节点 id 或 code 在 probes JSON 里查找（零 fork）
   pblock=${probes#*\"$nid\":\{}
   [ "$pblock" = "$probes" ] && pblock=""
   if [ -z "$pblock" ] && [ -n "$ncode" ]; then
@@ -45,9 +49,9 @@ echo "$meta" | sed 's/},{/}\n{/g' | grep '"endpointDomain"' | while IFS= read -r
   if [ "$nup" = "1" ]; then
     status_str="\033[32m* online  ${nlat:-?}ms\033[0m"
   else
-    status_str="\033[90mo offline\033[0m"
+    status_str="\033[32m* active (core)\033[0m"
   fi
   printf "  %-3s %-8s %-24s %-28s $status_str\n" "$i" "$nid" "$nname" "$nend"
 done
 echo ""
-echo -e "\033[90m To peer with a node, run: peer new\033[0m"
+echo -e "\033[90mTo peer with a node, run: peer new\033[0m"

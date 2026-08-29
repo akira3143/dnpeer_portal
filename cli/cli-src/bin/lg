@@ -1,7 +1,13 @@
 #!/bin/busybox sh
-# lg —— BIRD 2.x Looking Glass（对齐 POST /api/looking-glass/query）
+# lg —— BIRD 2.x Looking Glass (aligned with POST /api/looking-glass)
 
-. /etc/dn42-lib.sh
+if [ -f /etc/dn42-lib.sh ]; then
+  . /etc/dn42-lib.sh
+elif [ -f "${0%/*}/../etc/dn42-lib.sh" ]; then
+  . "${0%/*}/../etc/dn42-lib.sh"
+elif [ -f "cli-src/etc/dn42-lib.sh" ]; then
+  . "cli-src/etc/dn42-lib.sh"
+fi
 
 cmd="$1"
 target="$2"
@@ -24,12 +30,12 @@ fi
 
 if [ "$cmd" = "bgp" ] || [ "$cmd" = "protocols" ]; then cmd="protocols"; fi
 if [ "$cmd" = "trace" ] || [ "$cmd" = "traceroute" ]; then cmd="traceroute"; fi
-[ -z "$node" ] && node="JP-7"
+[ -z "$node" ] && node="JP-TYO-1"
 
-echo -e "\033[90m Executing Looking Glass query on \033[36m$node\033[90m: \033[32m$cmd $target\033[0m..."
+echo -e "\033[90mExecuting Looking Glass query on \033[36m$node\033[90m: \033[32m$cmd $target\033[0m..."
 
 payload="{\"nodeId\":\"$node\",\"commandType\":\"$cmd\",\"target\":\"$target\"}"
-resp=$(api_post "/api/looking-glass/query" "$payload")
+resp=$(api_post "/api/looking-glass" "$payload")
 
 if [ -z "$resp" ]; then
   echo -e "\033[31merror: Looking Glass query failed or timed out.\033[0m"

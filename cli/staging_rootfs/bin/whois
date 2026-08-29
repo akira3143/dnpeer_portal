@@ -1,7 +1,13 @@
 #!/bin/busybox sh
-# whois —— DN42 Registry 元数据查询（对齐 GET /api/dn42-lookup）
+# whois —— DN42 Registry metadata query (aligned with GET /api/dn42-lookup)
 
-. /etc/dn42-lib.sh
+if [ -f /etc/dn42-lib.sh ]; then
+  . /etc/dn42-lib.sh
+elif [ -f "${0%/*}/../etc/dn42-lib.sh" ]; then
+  . "${0%/*}/../etc/dn42-lib.sh"
+elif [ -f "cli-src/etc/dn42-lib.sh" ]; then
+  . "cli-src/etc/dn42-lib.sh"
+fi
 
 query="$1"
 if [ -z "$query" ]; then
@@ -10,7 +16,7 @@ if [ -z "$query" ]; then
 fi
 
 clean_asn=$(echo "$query" | tr -cd '0-9')
-echo -e "\033[90m Querying DN42 Registry for \033[32m$query\033[90m...\033[0m"
+echo -e "\033[90mQuerying DN42 Registry for \033[32m$query\033[90m...\033[0m"
 
 resp=$(api_get "/api/dn42-lookup?asn=$clean_asn")
 if [ -z "$resp" ]; then

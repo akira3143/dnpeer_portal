@@ -1,29 +1,28 @@
 #!/bin/busybox sh
-# dn42-login —— 登录守护进程（对齐主项目 authService.js 全部真实 API）
+# dn42-login —— Login daemon aligned with server authoritative API
 
-. /etc/dn42-lib.sh
+if [ -f /etc/dn42-lib.sh ]; then
+  . /etc/dn42-lib.sh
+elif [ -f "${0%/*}/../etc/dn42-lib.sh" ]; then
+  . "${0%/*}/../etc/dn42-lib.sh"
+elif [ -f "cli-src/etc/dn42-lib.sh" ]; then
+  . "cli-src/etc/dn42-lib.sh"
+fi
 
 trap '' INT
 
-# ---------- 进入 shell 前的收尾 ----------
+# ---------- Shell Initialization ----------
 enter_shell() {
   local asn="$1"
-  # prompt 显示名：registry person 名优先 → asName → ASN
   local disp clean id_resp pn an
   disp="$asn"
   clean=$(echo "$asn" | tr -cd '0-9')
   if [ -n "$clean" ]; then
-    id_resp=$(api_get "/api/dn42-lookup?asn=$clean")
-    pn=$(json_field "$id_resp" personName)
-    an=$(json_field "$id_resp" asName)
-    if [ -n "$pn" ]; then
-      disp="$pn"
-    elif [ -n "$an" ]; then
-      disp="$an"
-    fi
+    id_resp=$(api_get "/api/network-meta")
+    disp="AS$clean"
   fi
   echo ""
-  echo -e "\033[32m Session initialized for $asn.\033[0m"
+  echo -e "\033[32mSession initialized for $asn.\033[0m"
   echo ""
   printf "\033[90m===============================================================================\033[0m\n"
   echo -e "\033[1mAkiLab DN42 Peering Gateway - Active Session: \033[92m$asn\033[0m"
@@ -38,18 +37,17 @@ enter_shell() {
   export HOME=/root
   cd /root
   trap - INT
-  # -l：login shell 自动加载 /etc/profile（函数遮蔽 help 内建；本 ash 不读 $ENV）
   exec /bin/sh -l
 }
 
-# ---------- 自动登录（rememberMe 持久会话） ----------
+# ---------- Auto Login via Persistent Token ----------
 try_autologin() {
   local token saved_asn resp me_asn
   token=$(cat /mnt/persist/.dn42/token 2>/dev/null)
   [ -z "$token" ] && return 1
   saved_asn=$(cat /mnt/persist/.dn42/asn 2>/dev/null)
 
-  resp=$(wget -q -T 15 -O - --header="Authorization: Bearer $token" "$API_BASE/api/auth/me" 2>/dev/null)
+  resp=$(wget -q -T 15 -O - --header="Authorization: Bearer $token" "$API_BASE/api/auth/me" 2>/dev/null || curl -s -m 15 -H "Authorization: Bearer $token" "$API_BASE/api/auth/me" 2>/dev/null)
   if ! echo "$resp" | grep -q '"success":true'; then
     rm -f /mnt/persist/.dn42/token /mnt/persist/.dn42/asn 2>/dev/null
     return 1
@@ -64,7 +62,6 @@ try_autologin() {
   return 0
 }
 
-# ---------- 保存 token ----------
 save_token() {
   local token="$1" asn="$2" remember="$3"
   echo "$token" > /tmp/dn42_token
@@ -76,9 +73,8 @@ save_token() {
   fi
 }
 
-# ---------- 密码登录通道 ----------
 do_password_login() {
-  local clean="$1" remember="$2" pwd resp token
+  local clean="$1" remember="$2" pwd resp token user_asn
   while true; do
     printf "\033[33mPassword for %s\033[0m: " "$clean"
     stty -echo 2>/dev/null
@@ -93,75 +89,72 @@ do_password_login() {
       continue
     fi
 
-    echo -e "\033[90m Verifying password credentials...\033[0m"
+    echo -e "\033[90mVerifying password credentials...\033[0m"
     resp=$(api_post "/api/auth/login-password" "{\"asn\":\"$clean\",\"password\":\"$pwd\",\"rememberMe\":$remember}")
     if echo "$resp" | grep -q '"success":true'; then
       token=$(json_field "$resp" token)
-      # 以响应里的 user.asn 为准（akira 管理员登录时 asn 为真实 owner ASN，而非用户名）
       user_asn=$(json_field "$resp" asn)
-      [ -z "$user_asn" ] && user_asn="AS$clean"
+      [ -z "$user_asn" ] && user_asn="$clean"
       save_token "$token" "$user_asn" "$remember"
-      echo -e "\033[32m Signed in. Welcome back.\033[0m"
+      echo -e "\033[32mAuthenticated via password. Welcome back.\033[0m"
       return 0
     fi
 
-    local err
-    err=$(json_field "$resp" error)
-    echo -e "\033[31merror: ${err:-Password incorrect.}\033[0m"
+    echo -e "\033[31merror: $(json_field "$resp" message)\033[0m"
+    echo -e "\033[90m(Type 'ssh' to switch to SSH cryptographic sign-in, or retry password)\033[0m"
   done
 }
 
-# ---------- SSH 签名登录通道 ----------
 do_ssh_login() {
-  local clean="$1" remember="$2" resp chal_text unix_cmd ps_cmd sig line payload token has_pwd
+  local clean="$1" remember="$2" resp chal_text unix_cmd ps_cmd sig line token has_pwd user_asn
+  echo -e "\033[90mRequesting challenge for AS$clean...\033[0m"
+  resp=$(api_get "/api/auth/challenge?asn=$clean")
 
-  resp=$(api_post "/api/auth/challenge" "{\"asn\":\"$clean\"}")
   if ! echo "$resp" | grep -q '"success":true'; then
-    echo -e "\033[31merror: $(json_field "$resp" error)\033[0m"
+    echo -e "\033[31merror: $(json_field "$resp" message)\033[0m"
     return 1
   fi
 
-  # 后端下发的挑战与分平台签名指令（原样展示，不自行拼装）
   chal_text=$(json_field "$resp" challengeText)
   unix_cmd=$(echo "$resp" | sed -n 's/.*"unixCommand":"\(.*\)","powershellCommand.*/\1/p' | sed 's/\\"/"/g; s/\\\\/\\/g')
+  if [ -z "$unix_cmd" ]; then
+    unix_cmd=$(echo "$resp" | sed -n 's/.*"ssh_linux":"\(.*\)".*/\1/p' | sed 's/\\"/"/g; s/\\\\/\\/g')
+  fi
   ps_cmd=$(echo "$resp" | sed -n 's/.*"powershellCommand":"\(.*\)"\}.*/\1/p' | sed 's/\\"/"/g; s/\\\\/\\/g')
+  if [ -z "$ps_cmd" ]; then
+    ps_cmd=$(echo "$resp" | sed -n 's/.*"ssh_powershell":"\(.*\)".*/\1/p' | sed 's/\\"/"/g; s/\\\\/\\/g')
+  fi
 
   echo ""
-  echo -e "\033[90m Challenge: \033[33m$chal_text\033[0m"
-  echo -e "\033[90m    Valid for 10 minutes. Do not refresh this page while signing,\033[0m"
-  echo -e "\033[90m    a refresh issues a NEW challenge and invalidates this one.\033[0m"
-  echo -e "\033[90m    Run ONE of the commands below on YOUR OWN machine (not in this terminal).\033[0m"
+  echo -e "\033[90mChallenge: \033[33m$chal_text\033[0m"
+  echo -e "\033[90mRun ONE of the commands below on YOUR OWN machine (not in this terminal).\033[0m"
   echo ""
   if [ -n "$ps_cmd" ]; then
-    echo -e "\033[1m  [Windows / PowerShell]\033[0m"
-    printf '    %s\n' "$ps_cmd"
+    echo -e "\033[1m[Windows / PowerShell]\033[0m"
+    printf '  %s\n' "$ps_cmd"
     echo ""
   fi
   if [ -n "$unix_cmd" ]; then
-    echo -e "\033[1m  [Linux / macOS / Git Bash]\033[0m"
-    printf '    %s\n' "$unix_cmd"
+    echo -e "\033[1m[Linux / macOS / Git Bash]\033[0m"
+    printf '  %s\n' "$unix_cmd"
     echo ""
   fi
-  echo -e "\033[90m    If your key is not at the default path, edit the -f argument above.\033[0m"
-  echo -e "\033[90m    Then paste the signature back here (type \033[36mq\033[90m to cancel).\033[0m"
+  echo -e "\033[90mThen paste the signature block below (type q to cancel):\033[0m"
 
   while true; do
     echo ""
     printf "\033[33msignature\033[0m: "
     sig=""
-    # 多行粘贴读取：空行忽略；读到 END 行或 3 秒无输入视为粘贴结束
     while true; do
       if ! read -r -t 3 line; then
         if [ -n "$sig" ]; then break; fi
         continue
       fi
       [ -z "$line" ] && continue
-      # 逃生口：签名环节可取消返回登录界面
       if [ -z "$sig" ] && { [ "$line" = "q" ] || [ "$line" = "quit" ] || [ "$line" = "abort" ]; }; then
-        echo -e "\033[90m Signing cancelled, back to login.\033[0m"
+        echo -e "\033[90mSigning cancelled.\033[0m"
         return 1
       fi
-      # 去除可能的 CR（Windows 剪贴板 CRLF）
       line=$(printf '%s' "$line" | tr -d '\r')
       if [ -z "$sig" ]; then
         sig="$line"
@@ -174,190 +167,65 @@ do_ssh_login() {
     done
 
     if [ -z "$sig" ]; then
-      echo -e "\033[31merror: Signature cannot be empty. Please paste your signature.\033[0m"
+      echo -e "\033[31merror: Signature cannot be empty.\033[0m"
       continue
     fi
 
-    echo -e "\033[90m Verifying cryptographic signature with gateway...\033[0m"
-    payload="{\"asn\":\"$clean\",\"signature\":\"$sig\",\"rememberMe\":$remember}"
+    echo -e "\033[90mVerifying cryptographic signature with gateway...\033[0m"
+    payload="{\"asn\":$clean,\"challengeText\":\"$chal_text\",\"signature\":\"$sig\",\"rememberMe\":$remember}"
     resp=$(api_post "/api/auth/verify-ssh" "$payload")
     if echo "$resp" | grep -q '"success":true'; then
       token=$(json_field "$resp" token)
-      has_pwd=$(json_bool "$resp" hasPassword)
-      # 以响应里的 user.asn 为准
       user_asn=$(json_field "$resp" asn)
-      [ -z "$user_asn" ] && user_asn="AS$clean"
+      [ -z "$user_asn" ] && user_asn="$clean"
       save_token "$token" "$user_asn" "$remember"
-      echo -e "\033[32m Verified. Welcome back.\033[0m"
-      echo ""
-
-      # 首次登录：引导设置密码，下次即可密码直登
-      if [ "$has_pwd" != "true" ]; then
-        do_set_password "$clean" "$token"
-      fi
+      echo -e "\033[32mVerified. Welcome back.\033[0m"
       return 0
     fi
 
-    echo -e "\033[31merror: $(json_field "$resp" error)\033[0m"
+    echo -e "\033[31merror: $(json_field "$resp" message)\033[0m"
   done
 }
 
-# ---------- 设置登录密码（对齐 POST /api/auth/set-password：asn 必传，≥8 位） ----------
-do_set_password() {
-  local clean="$1" token="$2" p1 p2 resp
-  echo -e "\033[36m------------------ [SET ACCOUNT PASSWORD] ------------------\033[0m"
+# ---------- Main Login Loop ----------
+main() {
+  try_autologin && return 0
+
+  local asn_in clean remember rem_in ret
   while true; do
-    printf "\033[33mSet a login password (8+ chars, for next-time sign-in):\033[0m "
-    stty -echo 2>/dev/null; read -r p1; stty echo 2>/dev/null; echo ""
-    printf "\033[33mConfirm password:\033[0m "
-    stty -echo 2>/dev/null; read -r p2; stty echo 2>/dev/null; echo ""
-
-    if [ -z "$p1" ]; then
-      echo -e "\033[90m Skipped password setup.\033[0m"
-      return 0
-    fi
-    if [ "${#p1}" -lt 8 ]; then
-      echo -e "\033[31merror: Password must be at least 8 characters.\033[0m"
-      continue
-    fi
-    if [ "$p1" != "$p2" ]; then
-      echo -e "\033[31merror: Passwords do not match, try again.\033[0m"
-      continue
-    fi
-
-    resp=$(wget -q -T 15 -O - --post-data="{\"asn\":\"$clean\",\"password\":\"$p1\"}" --header="Content-Type: application/json" --header="Authorization: Bearer $token" "$API_BASE/api/auth/set-password" 2>/dev/null)
-    if echo "$resp" | grep -q '"success":true'; then
-      echo -e "\033[32m Password saved. Next time sign in with it.\033[0m"
-    else
-      echo -e "\033[31merror: $(json_field "$resp" error)\033[0m"
-    fi
-    return 0
-  done
-}
-
-# ---------- 主循环 ----------
-try_autologin
-
-while true; do
-  clear
-  echo ""
-  echo -e "\033[90mAkiLabNetworks 6.1.0-wasm32 (tty1)\033[0m"
-  echo ""
-  cat /etc/banner.txt
-  echo ""
-  echo ""
-  echo -e " * Gateway:        \033[33mAkiLab Networks AS4242423143\033[0m"
-  echo -e " * Routing Policy: \033[32mOpen / MP-BGP (Extended Next Hop)\033[0m"
-  echo -e " * Access:         \033[35mMandatory DN42 Cryptographic Verification\033[0m"
-  printf "\033[90m-------------------------------------------------------------------------------\033[0m\n\n"
-
-  target_asn=""
-  while [ -z "$target_asn" ]; do
-    printf "\033[33mlogin as\033[0m (Your DN42 ASN): "
-    read -r raw_asn || continue
+    echo ""
+    printf "\033[33mDN42 ASN or Account\033[0m: "
+    read -r asn_in
     flush_after_input
-    raw_asn=$(echo "$raw_asn" | tr -d ' ' | tr 'a-z' 'A-Z')
 
-    if [ -z "$raw_asn" ]; then
-      continue
+    [ -z "$asn_in" ] && continue
+    clean=$(echo "$asn_in" | tr -cd '0-9')
+    if [ -z "$clean" ]; then
+      clean="$asn_in"
     fi
 
-    if [ "$raw_asn" = "STARTX" ] || [ "$raw_asn" = "GUI" ]; then
-      echo -e "\033[90m Initializing AkiLab Web Display Server...\033[0m"
-      echo -e "\033[32m Switching to Web GUI Desktop mode.\033[0m"
-      wget -q -O /dev/null "$API_BASE/api/trigger-gui" 2>/dev/null
-      continue
-    fi
-
-    if [ "$raw_asn" = "HELP" ]; then
-      echo -e "\033[33mAvailable login commands:\033[0m"
-      echo -e "  \033[32m<ASN>\033[0m    - Enter your DN42 ASN (e.g. AS4242421234 or 4242421234)"
-      echo ""
-      continue
-    fi
-
-    if [ "$raw_asn" = "AKIRA" ] || [ "$raw_asn" = "ADMIN" ]; then
-      # 管理员用户名入口（不走 registry 校验，直接密码登录）
-      target_asn="akira"
-      break
-    fi
-
-    num=$(echo "$raw_asn" | tr -cd '0-9')
-    if [ -z "$num" ]; then
-      echo -e "\033[31merror: Invalid DN42 ASN. Standard format is AS424242xxxx (or 64512-65534).\033[0m"
-      continue
-    fi
-
-    if [ "$num" -ge 4242420000 ] && [ "$num" -le 4242429999 ]; then
-      target_asn="AS$num"
-    elif [ "$num" -ge 4141410000 ] && [ "$num" -le 4141419999 ]; then
-      # AkiLab 测试专用 ASN 段（见 临时测试用户.txt）
-      target_asn="AS$num"
-    elif [ "$num" -ge 64512 ] && [ "$num" -le 65534 ]; then
-      target_asn="AS$num"
-    elif [ "$num" -ge 4200000000 ] && [ "$num" -le 4294967295 ]; then
-      target_asn="AS$num"
-    else
-      echo -e "\033[31merror: Invalid DN42 ASN. Standard format is AS424242xxxx (or 64512-65534).\033[0m"
-      continue
-    fi
-  done
-
-  # 管理员用户名入口：跳过 registry 校验，直接密码登录
-  if [ "$target_asn" = "akira" ]; then
-    clean_asn="akira"
-    echo -e "\033[90m Admin sign-in mode.\033[0m"
-    printf "\033[33mRemember login on this browser? [Y/n]:\033[0m "
-    read -r remember
+    printf "\033[33mRemember login for 30 days? [Y/n]\033[0m: "
+    read -r rem_in
     flush_after_input
-    if [ "$remember" = "n" ] || [ "$remember" = "N" ]; then
+    if [ "$rem_in" = "n" ] || [ "$rem_in" = "N" ]; then
       remember="false"
     else
       remember="true"
     fi
-    do_password_login "akira" "$remember"
-    rc=$?
-    if [ "$rc" = "0" ]; then
-      enter_shell "akira"
+
+    do_password_login "$clean" "$remember"
+    ret=$?
+    if [ $ret -eq 0 ]; then
+      enter_shell "$clean"
+      return 0
     fi
-    continue
-  fi
 
-  clean_asn=$(echo "$target_asn" | tr -cd '0-9')
-  echo -e "\033[90m Verifying $target_asn against DN42 Registry...\033[0m"
-  status_resp=$(api_post "/api/auth/status" "{\"asn\":\"$clean_asn\"}")
-
-  if ! echo "$status_resp" | grep -q '"success":true'; then
-    echo -e "\033[31merror: $(json_field "$status_resp" error)\033[0m"
-    continue
-  fi
-  echo -e "\033[32m $target_asn OK\033[0m"
-
-  # rememberMe：在提交凭证前确认（影响后端 token TTL）
-  printf "\033[33mRemember login on this browser? [Y/n]:\033[0m "
-  read -r remember
-  flush_after_input
-  if [ "$remember" = "n" ] || [ "$remember" = "N" ]; then
-    remember="false"
-  else
-    remember="true"
-  fi
-
-  has_pwd=$(json_bool "$status_resp" hasPassword)
-
-  if [ "$has_pwd" = "true" ]; then
-    do_password_login "$clean_asn" "$remember"
-    rc=$?
-    if [ "$rc" = "2" ]; then
-      do_ssh_login "$clean_asn" "$remember" || continue
-      enter_shell "$target_asn"
-    elif [ "$rc" = "0" ]; then
-      enter_shell "$target_asn"
-    else
-      continue
+    do_ssh_login "$clean" "$remember"
+    if [ $? -eq 0 ]; then
+      enter_shell "$clean"
+      return 0
     fi
-  else
-    do_ssh_login "$clean_asn" "$remember" || continue
-    enter_shell "$target_asn"
-  fi
-done
+  done
+}
+
+main

@@ -1,7 +1,13 @@
 #!/bin/busybox sh
 # startx —— Easter egg: Launch Web GUI
 
-. /etc/dn42-lib.sh
+if [ -f /etc/dn42-lib.sh ]; then
+  . /etc/dn42-lib.sh
+elif [ -f "${0%/*}/../etc/dn42-lib.sh" ]; then
+  . "${0%/*}/../etc/dn42-lib.sh"
+elif [ -f "cli-src/etc/dn42-lib.sh" ]; then
+  . "cli-src/etc/dn42-lib.sh"
+fi
 
 echo -e "\033[90mQuerying network metadata and dynamic GUI route...\033[0m"
 meta=$(api_get "/api/network-meta")

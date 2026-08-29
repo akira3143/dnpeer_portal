@@ -4,7 +4,7 @@ import path from 'node:path';
 import { URL } from 'node:url';
 
 import { ENV, ROOT_DIR } from './config.js';
-import { getActiveConfig, initConfigWatcher } from './storage/configLoader.js';
+import { getActiveConfig, initConfigWatcher, stopConfigWatcher } from './storage/configLoader.js';
 import { AuthService } from './services/authService.js';
 import { sendJson, successEnvelope, errorEnvelope } from './utils/envelope.js';
 
@@ -97,6 +97,30 @@ export function createServer() {
           return sendJson(res, 200, resp);
         }
 
+        // DN42 Lookup
+        if (pathname === '/api/dn42-lookup' && method === 'GET') {
+          const cleanAsn = (parsedUrl.searchParams.get('asn') || '').replace(/^AS/i, '');
+          const info = await AuthService.getAsnRegistryInfo(cleanAsn);
+          if (!info) {
+            return sendJson(res, 200, {
+              success: true,
+              valid: false,
+              error: `ASN AS${cleanAsn} not found in registry cache`
+            });
+          }
+          return sendJson(res, 200, {
+            success: true,
+            valid: true,
+            identity: {
+              asName: info.asName || `AS${cleanAsn}`,
+              descr: info.descr || 'DN42 Autonomous System',
+              maintainer: info.maintainer || '',
+              adminContact: info.adminContact || '',
+              personName: info.personName || ''
+            }
+          });
+        }
+
         // Peering Submit
         if (pathname === '/api/peering/submit' && method === 'POST') {
           const body = await parseJsonBody(req);
@@ -104,15 +128,21 @@ export function createServer() {
           return sendJson(res, 200, resp);
         }
 
-        // Auth: Challenge
-        if (pathname === '/api/auth/challenge' && method === 'GET') {
-          const query = Object.fromEntries(parsedUrl.searchParams.entries());
-          const resp = await AuthController.getChallenge(query);
-          return sendJson(res, 200, resp);
+        // Auth: Challenge (supports GET and POST)
+        if (pathname === '/api/auth/challenge') {
+          if (method === 'GET') {
+            const query = Object.fromEntries(parsedUrl.searchParams.entries());
+            const resp = await AuthController.getChallenge(query);
+            return sendJson(res, 200, resp);
+          } else if (method === 'POST') {
+            const body = await parseJsonBody(req);
+            const resp = await AuthController.getChallenge(body);
+            return sendJson(res, 200, resp);
+          }
         }
 
-        // Auth: Verify Signature
-        if (pathname === '/api/auth/verify-signature' && method === 'POST') {
+        // Auth: Verify Signature (and verify-ssh alias)
+        if ((pathname === '/api/auth/verify-signature' || pathname === '/api/auth/verify-ssh') && method === 'POST') {
           const body = await parseJsonBody(req);
           const resp = await AuthController.verifySignature(body);
           return sendJson(res, 200, resp);
@@ -122,6 +152,21 @@ export function createServer() {
         if (pathname === '/api/auth/login-password' && method === 'POST') {
           const body = await parseJsonBody(req);
           const resp = await AuthController.loginPassword(body);
+          return sendJson(res, 200, resp);
+        }
+
+        // Auth: Set Password (authenticated)
+        if (pathname === '/api/auth/set-password' && method === 'POST') {
+          const user = extractUser(req);
+          const body = await parseJsonBody(req);
+          const resp = await AuthController.setPassword(user, body);
+          return sendJson(res, resp.success ? 200 : (resp.code || 401), resp);
+        }
+
+        // Auth: Status
+        if (pathname === '/api/auth/status' && method === 'GET') {
+          const user = extractUser(req);
+          const resp = await AuthController.getStatus(user);
           return sendJson(res, 200, resp);
         }
 
@@ -162,8 +207,14 @@ export function createServer() {
           return sendJson(res, resp.success ? 200 : (resp.code || 401), resp);
         }
 
-        // Looking Glass
-        if (pathname === '/api/looking-glass') {
+        // Probe: Status
+        if (pathname === '/api/probe/status' && method === 'GET') {
+          const resp = await ProbeController.getStatus();
+          return sendJson(res, 200, resp);
+        }
+
+        // Looking Glass (and query alias)
+        if (pathname === '/api/looking-glass' || pathname === '/api/looking-glass/query') {
           if (method === 'POST') {
             const body = await parseJsonBody(req);
             const resp = await LookingGlassController.query(body);
@@ -206,7 +257,7 @@ export function createServer() {
           return fs.createReadStream(targetFile).pipe(res);
         } else {
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-          return res.end('<!DOCTYPE html><html><body><h1>DN42 Web GUI (Building / Coming Soon)</h1><p>Run <code>npm run build:gui</code> to compile React frontend.</p></body></html>');
+          return res.end('<!DOCTYPE html><html><body><h1>DN42 Web GUI</h1><p>Run <code>npm run build:gui</code> to compile React frontend.</p></body></html>');
         }
       }
 
@@ -236,7 +287,7 @@ export function createServer() {
         return fs.createReadStream(cliIndex).pipe(res);
       }
 
-      // Placeholder if CLI files not yet compiled
+      // Placeholder
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end('<!DOCTYPE html><html><body><h1>AkiLab DN42 Interactive Terminal</h1><p>Terminal assets preparing...</p></body></html>');
 
@@ -245,6 +296,14 @@ export function createServer() {
       sendJson(res, 500, errorEnvelope('Internal Server Error', null, 500));
     }
   });
+
+  // Resource cleanup helper to ensure 100% clean termination in tests
+  server.closeAll = function() {
+    stopConfigWatcher();
+    return new Promise(resolve => {
+      server.close(resolve);
+    });
+  };
 
   return server;
 }

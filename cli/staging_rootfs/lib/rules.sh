@@ -25,7 +25,6 @@ validate_asn() {
   case "$_val" in
     ''|*[!0-9]*) return 1 ;;
   esac
-  # Check digits count and positive
   if [ ${#_val} -gt 10 ] || [ "$_val" -eq 0 ]; then
     return 1
   fi
@@ -43,7 +42,6 @@ validate_pubkey() {
     *=) ;;
     *) return 1 ;;
   esac
-  # Verify Base64 character charset via glob
   case "$_val" in
     *[!A-Za-z0-9+/=]*) return 1 ;;
   esac
@@ -55,13 +53,11 @@ validate_ipv4() {
   _val="${_val%% }"
   _val="${_val## }"
   [ -z "$_val" ] && return 1
-  # Strip optional CIDR
   _ip="${_val%%/*}"
   case "$_ip" in
     *.*.*.*) ;;
     *) return 1 ;;
   esac
-  # Parse 4 octets
   _o1="${_ip%%.*}"; _rest="${_ip#*.}"
   _o2="${_rest%%.*}"; _rest="${_rest#*.}"
   _o3="${_rest%%.*}"; _o4="${_rest#*.}"

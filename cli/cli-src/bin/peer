@@ -1,8 +1,13 @@
 #!/bin/busybox sh
 # peer —— Peering session management (new / ls / rm)
-# Authoritative backend calculates port and config finished products.
 
-. /etc/dn42-lib.sh
+if [ -f /etc/dn42-lib.sh ]; then
+  . /etc/dn42-lib.sh
+elif [ -f "${0%/*}/../etc/dn42-lib.sh" ]; then
+  . "${0%/*}/../etc/dn42-lib.sh"
+elif [ -f "cli-src/etc/dn42-lib.sh" ]; then
+  . "cli-src/etc/dn42-lib.sh"
+fi
 
 usage() {
   echo -e "\033[36mUsage:\033[0m"
@@ -47,7 +52,7 @@ do_new() {
 
   # Form variables
   nid=""; ncode=""; nname=""; ncity=""; nend=""; nv4=""; nlla=""; nmtu="1420"
-  lla=""; ipv4=""; ula=""; pubkey=""; peer_ep=""; mtu="1420"; host_port="auto"
+  lla=""; ipv4=""; ula=""; pubkey=""; peer_ep=""; mtu="1420"; host_port="auto"; client_port="auto"
 
   clean_asn=$(dn42_asn | tr -cd '0-9')
   default_peer_port=$(calc_default_port "$clean_asn")
@@ -178,14 +183,28 @@ do_new() {
     { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
     [ -n "$v" ] && peer_ep="$v"
 
-    # ListenPort
+    # Server ListenPort
     while true; do
-      printf "\033[33mListenPort (default auto, or type 1024-65535) [%s]:\033[0m " "$host_port"
+      printf "\033[33mPeer ListenPort (AkiLab side, default auto) [%s]:\033[0m " "$host_port"
       read -r v
       flush_after_input
       { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
       [ -n "$v" ] && host_port="$v"
       if [ "$host_port" != "auto" ] && ! validate_port "$host_port"; then
+        echo -e "\033[31merror: Port must be an integer between 1024 and 65535 or auto.\033[0m"
+        continue
+      fi
+      break
+    done
+
+    # Client ListenPort
+    while true; do
+      printf "\033[33mYour ListenPort (client side, default auto) [%s]:\033[0m " "$client_port"
+      read -r v
+      flush_after_input
+      { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
+      [ -n "$v" ] && client_port="$v"
+      if [ "$client_port" != "auto" ] && ! validate_port "$client_port"; then
         echo -e "\033[31merror: Port must be an integer between 1024 and 65535 or auto.\033[0m"
         continue
       fi
@@ -209,14 +228,15 @@ do_new() {
     # Review Summary
     echo ""
     printf "\033[36m%s\033[0m\n" "-------- REVIEW --------"
-    echo -e "  Node        $nid ($nname)"
-    echo -e "  LLA         $lla"
-    [ -n "$ipv4" ] && echo -e "  IPv4        $ipv4"
-    [ -n "$ula" ] && echo -e "  IPv6 ULA    $ula"
-    echo -e "  WG PubKey   $pubkey"
-    [ -n "$peer_ep" ] && echo -e "  Endpoint    $peer_ep"
-    echo -e "  ListenPort  $host_port"
-    echo -e "  MTU         $mtu"
+    echo -e "  Node             $nid ($nname)"
+    echo -e "  LLA              $lla"
+    [ -n "$ipv4" ] && echo -e "  IPv4             $ipv4"
+    [ -n "$ula" ] && echo -e "  IPv6 ULA         $ula"
+    echo -e "  WG PubKey        $pubkey"
+    [ -n "$peer_ep" ] && echo -e "  Endpoint         $peer_ep"
+    echo -e "  Peer ListenPort  $host_port (AkiLab side)"
+    echo -e "  Your ListenPort  $client_port (your side)"
+    echo -e "  MTU              $mtu"
     echo ""
 
     printf "\033[33mConfirm and submit? [Y/n]:\033[0m "
@@ -230,8 +250,8 @@ do_new() {
     break
   done
 
-  # Construct and submit payload
-  payload="{\"asn\":$clean_asn,\"nodeId\":\"$nid\",\"publicKey\":\"$pubkey\",\"linkLocal\":\"$lla\",\"ipv4\":\"$ipv4\",\"ipv6Ula\":\"$ula\",\"endpoint\":\"$peer_ep\",\"listenPort\":\"$host_port\",\"mtu\":$mtu,\"bgpMode\":\"mpbgp_enh\"}"
+  # Construct and submit payload (dual port)
+  payload="{\"asn\":$clean_asn,\"nodeId\":\"$nid\",\"publicKey\":\"$pubkey\",\"linkLocal\":\"$lla\",\"ipv4\":\"$ipv4\",\"ipv6Ula\":\"$ula\",\"endpoint\":\"$peer_ep\",\"listenPort\":\"$host_port\",\"clientPort\":\"$client_port\",\"mtu\":$mtu,\"bgpMode\":\"mpbgp_enh\"}"
 
   echo ""
   echo -e "\033[90mSubmitting peering application to AkiLab Authority...\033[0m"
