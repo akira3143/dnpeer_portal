@@ -15,7 +15,22 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createIsolatedTestDataDir } from './tmpDataDir.js';
 
+import crypto from 'node:crypto';
 const testData = createIsolatedTestDataDir('dn42-test-wasm-');
+
+// Seed test admin password in isolated test directory
+const salt = '5584a850a891a1bc9a005a803df75e28';
+const hash = crypto.scryptSync('test12345', salt, 64).toString('hex');
+fs.writeFileSync(path.join(testData.tmpDir, 'auth_users.json'), JSON.stringify({
+  "4242423143": {
+    "asn": 4242423143,
+    "asName": "AKILAB-MNT",
+    "role": "admin",
+    "salt": salt,
+    "hash": hash,
+    "createdAt": new Date().toISOString()
+  }
+}, null, 2), 'utf8');
 
 import { createServer } from '../../server/index.js';
 
