@@ -70,9 +70,25 @@ export class SessionService {
     const sessions = await this.getSessions();
     const existingIndex = sessions.findIndex(s => s.asn === norm.asn && s.nodeId === norm.nodeId);
     const isNew = existingIndex === -1;
-    const sessionId = isNew
-      ? `sess_${norm.asn}_${norm.nodeId.toLowerCase().replace(/[^a-z0-9]/g, '_')}`
-      : sessions[existingIndex].id;
+
+    let sessionId = '';
+    if (isNew) {
+      const registryInfo = await AuthService.getAsnRegistryInfo(norm.asn);
+      let mntTag = '';
+      if (registryInfo?.maintainer) {
+        mntTag = registryInfo.maintainer.replace(/-(?:MNT|DN42)$/i, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      }
+      if (!mntTag && registryInfo?.asName) {
+        mntTag = registryInfo.asName.replace(/-(?:MNT|DN42)$/i, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      }
+      if (!mntTag) {
+        mntTag = `as${norm.asn}`;
+      }
+      const nodeTag = norm.nodeId.toLowerCase().replace(/[^a-z0-9]/g, '_');
+      sessionId = `peer_${mntTag}_${nodeTag}`;
+    } else {
+      sessionId = sessions[existingIndex].id;
+    }
 
     // 4. Atomic Port Verdict (Server HostPort)
     const portResult = await PortLedgerService.allocateAndLockPort({
@@ -170,6 +186,8 @@ export class SessionService {
         expectedPort: portResult.expectedPort,
         conflictMessage,
         configs: generatedConfigs,
+        clientWireguard: generatedConfigs.clientWireguard,
+        clientBird: generatedConfigs.clientBird,
         acknowledgement: "Received your peering info. We'll establish the peer with you within 24 hours!"
       }
     };
