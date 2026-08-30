@@ -32,6 +32,7 @@ export const RULES = ${JSON.stringify(RULES, null, 2)};
 export const ASN_REGEX = new RegExp(${JSON.stringify(RULES.asn.regexStr)});
 export const PUBLIC_KEY_REGEX = new RegExp(${JSON.stringify(RULES.publicKey.regexStr)});
 export const IPV4_REGEX = new RegExp(${JSON.stringify(RULES.ipv4.regexStr)});
+export const ENDPOINT_REGEX = new RegExp(${JSON.stringify(RULES.endpoint.regexStr)});
 export const IPV6_ULA_REGEX = new RegExp(${JSON.stringify(RULES.ipv6Ula.regexStr)});
 export const LINK_LOCAL_REGEX = new RegExp(${JSON.stringify(RULES.linkLocal.regexStr)});
 
@@ -57,9 +58,11 @@ export function formatDefaultLinkLocal(asn) {
 export function validateAsn(val) {
   const clean = normalizeAsn(val);
   if (!clean) return { valid: false, error: 'ASN is required' };
-  if (!ASN_REGEX.test(clean)) return { valid: false, error: ${JSON.stringify(RULES.asn.errorMessage)} };
+  if (!/^[0-9]+$/.test(clean)) return { valid: false, error: ${JSON.stringify(RULES.asn.errorMessage)} };
   const num = parseInt(clean, 10);
-  if (num < ${RULES.asn.min} || num > ${RULES.asn.max}) {
+  const isStandardDn42 = (num >= 4242420000 && num <= 4242429999);
+  const is16BitPrivate = (num >= 64512 && num <= 65534);
+  if (!isStandardDn42 && !is16BitPrivate) {
     return { valid: false, error: ${JSON.stringify(RULES.asn.errorMessage)} };
   }
   return { valid: true, value: num };
@@ -81,9 +84,38 @@ export function validateIpv4(val, isOptional = false) {
   }
   const trimmed = val.trim();
   if (!IPV4_REGEX.test(trimmed)) {
+    return { valid: false, error: 'Invalid IPv4 address format' };
+  }
+  const ipOnly = trimmed.split('/')[0];
+  const octets = ipOnly.split('.').map(o => parseInt(o, 10));
+  const [o1, o2] = octets;
+  if (o1 === 192 && o2 === 168) {
+    return { valid: false, error: '192.168.x.x is private LAN and cannot be used for DN42 peering' };
+  }
+  const isDn42 = (o1 === 172 && o2 >= 20 && o2 <= 23);
+  const is10 = (o1 === 10);
+  if (!isDn42 && !is10) {
     return { valid: false, error: ${JSON.stringify(RULES.ipv4.errorMessage)} };
   }
   return { valid: true, value: trimmed };
+}
+
+export function validateEndpoint(val, isOptional = true) {
+  if (!val || typeof val !== 'string' || !val.trim()) {
+    if (isOptional) return { valid: true, value: '' };
+    return { valid: false, error: 'Endpoint is required' };
+  }
+  const clean = val.trim();
+  if (clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('wg://')) {
+    return { valid: false, error: 'Do not include http:// or protocol prefix in endpoint' };
+  }
+  if (clean.includes(':') && !clean.includes('::')) {
+    return { valid: false, error: 'Do not include port in endpoint hostname' };
+  }
+  if (!ENDPOINT_REGEX.test(clean)) {
+    return { valid: false, error: ${JSON.stringify(RULES.endpoint.errorMessage)} };
+  }
+  return { valid: true, value: clean };
 }
 
 export function validateIpv6Ula(val, isOptional = false) {
@@ -167,10 +199,13 @@ validate_asn() {
   case "$_val" in
     ''|*[!0-9]*) return 1 ;;
   esac
-  if [ \${#_val} -gt 10 ] || [ "$_val" -eq 0 ]; then
-    return 1
+  case "$_val" in
+    424242[0-9][0-9][0-9][0-9]) return 0 ;;
+  esac
+  if [ "$_val" -ge 64512 ] 2>/dev/null && [ "$_val" -le 65534 ] 2>/dev/null; then
+    return 0
   fi
-  return 0
+  return 1
 }
 
 validate_pubkey() {
@@ -211,6 +246,26 @@ validate_ipv4() {
       return 1
     fi
   done
+  if [ "$_o1" -eq 172 ] && [ "$_o2" -ge 20 ] && [ "$_o2" -le 23 ]; then
+    return 0
+  fi
+  if [ "$_o1" -eq 10 ]; then
+    return 0
+  fi
+  return 1
+}
+
+validate_endpoint() {
+  _val="$1"
+  _val="\${_val%% }"
+  _val="\${_val## }"
+  [ -z "$_val" ] && return 0
+  case "$_val" in
+    http://*|https://*|wg://*) return 1 ;;
+    *:*) return 1 ;;
+    *[!A-Za-z0-9.-]*) return 1 ;;
+    .*|-*|*.-|*.|*-) return 1 ;;
+  esac
   return 0
 }
 
@@ -316,6 +371,7 @@ export const RULES = ${JSON.stringify(RULES, null, 2)};
 export const ASN_REGEX = new RegExp(${JSON.stringify(RULES.asn.regexStr)});
 export const PUBLIC_KEY_REGEX = new RegExp(${JSON.stringify(RULES.publicKey.regexStr)});
 export const IPV4_REGEX = new RegExp(${JSON.stringify(RULES.ipv4.regexStr)});
+export const ENDPOINT_REGEX = new RegExp(${JSON.stringify(RULES.endpoint.regexStr)});
 export const IPV6_ULA_REGEX = new RegExp(${JSON.stringify(RULES.ipv6Ula.regexStr)});
 export const LINK_LOCAL_REGEX = new RegExp(${JSON.stringify(RULES.linkLocal.regexStr)});
 
@@ -341,9 +397,11 @@ export function formatDefaultLinkLocal(asn) {
 export function validateAsn(val) {
   const clean = normalizeAsn(val);
   if (!clean) return { valid: false, error: 'ASN is required' };
-  if (!ASN_REGEX.test(clean)) return { valid: false, error: ${JSON.stringify(RULES.asn.errorMessage)} };
+  if (!/^[0-9]+$/.test(clean)) return { valid: false, error: ${JSON.stringify(RULES.asn.errorMessage)} };
   const num = parseInt(clean, 10);
-  if (num < ${RULES.asn.min} || num > ${RULES.asn.max}) {
+  const isStandardDn42 = (num >= 4242420000 && num <= 4242429999);
+  const is16BitPrivate = (num >= 64512 && num <= 65534);
+  if (!isStandardDn42 && !is16BitPrivate) {
     return { valid: false, error: ${JSON.stringify(RULES.asn.errorMessage)} };
   }
   return { valid: true, value: num };
@@ -365,9 +423,38 @@ export function validateIpv4(val, isOptional = false) {
   }
   const trimmed = val.trim();
   if (!IPV4_REGEX.test(trimmed)) {
+    return { valid: false, error: 'Invalid IPv4 address format' };
+  }
+  const ipOnly = trimmed.split('/')[0];
+  const octets = ipOnly.split('.').map(o => parseInt(o, 10));
+  const [o1, o2] = octets;
+  if (o1 === 192 && o2 === 168) {
+    return { valid: false, error: '192.168.x.x is private LAN and cannot be used for DN42 peering' };
+  }
+  const isDn42 = (o1 === 172 && o2 >= 20 && o2 <= 23);
+  const is10 = (o1 === 10);
+  if (!isDn42 && !is10) {
     return { valid: false, error: ${JSON.stringify(RULES.ipv4.errorMessage)} };
   }
   return { valid: true, value: trimmed };
+}
+
+export function validateEndpoint(val, isOptional = true) {
+  if (!val || typeof val !== 'string' || !val.trim()) {
+    if (isOptional) return { valid: true, value: '' };
+    return { valid: false, error: 'Endpoint is required' };
+  }
+  const clean = val.trim();
+  if (clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('wg://')) {
+    return { valid: false, error: 'Do not include http:// or protocol prefix in endpoint' };
+  }
+  if (clean.includes(':') && !clean.includes('::')) {
+    return { valid: false, error: 'Do not include port in endpoint hostname' };
+  }
+  if (!ENDPOINT_REGEX.test(clean)) {
+    return { valid: false, error: ${JSON.stringify(RULES.endpoint.errorMessage)} };
+  }
+  return { valid: true, value: clean };
 }
 
 export function validateIpv6Ula(val, isOptional = false) {
@@ -477,7 +564,12 @@ export function validatePeeringSubmission(payload = {}) {
 
   // Endpoint (Peer endpoint hostname/IP)
   if (payload.endpoint) {
-    normalized.endpoint = String(payload.endpoint).trim();
+    const epRes = validateEndpoint(payload.endpoint, true);
+    if (!epRes.valid) {
+      fieldErrors.endpoint = epRes.error;
+    } else {
+      normalized.endpoint = epRes.value;
+    }
   } else {
     normalized.endpoint = '';
   }

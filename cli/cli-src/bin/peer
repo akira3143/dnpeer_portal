@@ -173,16 +173,24 @@ do_new() {
       break
     done
 
-    # Peer Endpoint (U3: hostname only, no :port & U15)
-    if [ -n "$peer_ep" ]; then
-      printf "Your Endpoint hostname (optional) \033[33m[%s]\033[0m: " "$peer_ep"
-    else
-      printf "Your Endpoint hostname (optional): "
-    fi
-    read_line_edit v
-    flush_after_input
-    { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
-    [ -n "$v" ] && peer_ep="$v"
+    # Peer Endpoint (U3, U15 & U17)
+    while true; do
+      if [ -n "$peer_ep" ]; then
+        printf "Your Endpoint hostname (optional) \033[33m[%s]\033[0m: " "$peer_ep"
+      else
+        printf "Your Endpoint hostname (optional): "
+      fi
+      read_line_edit v
+      flush_after_input
+      { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
+      [ -n "$v" ] && peer_ep="$v"
+      if [ -n "$peer_ep" ] && ! validate_endpoint "$peer_ep"; then
+        echo -e "\033[31merror: Endpoint must be a valid hostname or IP (no http:// or :port)\033[0m"
+        peer_ep=""
+        continue
+      fi
+      break
+    done
 
     # Server ListenPort (U7 & U15)
     while true; do

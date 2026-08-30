@@ -57,12 +57,15 @@ describe('Shell Rules POSIX Validation Tests', { skip: !shBin ? 'sh binary not f
     assert.equal(lines[2], '20001');
   });
 
-  test('shell validate_asn returns correct exit codes', () => {
+  test('shell validate_asn returns correct exit codes (U17)', () => {
     const res = runShScript(`
       validate_asn "4242423143" || echo "fail 1"
       validate_asn "AS4242423143" || echo "fail 2"
-      validate_asn "invalid" && echo "should have failed 3"
-      validate_asn "" && echo "should have failed 4"
+      validate_asn "64512" || echo "fail 3"
+      validate_asn "15169" && echo "should have failed 4"
+      validate_asn "12345" && echo "should have failed 5"
+      validate_asn "invalid" && echo "should have failed 6"
+      validate_asn "" && echo "should have failed 7"
       echo "done"
     `);
     assert.equal(res.status, 0);
@@ -83,12 +86,29 @@ describe('Shell Rules POSIX Validation Tests', { skip: !shBin ? 'sh binary not f
     assert.equal(lines[0], 'done');
   });
 
-  test('shell validate_ipv4 returns correct exit codes', () => {
+  test('shell validate_ipv4 returns correct exit codes (U17)', () => {
     const res = runShScript(`
       validate_ipv4 "172.20.150.1" || echo "fail 1"
-      validate_ipv4 "10.0.0.1/32" || echo "fail 2"
-      validate_ipv4 "256.0.0.1" && echo "should have failed 3"
-      validate_ipv4 "abc" && echo "should have failed 4"
+      validate_ipv4 "172.23.1.1" || echo "fail 2"
+      validate_ipv4 "10.0.0.1/32" || echo "fail 3"
+      validate_ipv4 "1.1.1.1" && echo "should have failed 4"
+      validate_ipv4 "192.168.1.1" && echo "should have failed 5"
+      validate_ipv4 "256.0.0.1" && echo "should have failed 6"
+      validate_ipv4 "abc" && echo "should have failed 7"
+      echo "done"
+    `);
+    assert.equal(res.status, 0);
+    const lines = res.stdout.trim().split('\n').map(l => l.trim());
+    assert.equal(lines[0], 'done');
+  });
+
+  test('shell validate_endpoint returns correct exit codes (U17)', () => {
+    const res = runShScript(`
+      validate_endpoint "myhost.dn42" || echo "fail 1"
+      validate_endpoint "jp1.akilab.dn42" || echo "fail 2"
+      validate_endpoint "" || echo "fail 3"
+      validate_endpoint "http://myhost.dn42" && echo "should have failed 4"
+      validate_endpoint "myhost.dn42:23143" && echo "should have failed 5"
       echo "done"
     `);
     assert.equal(res.status, 0);

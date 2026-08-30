@@ -9,13 +9,13 @@
 export const RULES = {
   "asn": {
     "name": "ASN",
-    "description": "DN42 Autonomous System Number (1-10 digits, usually 424242xxxx)",
-    "regexStr": "^(424242[0-9]{4}|[0-9]{1,10})$",
+    "description": "DN42 Autonomous System Number (424242xxxx or 16-bit private)",
+    "regexStr": "^(424242[0-9]{4}|6451[2-9]|645[2-9][0-9]|64[6-9][0-9]{2}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-4])$",
     "dn42RegexStr": "^424242[0-9]{4}$",
-    "min": 1,
-    "max": 4294967295,
+    "min": 64512,
+    "max": 4242429999,
     "example": "4242423143",
-    "errorMessage": "ASN must be a valid number (e.g. 4242423143)"
+    "errorMessage": "ASN must be within DN42 range (AS4242420000-AS4242429999)"
   },
   "publicKey": {
     "name": "WireGuard Public Key",
@@ -27,10 +27,17 @@ export const RULES = {
   },
   "ipv4": {
     "name": "IPv4 Address / Subnet",
-    "description": "Valid IPv4 address (DN42 typically 172.20.0.0/14 or 10.0.0.0/8)",
+    "description": "Valid DN42 IPv4 address (172.20.0.0/14 or 10.0.0.0/8)",
     "regexStr": "^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\\/(?:[0-9]|[12][0-9]|3[0-2]))?$",
     "example": "172.20.150.1",
-    "errorMessage": "Invalid IPv4 address or CIDR"
+    "errorMessage": "IPv4 must be within DN42 subnet (172.20.0.0/14 or 10.0.0.0/8)"
+  },
+  "endpoint": {
+    "name": "Peer Endpoint Hostname / IP",
+    "description": "Public hostname or IP address without protocol or port",
+    "regexStr": "^(?:(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])$",
+    "example": "peer.example.dn42",
+    "errorMessage": "Endpoint must be a valid hostname or IP (no http:// or :port)"
   },
   "ipv6Ula": {
     "name": "IPv6 ULA",
@@ -77,9 +84,10 @@ export const RULES = {
   }
 };
 
-export const ASN_REGEX = new RegExp("^(424242[0-9]{4}|[0-9]{1,10})$");
+export const ASN_REGEX = new RegExp("^(424242[0-9]{4}|6451[2-9]|645[2-9][0-9]|64[6-9][0-9]{2}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-4])$");
 export const PUBLIC_KEY_REGEX = new RegExp("^[A-Za-z0-9+/]{43}=$");
 export const IPV4_REGEX = new RegExp("^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\\/(?:[0-9]|[12][0-9]|3[0-2]))?$");
+export const ENDPOINT_REGEX = new RegExp("^(?:(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])$");
 export const IPV6_ULA_REGEX = new RegExp("^fd[0-9a-fA-F]{2}:[0-9a-fA-F:]+(?:\\/(?:[0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?$");
 export const LINK_LOCAL_REGEX = new RegExp("^(?:fe80|FE80):(?::|(?:(?::[0-9a-fA-F]{1,4}){1,7})|(?:(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4})|(?:(?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4})|(?:[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4}){0,6}::(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}))(?:\\/(?:[0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?$");
 
@@ -105,10 +113,12 @@ export function formatDefaultLinkLocal(asn) {
 export function validateAsn(val) {
   const clean = normalizeAsn(val);
   if (!clean) return { valid: false, error: 'ASN is required' };
-  if (!ASN_REGEX.test(clean)) return { valid: false, error: "ASN must be a valid number (e.g. 4242423143)" };
+  if (!/^[0-9]+$/.test(clean)) return { valid: false, error: "ASN must be within DN42 range (AS4242420000-AS4242429999)" };
   const num = parseInt(clean, 10);
-  if (num < 1 || num > 4294967295) {
-    return { valid: false, error: "ASN must be a valid number (e.g. 4242423143)" };
+  const isStandardDn42 = (num >= 4242420000 && num <= 4242429999);
+  const is16BitPrivate = (num >= 64512 && num <= 65534);
+  if (!isStandardDn42 && !is16BitPrivate) {
+    return { valid: false, error: "ASN must be within DN42 range (AS4242420000-AS4242429999)" };
   }
   return { valid: true, value: num };
 }
@@ -129,9 +139,38 @@ export function validateIpv4(val, isOptional = false) {
   }
   const trimmed = val.trim();
   if (!IPV4_REGEX.test(trimmed)) {
-    return { valid: false, error: "Invalid IPv4 address or CIDR" };
+    return { valid: false, error: 'Invalid IPv4 address format' };
+  }
+  const ipOnly = trimmed.split('/')[0];
+  const octets = ipOnly.split('.').map(o => parseInt(o, 10));
+  const [o1, o2] = octets;
+  if (o1 === 192 && o2 === 168) {
+    return { valid: false, error: '192.168.x.x is private LAN and cannot be used for DN42 peering' };
+  }
+  const isDn42 = (o1 === 172 && o2 >= 20 && o2 <= 23);
+  const is10 = (o1 === 10);
+  if (!isDn42 && !is10) {
+    return { valid: false, error: "IPv4 must be within DN42 subnet (172.20.0.0/14 or 10.0.0.0/8)" };
   }
   return { valid: true, value: trimmed };
+}
+
+export function validateEndpoint(val, isOptional = true) {
+  if (!val || typeof val !== 'string' || !val.trim()) {
+    if (isOptional) return { valid: true, value: '' };
+    return { valid: false, error: 'Endpoint is required' };
+  }
+  const clean = val.trim();
+  if (clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('wg://')) {
+    return { valid: false, error: 'Do not include http:// or protocol prefix in endpoint' };
+  }
+  if (clean.includes(':') && !clean.includes('::')) {
+    return { valid: false, error: 'Do not include port in endpoint hostname' };
+  }
+  if (!ENDPOINT_REGEX.test(clean)) {
+    return { valid: false, error: "Endpoint must be a valid hostname or IP (no http:// or :port)" };
+  }
+  return { valid: true, value: clean };
 }
 
 export function validateIpv6Ula(val, isOptional = false) {
@@ -241,7 +280,12 @@ export function validatePeeringSubmission(payload = {}) {
 
   // Endpoint (Peer endpoint hostname/IP)
   if (payload.endpoint) {
-    normalized.endpoint = String(payload.endpoint).trim();
+    const epRes = validateEndpoint(payload.endpoint, true);
+    if (!epRes.valid) {
+      fieldErrors.endpoint = epRes.error;
+    } else {
+      normalized.endpoint = epRes.value;
+    }
   } else {
     normalized.endpoint = '';
   }

@@ -8,13 +8,13 @@
 export const RULES = {
   asn: {
     name: 'ASN',
-    description: 'DN42 Autonomous System Number (1-10 digits, usually 424242xxxx)',
-    regexStr: '^(424242[0-9]{4}|[0-9]{1,10})$',
+    description: 'DN42 Autonomous System Number (424242xxxx or 16-bit private)',
+    regexStr: '^(424242[0-9]{4}|6451[2-9]|645[2-9][0-9]|64[6-9][0-9]{2}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-4])$',
     dn42RegexStr: '^424242[0-9]{4}$',
-    min: 1,
-    max: 4294967295,
+    min: 64512,
+    max: 4242429999,
     example: '4242423143',
-    errorMessage: 'ASN must be a valid number (e.g. 4242423143)'
+    errorMessage: 'ASN must be within DN42 range (AS4242420000-AS4242429999)'
   },
 
   publicKey: {
@@ -28,10 +28,18 @@ export const RULES = {
 
   ipv4: {
     name: 'IPv4 Address / Subnet',
-    description: 'Valid IPv4 address (DN42 typically 172.20.0.0/14 or 10.0.0.0/8)',
+    description: 'Valid DN42 IPv4 address (172.20.0.0/14 or 10.0.0.0/8)',
     regexStr: '^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\\/(?:[0-9]|[12][0-9]|3[0-2]))?$',
     example: '172.20.150.1',
-    errorMessage: 'Invalid IPv4 address or CIDR'
+    errorMessage: 'IPv4 must be within DN42 subnet (172.20.0.0/14 or 10.0.0.0/8)'
+  },
+
+  endpoint: {
+    name: 'Peer Endpoint Hostname / IP',
+    description: 'Public hostname or IP address without protocol or port',
+    regexStr: '^(?:(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])$',
+    example: 'peer.example.dn42',
+    errorMessage: 'Endpoint must be a valid hostname or IP (no http:// or :port)'
   },
 
   ipv6Ula: {

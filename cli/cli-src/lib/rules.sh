@@ -25,10 +25,13 @@ validate_asn() {
   case "$_val" in
     ''|*[!0-9]*) return 1 ;;
   esac
-  if [ ${#_val} -gt 10 ] || [ "$_val" -eq 0 ]; then
-    return 1
+  case "$_val" in
+    424242[0-9][0-9][0-9][0-9]) return 0 ;;
+  esac
+  if [ "$_val" -ge 64512 ] 2>/dev/null && [ "$_val" -le 65534 ] 2>/dev/null; then
+    return 0
   fi
-  return 0
+  return 1
 }
 
 validate_pubkey() {
@@ -69,6 +72,26 @@ validate_ipv4() {
       return 1
     fi
   done
+  if [ "$_o1" -eq 172 ] && [ "$_o2" -ge 20 ] && [ "$_o2" -le 23 ]; then
+    return 0
+  fi
+  if [ "$_o1" -eq 10 ]; then
+    return 0
+  fi
+  return 1
+}
+
+validate_endpoint() {
+  _val="$1"
+  _val="${_val%% }"
+  _val="${_val## }"
+  [ -z "$_val" ] && return 0
+  case "$_val" in
+    http://*|https://*|wg://*) return 1 ;;
+    *:*) return 1 ;;
+    *[!A-Za-z0-9.-]*) return 1 ;;
+    .*|-*|*.-|*.|*-) return 1 ;;
+  esac
   return 0
 }
 

@@ -4,6 +4,7 @@ import {
   validateAsn,
   validatePublicKey,
   validateIpv4,
+  validateEndpoint,
   validateIpv6Ula,
   validateLinkLocal,
   validatePort,
@@ -15,28 +16,32 @@ import {
 } from '../../server/utils/validator.js';
 
 describe('Authoritative Validator Unit Tests', () => {
-  describe('ASN Validation', () => {
+  describe('ASN Validation (U17 DN42 Range)', () => {
     test('validates standard DN42 ASN', () => {
       const res = validateAsn('4242423143');
       assert.equal(res.valid, true);
       assert.equal(res.value, 4242423143);
     });
 
-    test('validates ASN with AS prefix', () => {
+    test('validates ASN with AS prefix and 16-bit private ASN', () => {
       const res = validateAsn('AS4242423143');
       assert.equal(res.valid, true);
       assert.equal(res.value, 4242423143);
+
+      const resPriv = validateAsn('64512');
+      assert.equal(resPriv.valid, true);
+      assert.equal(resPriv.value, 64512);
     });
 
-    test('rejects non-numeric ASN', () => {
-      const res = validateAsn('AS_INVALID');
-      assert.equal(res.valid, false);
-      assert.ok(res.error);
+    test('rejects public ASN outside DN42 range (U17)', () => {
+      assert.equal(validateAsn('15169').valid, false, 'Public ASN 15169 must be rejected');
+      assert.equal(validateAsn('12345').valid, false, 'Public ASN 12345 must be rejected');
+      assert.equal(validateAsn('4242430000').valid, false, 'Outside 424242xxxx must be rejected');
     });
 
-    test('rejects empty ASN', () => {
-      const res = validateAsn('');
-      assert.equal(res.valid, false);
+    test('rejects non-numeric and empty ASN', () => {
+      assert.equal(validateAsn('AS_INVALID').valid, false);
+      assert.equal(validateAsn('').valid, false);
     });
 
     test('calculates default port from ASN correctly', () => {
@@ -66,12 +71,28 @@ describe('Authoritative Validator Unit Tests', () => {
     });
   });
 
-  describe('IP Validation', () => {
-    test('validates IPv4 address and CIDR', () => {
+  describe('IP & Endpoint Validation (U17)', () => {
+    test('validates IPv4 address in DN42 subnets (172.20.0.0/14 or 10.0.0.0/8)', () => {
       assert.equal(validateIpv4('172.20.150.1').valid, true);
+      assert.equal(validateIpv4('172.23.255.1').valid, true);
       assert.equal(validateIpv4('10.0.0.1/32').valid, true);
+    });
+
+    test('rejects public IPv4 and private LAN 192.168.x.x (U17)', () => {
+      assert.equal(validateIpv4('1.1.1.1').valid, false, 'Public IP 1.1.1.1 must be rejected');
+      assert.equal(validateIpv4('8.8.8.8').valid, false, 'Public IP 8.8.8.8 must be rejected');
+      assert.equal(validateIpv4('192.168.1.1').valid, false, 'LAN IP 192.168.1.1 must be rejected');
       assert.equal(validateIpv4('256.0.0.1').valid, false);
       assert.equal(validateIpv4('not-an-ip').valid, false);
+    });
+
+    test('validates Endpoint hostname syntax and rejects protocols/ports (U17)', () => {
+      assert.equal(validateEndpoint('myhost.dn42').valid, true);
+      assert.equal(validateEndpoint('jp1.akilab.dn42').valid, true);
+      assert.equal(validateEndpoint('http://myhost.dn42').valid, false, 'http:// prefix must be rejected');
+      assert.equal(validateEndpoint('https://myhost.dn42').valid, false, 'https:// prefix must be rejected');
+      assert.equal(validateEndpoint('myhost.dn42:23143').valid, false, 'Port suffix must be rejected');
+      assert.equal(validateEndpoint('invalid host space').valid, false);
     });
 
     test('validates IPv6 ULA starting with fd', () => {
@@ -117,7 +138,7 @@ describe('Authoritative Validator Unit Tests', () => {
         linkLocal: 'fe80::4242:3143',
         ipv4: '172.20.150.1',
         ipv6Ula: 'fd00:4242:3143::1',
-        endpoint: 'node.example.dn42:23143',
+        endpoint: 'node.example.dn42',
         listenPort: 'auto',
         mtu: 1420,
         bgpMode: 'mpbgp_enh'

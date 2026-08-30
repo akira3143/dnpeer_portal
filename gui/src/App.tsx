@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { ApiClient, NetworkMeta, PeeringSession } from './api/client.ts';
 import {
-  validateAsn, validatePublicKey, validateIpv4, validateIpv6Ula,
+  validateAsn, validatePublicKey, validateIpv4, validateEndpoint, validateIpv6Ula,
   validateLinkLocal, validatePort, validateMtu, calcDefaultPort, formatDefaultLinkLocal,
   normalizeAsn
 } from '@shared/generated/rules.js';
@@ -240,6 +240,11 @@ function PeeringWizard({
     if (ipv6Ula) {
       const v6Res = validateIpv6Ula(ipv6Ula, true);
       if (!v6Res.valid) errs.ipv6Ula = v6Res.error || 'Invalid IPv6 ULA';
+    }
+
+    if (endpoint.trim()) {
+      const epRes = validateEndpoint(endpoint.trim(), true);
+      if (!epRes.valid) errs.endpoint = epRes.error || 'Invalid Endpoint';
     }
 
     if (listenPortChoice === 'custom') {

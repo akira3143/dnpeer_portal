@@ -54,15 +54,15 @@ describe('SessionService Unit Tests', () => {
 
   test('deletes session and frees port in ledger', async () => {
     const submitRes = await SessionService.submitPeering({
-      asn: 4141410001,
+      asn: 4242420002,
       nodeId: 'JP-TYO-1',
       publicKey: 'K8xN64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=',
-      linkLocal: 'fe80::4141:1',
+      linkLocal: 'fe80::2',
       listenPort: 'auto'
     });
 
     const sessionId = submitRes.data.sessionId;
-    const delRes = await SessionService.deleteSession(sessionId, 4141410001, false);
+    const delRes = await SessionService.deleteSession(sessionId, 4242420002, false);
     assert.equal(delRes.success, true);
 
     const list = await SessionService.getSessions();
