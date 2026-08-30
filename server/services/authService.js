@@ -259,6 +259,7 @@ export class AuthService {
       success: true,
       data: {
         asn: cleanAsn,
+        asName: registryInfo.asName || `AS${cleanAsn}`,
         role: isAdmin ? 'admin' : 'user',
         ...tokenData
       }

@@ -215,7 +215,15 @@ export function createServer() {
       const guiRoute = config.guiPath || '/gui';
 
       // 1. Web GUI (React Vite SPA)
-      if (pathname === guiRoute || pathname.startsWith(`${guiRoute}/`)) {
+      if (pathname === guiRoute) {
+        res.writeHead(301, {
+          'Location': `${guiRoute}/`,
+          'Cache-Control': 'no-cache'
+        });
+        return res.end();
+      }
+
+      if (pathname.startsWith(`${guiRoute}/`)) {
         const guiDist = path.join(ROOT_DIR, 'gui/dist');
         let relPath = pathname.slice(guiRoute.length).replace(/^\/+/, '');
         if (!relPath) relPath = 'index.html';
