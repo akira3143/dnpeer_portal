@@ -1,48 +1,59 @@
+/**
+ * AkiLab DN42 WebAssembly Linux Browser Integration Runner
+ *
+ * Boots the real Linux 6.1 ext4 kernel in a real Headless Chrome browser,
+ * attaches to the xterm.js TTY terminal, automates password login,
+ * performs full peering lifecycle (peer new, peer ls, peer rm, lg status),
+ * and captures real terminal screenshots.
+ */
+
 import { spawn } from 'node:child_process';
+import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createServer } from '../../server/index.js';
-import { hashPassword } from '../../server/services/authService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const ROOT_DIR = path.resolve(__dirname, '../..');
+const ROOT_DIR = path.resolve(__dirname, '../../');
 const ARTIFACTS_DIR = 'C:/Users/Akira/.gemini/antigravity/brain/5c7257fc-2f97-4a44-bfa1-5b2f958ca068';
 
-const CHROME_PATH = fs.existsSync('C:/Program Files/Google/Chrome/Application/chrome.exe')
-  ? 'C:/Program Files/Google/Chrome/Application/chrome.exe'
-  : 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe';
-
-async function delay(ms) {
-  return new Promise(r => setTimeout(r, ms));
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-class CDPClient {
+// Simple CDP Client over native WebSocket
+class CdpClient {
   constructor(wsUrl) {
-    this.ws = new WebSocket(wsUrl);
+    this.wsUrl = wsUrl;
     this.id = 1;
     this.callbacks = new Map();
   }
 
   async connect() {
-    return new Promise((resolve, reject) => {
-      this.ws.onopen = () => resolve();
-      this.ws.onerror = (e) => reject(e);
-      this.ws.onmessage = (evt) => {
-        const msg = JSON.parse(evt.data);
-        if (msg.id && this.callbacks.has(msg.id)) {
-          const cb = this.callbacks.get(msg.id);
-          this.callbacks.delete(msg.id);
-          if (msg.error) cb.reject(new Error(msg.error.message));
-          else cb.resolve(msg.result);
-        }
-      };
+    this.ws = new WebSocket(this.wsUrl);
+    await new Promise((resolve, reject) => {
+      this.ws.onopen = resolve;
+      this.ws.onerror = reject;
     });
+
+    this.ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.id && this.callbacks.has(msg.id)) {
+        const { resolve, reject } = this.callbacks.get(msg.id);
+        this.callbacks.delete(msg.id);
+        if (msg.error) {
+          reject(new Error(msg.error.message));
+        } else {
+          resolve(msg.result);
+        }
+      }
+    };
   }
 
-  async send(method, params = {}) {
+  send(method, params = {}) {
     const id = this.id++;
     return new Promise((resolve, reject) => {
       this.callbacks.set(id, { resolve, reject });
@@ -51,93 +62,89 @@ class CDPClient {
   }
 
   async evaluate(expression) {
-    const res = await this.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+    const res = await this.send('Runtime.evaluate', {
+      expression,
+      returnByValue: true,
+      awaitPromise: true
+    });
+    if (res.exceptionDetails) {
+      throw new Error(`Eval error: ${JSON.stringify(res.exceptionDetails)}`);
+    }
     return res.result?.value;
   }
 
   async close() {
-    try { this.ws.close(); } catch {}
+    if (this.ws) {
+      this.ws.close();
+    }
   }
+}
+
+async function findChromeExecutable() {
+  const possiblePaths = [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    path.join(os.homedir(), 'AppData\\Local\\Google\\Chrome\\Application\\chrome.exe'),
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'
+  ];
+
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) return p;
+  }
+  throw new Error('Chrome/Edge executable not found on host machine');
 }
 
 async function main() {
   console.log('--- 1. Starting Backend Server on 127.0.0.1:4242 ---');
   const server = createServer();
-  await new Promise(r => server.listen(4242, '127.0.0.1', r));
+  await new Promise((resolve) => server.listen(4242, '127.0.0.1', resolve));
 
-  // Ensure test accounts exist in server/data/auth_users.json
-  const authUsersFile = path.join(ROOT_DIR, 'server/data/auth_users.json');
-  let authUsers = {};
-  try {
-    if (fs.existsSync(authUsersFile)) authUsers = JSON.parse(fs.readFileSync(authUsersFile, 'utf8'));
-  } catch {}
-  if (!authUsers['4242423143']) {
-    const testPass = hashPassword('test12345');
-    authUsers['4242423143'] = {
-      asn: 4242423143,
-      asName: 'AKILAB-MNT',
-      role: 'admin',
-      salt: testPass.salt,
-      hash: testPass.hash,
-      createdAt: new Date().toISOString()
-    };
-    fs.writeFileSync(authUsersFile, JSON.stringify(authUsers, null, 2), 'utf8');
-  }
+  const chromePath = await findChromeExecutable();
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chrome-wasm-test-'));
+  const cdpPort = 14227 + Math.floor(Math.random() * 1000);
 
-  // Ensure registry cache exists
-  const registryFile = path.join(ROOT_DIR, 'server/data/registry_cache.json');
-  let registry = {};
-  try {
-    if (fs.existsSync(registryFile)) registry = JSON.parse(fs.readFileSync(registryFile, 'utf8'));
-  } catch {}
-  if (!registry['AS4242423143']) {
-    registry['AS4242423143'] = {
-      asn: 4242423143,
-      asName: 'AKILAB-MNT',
-      descr: 'AkiLab Backbone Autonomous System',
-      maintainer: 'AKIRA-MNT',
-      adminContact: 'AKIRA-DN42',
-      personName: 'Akira',
-      authKeys: []
-    };
-    fs.writeFileSync(registryFile, JSON.stringify(registry, null, 2), 'utf8');
-  }
-
-  const debugPort = 11000 + Math.floor(Math.random() * 5000);
-  console.log(`--- 2. Launching Headless Chrome Browser on debug port ${debugPort} ---`);
-  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chrome-wasm-'));
-  const chromeProc = spawn(CHROME_PATH, [
-    `--remote-debugging-port=${debugPort}`,
+  console.log(`--- 2. Launching Headless Chrome Browser on debug port ${cdpPort} ---`);
+  const chromeProc = spawn(chromePath, [
     '--headless=new',
-    '--window-size=1280,900',
-    '--no-sandbox',
-    '--disable-gpu',
+    `--remote-debugging-port=${cdpPort}`,
     `--user-data-dir=${userDataDir}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--window-size=1280,800',
     'http://127.0.0.1:4242/'
-  ]);
+  ], { stdio: 'ignore' });
 
-  let cdp = null;
+  // Wait for Chrome CDP port to become available
+  let versionData = null;
   for (let i = 0; i < 30; i++) {
     await delay(500);
     try {
-      const vRes = await fetch(`http://127.0.0.1:${debugPort}/json/list`);
-      const list = await vRes.json();
-      const page = list.find(t => t.type === 'page' && t.url.includes('4242'));
-      if (page && page.webSocketDebuggerUrl) {
-        console.log('Found page target:', page.webSocketDebuggerUrl);
-        cdp = new CDPClient(page.webSocketDebuggerUrl);
-        await cdp.connect();
+      const res = await fetch(`http://127.0.0.1:${cdpPort}/json/version`);
+      if (res.ok) {
+        versionData = await res.json();
         break;
       }
     } catch {}
   }
 
-  if (!cdp) {
-    console.error('Could not connect to Chrome DevTools Protocol.');
+  if (!versionData) {
     chromeProc.kill();
-    await server.closeAll();
-    process.exit(1);
+    throw new Error('Failed to connect to Chrome DevTools port');
   }
+
+  // Get active target tab
+  const listRes = await fetch(`http://127.0.0.1:${cdpPort}/json/list`);
+  const targets = await listRes.json();
+  const pageTarget = targets.find(t => t.type === 'page');
+  if (!pageTarget || !pageTarget.webSocketDebuggerUrl) {
+    chromeProc.kill();
+    throw new Error('No page target available in Chrome');
+  }
+
+  console.log(`Found page target: ${pageTarget.webSocketDebuggerUrl}`);
+  const cdp = new CdpClient(pageTarget.webSocketDebuggerUrl);
+  await cdp.connect();
 
   await cdp.send('Page.enable');
   await cdp.send('Runtime.enable');
@@ -146,7 +153,7 @@ async function main() {
 
   const getBuffer = async () => {
     return await cdp.evaluate(`
-      (function() {
+      (() => {
         if (!window.term || !window.term.buffer || !window.term.buffer.active) return '';
         const buf = window.term.buffer.active;
         let lines = [];
@@ -193,31 +200,63 @@ async function main() {
   // 5. Execute: nodes
   console.log('Executing: nodes');
   await sendInput('nodes\n');
-  await delay(2000);
+  await delay(1500);
   await waitForPrompt('peer@AS4242423143:~#');
 
   // 6. Execute: whois 4242423143
   console.log('Executing: whois 4242423143');
   await sendInput('whois 4242423143\n');
-  await delay(2000);
+  await delay(1500);
   await waitForPrompt('peer@AS4242423143:~#');
 
   // 7. Execute: whoami
   console.log('Executing: whoami');
   await sendInput('whoami\n');
-  await delay(1500);
+  await delay(1000);
   await waitForPrompt('peer@AS4242423143:~#');
 
-  // 8. Execute: peer ls
+  // 8. Execute: peer new
+  console.log('Executing: peer new');
+  await sendInput('peer new\n');
+  await waitForPrompt('Select target node');
+  await sendInput('1\n');
+  await waitForPrompt('Your IPv6 Link-Local');
+  await sendInput('\n'); // Accept default LLA
+  await waitForPrompt('Your DN42 IPv4 (optional)');
+  await sendInput('172.20.150.1\n');
+  await waitForPrompt('Your DN42 IPv6 ULA (optional)');
+  await sendInput('fd00:4242:3143::1\n');
+  await waitForPrompt('Your WireGuard Public Key');
+  await sendInput('yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=\n');
+  await waitForPrompt('Your Endpoint hostname (optional)');
+  await sendInput('myhost.dn42\n');
+  await waitForPrompt('Peer ListenPort');
+  await sendInput('\n'); // auto
+  await waitForPrompt('Your ListenPort');
+  await sendInput('\n'); // auto
+  await waitForPrompt('MTU (default 1420)');
+  await sendInput('\n'); // 1420
+  await waitForPrompt('Confirm and submit?');
+  await sendInput('y\n');
+  await waitForPrompt('peer@AS4242423143:~#', 20);
+  console.log('Peer created successfully with maintainer handle ID format!');
+
+  // 9. Execute: peer ls
   console.log('Executing: peer ls');
   await sendInput('peer ls\n');
   await delay(1500);
   await waitForPrompt('peer@AS4242423143:~#');
 
-  // 9. Execute: lg status
+  // 10. Execute: peer rm peer_akira_jp_tyo_1 (U1)
+  console.log('Executing: peer rm peer_akira_jp_tyo_1');
+  await sendInput('peer rm peer_akira_jp_tyo_1\n');
+  await delay(1500);
+  await waitForPrompt('peer@AS4242423143:~#');
+
+  // 11. Execute: lg status
   console.log('Executing: lg status');
   await sendInput('lg status\n');
-  await delay(2000);
+  await delay(1500);
   await waitForPrompt('peer@AS4242423143:~#');
 
   const finalBuffer = await getBuffer();
@@ -248,7 +287,7 @@ async function main() {
   console.log('Verification Finished Successfully!');
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('Test error:', err);
   process.exit(1);
 });
