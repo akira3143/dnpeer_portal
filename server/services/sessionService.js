@@ -187,7 +187,6 @@ export class SessionService {
         conflictMessage,
         configs: generatedConfigs,
         clientWireguard: generatedConfigs.clientWireguard,
-        clientBird: generatedConfigs.clientBird,
         acknowledgement: "Received your peering info. We'll establish the peer with you within 24 hours!"
       }
     };
