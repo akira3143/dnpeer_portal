@@ -74,11 +74,11 @@ do_new() {
     echo -e "\033[90mType q at any field to cancel.\033[0m"
     echo ""
 
-    # Node Selection
+    # Node Selection (U7)
     if [ -n "$nid" ]; then
-      printf "\033[33mSelect target node [1-%s] (current: %s):\033[0m " "$i" "$nid"
+      printf "Select target node \033[33m[1-%s]\033[0m (current: \033[33m%s\033[0m): " "$i" "$nid"
     else
-      printf "\033[33mSelect target node [1-%s]:\033[0m " "$i"
+      printf "Select target node \033[33m[1-%s]\033[0m: " "$i"
     fi
     read -r choice
     flush_after_input
@@ -102,10 +102,10 @@ do_new() {
       continue
     fi
 
-    # Link-Local
+    # Link-Local (U7)
     [ -z "$lla" ] && lla="fe80::$clean_asn"
     while true; do
-      printf "\033[33mYour IPv6 Link-Local [%s]:\033[0m " "$lla"
+      printf "Your IPv6 Link-Local \033[33m[%s]\033[0m: " "$lla"
       read -r v
       flush_after_input
       { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
@@ -117,12 +117,12 @@ do_new() {
       break
     done
 
-    # IPv4
+    # IPv4 (U7)
     while true; do
       if [ -n "$ipv4" ]; then
-        printf "\033[33mYour DN42 IPv4 (optional) [%s]:\033[0m " "$ipv4"
+        printf "Your DN42 IPv4 (optional) \033[33m[%s]\033[0m: " "$ipv4"
       else
-        printf "\033[33mYour DN42 IPv4 (optional):\033[0m "
+        printf "Your DN42 IPv4 (optional): "
       fi
       read -r v
       flush_after_input
@@ -135,12 +135,12 @@ do_new() {
       break
     done
 
-    # IPv6 ULA
+    # IPv6 ULA (U7)
     while true; do
       if [ -n "$ula" ]; then
-        printf "\033[33mYour DN42 IPv6 ULA (optional) [%s]:\033[0m " "$ula"
+        printf "Your DN42 IPv6 ULA (optional) \033[33m[%s]\033[0m: " "$ula"
       else
-        printf "\033[33mYour DN42 IPv6 ULA (optional):\033[0m "
+        printf "Your DN42 IPv6 ULA (optional): "
       fi
       read -r v
       flush_after_input
@@ -153,12 +153,12 @@ do_new() {
       break
     done
 
-    # WireGuard Public Key
+    # WireGuard Public Key (U7)
     while true; do
       if [ -n "$pubkey" ]; then
-        printf "\033[33mYour WireGuard Public Key (44 chars Base64) [%s]:\033[0m " "$pubkey"
+        printf "Your WireGuard Public Key (44 chars Base64) \033[33m[%s]\033[0m: " "$pubkey"
       else
-        printf "\033[33mYour WireGuard Public Key (44 chars Base64):\033[0m "
+        printf "Your WireGuard Public Key (44 chars Base64): "
       fi
       read -r v
       flush_after_input
@@ -172,20 +172,20 @@ do_new() {
       break
     done
 
-    # Peer Endpoint
+    # Peer Endpoint (U3: hostname only, no :port)
     if [ -n "$peer_ep" ]; then
-      printf "\033[33mYour Endpoint hostname:port (optional) [%s]:\033[0m " "$peer_ep"
+      printf "Your Endpoint hostname (optional) \033[33m[%s]\033[0m: " "$peer_ep"
     else
-      printf "\033[33mYour Endpoint hostname:port (optional):\033[0m "
+      printf "Your Endpoint hostname (optional): "
     fi
     read -r v
     flush_after_input
     { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
     [ -n "$v" ] && peer_ep="$v"
 
-    # Server ListenPort
+    # Server ListenPort (U7)
     while true; do
-      printf "\033[33mPeer ListenPort (AkiLab side, default auto) [%s]:\033[0m " "$host_port"
+      printf "Peer ListenPort (AkiLab side, default auto) \033[33m[%s]\033[0m: " "$host_port"
       read -r v
       flush_after_input
       { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
@@ -197,9 +197,9 @@ do_new() {
       break
     done
 
-    # Client ListenPort
+    # Client ListenPort (U7)
     while true; do
-      printf "\033[33mYour ListenPort (client side, default auto) [%s]:\033[0m " "$client_port"
+      printf "Your ListenPort (client side, default auto) \033[33m[%s]\033[0m: " "$client_port"
       read -r v
       flush_after_input
       { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
@@ -211,9 +211,9 @@ do_new() {
       break
     done
 
-    # MTU
+    # MTU (U7)
     while true; do
-      printf "\033[33mMTU (default 1420) [%s]:\033[0m " "$mtu"
+      printf "MTU (default 1420) \033[33m[%s]\033[0m: " "$mtu"
       read -r v
       flush_after_input
       { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
@@ -225,7 +225,10 @@ do_new() {
       break
     done
 
-    # Review Summary
+    # Review Summary (U4)
+    [ "$host_port" = "auto" ] && host_port_desc="assigned on submit (AkiLab side)" || host_port_desc="$host_port (AkiLab side)"
+    [ "$client_port" = "auto" ] && client_port_desc="assigned on submit (your side)" || client_port_desc="$client_port (your side)"
+
     echo ""
     printf "\033[36m%s\033[0m\n" "-------- REVIEW --------"
     echo -e "  Node             $nid ($nname)"
@@ -234,12 +237,12 @@ do_new() {
     [ -n "$ula" ] && echo -e "  IPv6 ULA         $ula"
     echo -e "  WG PubKey        $pubkey"
     [ -n "$peer_ep" ] && echo -e "  Endpoint         $peer_ep"
-    echo -e "  Peer ListenPort  $host_port (AkiLab side)"
-    echo -e "  Your ListenPort  $client_port (your side)"
+    echo -e "  Peer ListenPort  $host_port_desc"
+    echo -e "  Your ListenPort  $client_port_desc"
     echo -e "  MTU              $mtu"
     echo ""
 
-    printf "\033[33mConfirm and submit? [Y/n]:\033[0m "
+    printf "Confirm and submit? \033[33m[Y/n]\033[0m: "
     read -r confirm
     flush_after_input
     { [ "$confirm" = "q" ] || [ "$confirm" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
@@ -263,20 +266,32 @@ do_new() {
   fi
 
   sess_id=$(json_field "$resp" sessionId)
-  assigned_port=$(json_num "$resp" port)
   is_shifted=$(json_bool "$resp" isShifted)
   conflict_msg=$(json_field "$resp" conflictMessage)
+  wg_conf=$(json_field "$resp" clientWireguard)
+  bird_conf=$(json_field "$resp" clientBird)
 
   echo ""
   echo -e "\033[32m===============================================================================\033[0m"
   echo -e "\033[1;32mSession ID: $sess_id\033[0m"
-  echo -e "\033[32mAssigned Port: $assigned_port\033[0m"
   if [ "$is_shifted" = "true" ] && [ -n "$conflict_msg" ]; then
     echo -e "\033[33m[!] $conflict_msg\033[0m"
   fi
   echo ""
   echo -e "\033[36mReceived your peering info. We'll establish the peer with you within 24 hours!\033[0m"
   echo -e "\033[32m===============================================================================\033[0m"
+
+  # Print Finished Configuration Products (U5)
+  if [ -n "$wg_conf" ]; then
+    echo ""
+    echo -e "\033[36m── Client WireGuard Config (wg0.conf) ──\033[0m"
+    echo -e "$wg_conf"
+  fi
+  if [ -n "$bird_conf" ]; then
+    echo ""
+    echo -e "\033[36m── Client BIRD Config ──\033[0m"
+    echo -e "$bird_conf"
+  fi
   echo ""
 }
 
@@ -308,7 +323,7 @@ do_ls() {
   echo ""
 }
 
-# ---------- peer rm ----------
+# ---------- peer rm (U1) ----------
 do_rm() {
   require_login || return 1
   local target_id="$1"

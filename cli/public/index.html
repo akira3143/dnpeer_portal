@@ -66,6 +66,26 @@
     window.addEventListener("resize", () => termFit.fit());
     window.term = term;
 
+    // U6: Register OSC handler for startx automatic GUI redirect
+    if (term.parser && term.parser.registerOscHandler) {
+      term.parser.registerOscHandler(1337, (data) => {
+        if (data && data.startsWith('OpenUrl=')) {
+          const target = data.slice(8).trim();
+          window.location.href = target || '/gui/';
+          return true;
+        }
+        return false;
+      });
+      term.parser.registerOscHandler(50, (data) => {
+        if (data && data.startsWith('AgyJump=')) {
+          const target = data.slice(8).trim();
+          window.location.href = target || '/gui/';
+          return true;
+        }
+        return false;
+      });
+    }
+
     // 早期引导日志
     term.writeln("\x1b[90m[  0.000000] Initializing AkiLab DN42 WebAssembly Linux 6.1 Kernel...\x1b[0m");
     if (window.crossOriginIsolated) {
