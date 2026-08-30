@@ -78,10 +78,7 @@ do_password_login() {
   local clean="$1" remember="$2" pwd resp token user_asn
   while true; do
     printf "\033[33mPassword for %s\033[0m: " "$clean"
-    stty -echo 2>/dev/null
-    read -r pwd
-    stty echo 2>/dev/null
-    echo ""
+    read_line_edit pwd -s
 
     if [ "$pwd" = "ssh" ] || [ "$pwd" = "SSH" ]; then
       return 2
@@ -194,7 +191,7 @@ main() {
   while true; do
     echo ""
     printf "\033[33mDN42 ASN or Account\033[0m: "
-    read -r asn_in
+    read_line_edit asn_in
     flush_after_input
 
     [ -z "$asn_in" ] && continue
@@ -204,7 +201,7 @@ main() {
     fi
 
     printf "\033[33mRemember login for 30 days? [Y/n]\033[0m: "
-    read -r rem_in
+    read_line_edit rem_in
     flush_after_input
     if [ "$rem_in" = "n" ] || [ "$rem_in" = "N" ]; then
       remember="false"

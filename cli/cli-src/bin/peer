@@ -20,7 +20,7 @@ usage() {
 do_new() {
   require_login || return 1
 
-  local meta resp line node_idx i choice v confirm
+  local meta resp line node_idx i choice v confirm clean_tail
   echo -e "\033[90mQuerying AkiLab node matrix...\033[0m"
   meta=$(api_get "/api/network-meta")
   if ! echo "$meta" | grep -q '"success":true'; then
@@ -74,13 +74,13 @@ do_new() {
     echo -e "\033[90mType q at any field to cancel.\033[0m"
     echo ""
 
-    # Node Selection (U7)
+    # Node Selection (U7 & U15)
     if [ -n "$nid" ]; then
       printf "Select target node \033[33m[1-%s]\033[0m (current: \033[33m%s\033[0m): " "$i" "$nid"
     else
       printf "Select target node \033[33m[1-%s]\033[0m: " "$i"
     fi
-    read -r choice
+    read_line_edit choice
     flush_after_input
     { [ "$choice" = "q" ] || [ "$choice" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
     if [ -n "$choice" ]; then
@@ -102,29 +102,30 @@ do_new() {
       continue
     fi
 
-    # Link-Local (U7)
-    [ -z "$lla" ] && lla="fe80::$clean_asn"
+    # Link-Local (U14: fe80::<4-digit tail> & U15)
+    clean_tail=$((clean_asn % 10000))
+    [ -z "$lla" ] && lla="fe80::$clean_tail"
     while true; do
       printf "Your IPv6 Link-Local \033[33m[%s]\033[0m: " "$lla"
-      read -r v
+      read_line_edit v
       flush_after_input
       { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
       [ -n "$v" ] && lla="$v"
       if ! validate_link_local "$lla"; then
-        echo -e "\033[31merror: Link-Local must start with fe80: (e.g. fe80::$clean_asn)\033[0m"
+        echo -e "\033[31merror: Link-Local must start with fe80: and be valid IPv6 (e.g. fe80::$clean_tail)\033[0m"
         continue
       fi
       break
     done
 
-    # IPv4 (U7)
+    # IPv4 (U7 & U15)
     while true; do
       if [ -n "$ipv4" ]; then
         printf "Your DN42 IPv4 (optional) \033[33m[%s]\033[0m: " "$ipv4"
       else
         printf "Your DN42 IPv4 (optional): "
       fi
-      read -r v
+      read_line_edit v
       flush_after_input
       { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
       [ -n "$v" ] && ipv4="$v"
@@ -135,14 +136,14 @@ do_new() {
       break
     done
 
-    # IPv6 ULA (U7)
+    # IPv6 ULA (U7 & U15)
     while true; do
       if [ -n "$ula" ]; then
         printf "Your DN42 IPv6 ULA (optional) \033[33m[%s]\033[0m: " "$ula"
       else
         printf "Your DN42 IPv6 ULA (optional): "
       fi
-      read -r v
+      read_line_edit v
       flush_after_input
       { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
       [ -n "$v" ] && ula="$v"
@@ -153,14 +154,14 @@ do_new() {
       break
     done
 
-    # WireGuard Public Key (U7)
+    # WireGuard Public Key (U7 & U15)
     while true; do
       if [ -n "$pubkey" ]; then
         printf "Your WireGuard Public Key (44 chars Base64) \033[33m[%s]\033[0m: " "$pubkey"
       else
         printf "Your WireGuard Public Key (44 chars Base64): "
       fi
-      read -r v
+      read_line_edit v
       flush_after_input
       { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
       [ -n "$v" ] && pubkey="$v"
@@ -172,21 +173,21 @@ do_new() {
       break
     done
 
-    # Peer Endpoint (U3: hostname only, no :port)
+    # Peer Endpoint (U3: hostname only, no :port & U15)
     if [ -n "$peer_ep" ]; then
       printf "Your Endpoint hostname (optional) \033[33m[%s]\033[0m: " "$peer_ep"
     else
       printf "Your Endpoint hostname (optional): "
     fi
-    read -r v
+    read_line_edit v
     flush_after_input
     { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
     [ -n "$v" ] && peer_ep="$v"
 
-    # Server ListenPort (U7)
+    # Server ListenPort (U7 & U15)
     while true; do
       printf "Peer ListenPort (AkiLab side, default auto) \033[33m[%s]\033[0m: " "$host_port"
-      read -r v
+      read_line_edit v
       flush_after_input
       { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
       [ -n "$v" ] && host_port="$v"
@@ -197,10 +198,10 @@ do_new() {
       break
     done
 
-    # Client ListenPort (U7)
+    # Client ListenPort (U7 & U15)
     while true; do
       printf "Your ListenPort (client side, default auto) \033[33m[%s]\033[0m: " "$client_port"
-      read -r v
+      read_line_edit v
       flush_after_input
       { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
       [ -n "$v" ] && client_port="$v"
@@ -211,10 +212,10 @@ do_new() {
       break
     done
 
-    # MTU (U7)
+    # MTU (U7 & U15)
     while true; do
       printf "MTU (default 1420) \033[33m[%s]\033[0m: " "$mtu"
-      read -r v
+      read_line_edit v
       flush_after_input
       { [ "$v" = "q" ] || [ "$v" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
       [ -n "$v" ] && mtu="$v"
@@ -243,7 +244,7 @@ do_new() {
     echo ""
 
     printf "Confirm and submit? \033[33m[Y/n]\033[0m: "
-    read -r confirm
+    read_line_edit confirm
     flush_after_input
     { [ "$confirm" = "q" ] || [ "$confirm" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 1; }
     if [ "$confirm" = "n" ] || [ "$confirm" = "N" ]; then

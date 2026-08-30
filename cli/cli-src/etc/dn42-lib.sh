@@ -110,3 +110,186 @@ flush_after_input() {
     :
   done
 }
+
+# read_line_edit <var_name> [-s/--secret]
+# Minimal line editor supporting Left/Right/Home/End/Backspace/Delete without terminal ESC clutter (U15)
+read_line_edit() {
+  local _target_var="$1"
+  local _is_secret="$2"
+  local _buf=""
+  local _pos=0
+  local _c _c2 _c3 _c4 _old_stty _i _left _right _remaining _char _diff _rem_len
+
+  # Fallback for non-interactive / piped environments
+  if [ ! -t 0 ]; then
+    if [ "$_is_secret" = "-s" ] || [ "$_is_secret" = "--secret" ]; then
+      stty -echo 2>/dev/null
+      read -r _buf
+      stty echo 2>/dev/null
+    else
+      read -r _buf
+    fi
+    if [ -n "$_target_var" ]; then
+      eval "$_target_var=\"\$_buf\""
+    fi
+    REPLY="$_buf"
+    return 0
+  fi
+
+  _old_stty=$(stty -g 2>/dev/null)
+  stty -icanon -echo min 1 time 0 2>/dev/null || stty raw -echo 2>/dev/null
+
+  while true; do
+    _c=$(dd bs=1 count=1 2>/dev/null)
+
+    # Enter (\r or \n or EOF)
+    if [ "$_c" = "$(printf '\r')" ] || [ "$_c" = "$(printf '\n')" ] || [ -z "$_c" ]; then
+      printf "\r\n"
+      break
+    fi
+
+    # Ctrl+C (Interrupt \003)
+    if [ "$_c" = "$(printf '\003')" ]; then
+      _buf="q"
+      printf "\r\n"
+      break
+    fi
+
+    # Backspace (ASCII 8 \b or 127 \177)
+    if [ "$_c" = "$(printf '\b')" ] || [ "$_c" = "$(printf '\177')" ]; then
+      if [ $_pos -gt 0 ]; then
+        if [ "$_is_secret" = "-s" ] || [ "$_is_secret" = "--secret" ]; then
+          _buf="${_buf%?}"
+          _pos=$((_pos - 1))
+          printf "\b \b"
+        else
+          _i=0; _left=""; _right=""; _remaining="$_buf"
+          while [ -n "$_remaining" ]; do
+            if [ $_i -eq $_pos ]; then _right="$_remaining"; break; fi
+            _char="${_remaining%${_remaining#?}}"
+            _left="${_left}${_char}"
+            _remaining="${_remaining#?}"
+            _i=$((_i + 1))
+          done
+          _left="${_left%?}"
+          _buf="${_left}${_right}"
+          _pos=$((_pos - 1))
+          _rem_len=$((${#_right} + 1))
+          printf "\b%s \033[%dD" "$_right" "$_rem_len"
+        fi
+      fi
+      continue
+    fi
+
+    # Escape Sequences
+    if [ "$_c" = "$(printf '\033')" ]; then
+      _c2=$(dd bs=1 count=1 2>/dev/null)
+      if [ "$_c2" = "[" ] || [ "$_c2" = "O" ]; then
+        _c3=$(dd bs=1 count=1 2>/dev/null)
+        case "$_c3" in
+          "D") # Left Arrow
+            if [ $_pos -gt 0 ]; then
+              _pos=$((_pos - 1))
+              printf "\033[D"
+            fi
+            ;;
+          "C") # Right Arrow
+            if [ $_pos -lt ${#_buf} ]; then
+              _pos=$((_pos + 1))
+              printf "\033[C"
+            fi
+            ;;
+          "H") # Home
+            if [ $_pos -gt 0 ]; then
+              printf "\033[%dD" "$_pos"
+              _pos=0
+            fi
+            ;;
+          "F") # End
+            if [ $_pos -lt ${#_buf} ]; then
+              _diff=$(( ${#_buf} - _pos ))
+              printf "\033[%dC" "$_diff"
+              _pos=${#_buf}
+            fi
+            ;;
+          "1"|"7") # Extended Home (1~ or 7~)
+            dd bs=1 count=1 >/dev/null 2>&1
+            if [ $_pos -gt 0 ]; then
+              printf "\033[%dD" "$_pos"
+              _pos=0
+            fi
+            ;;
+          "4"|"8") # Extended End (4~ or 8~)
+            dd bs=1 count=1 >/dev/null 2>&1
+            if [ $_pos -lt ${#_buf} ]; then
+              _diff=$(( ${#_buf} - _pos ))
+              printf "\033[%dC" "$_diff"
+              _pos=${#_buf}
+            fi
+            ;;
+          "3") # Delete (3~)
+            dd bs=1 count=1 >/dev/null 2>&1
+            if [ $_pos -lt ${#_buf} ]; then
+              _i=0; _left=""; _right=""; _remaining="$_buf"
+              while [ -n "$_remaining" ]; do
+                if [ $_i -eq $_pos ]; then _right="$_remaining"; break; fi
+                _char="${_remaining%${_remaining#?}}"
+                _left="${_left}${_char}"
+                _remaining="${_remaining#?}"
+                _i=$((_i + 1))
+              done
+              _right="${_right#?}"
+              _buf="${_left}${_right}"
+              _rem_len=$((${#_right} + 1))
+              printf "%s \033[%dD" "$_right" "$_rem_len"
+            fi
+            ;;
+          *)
+            ;;
+        esac
+      fi
+      continue
+    fi
+
+    # Normal Printable Characters
+    if [ "$_is_secret" = "-s" ] || [ "$_is_secret" = "--secret" ]; then
+      _buf="${_buf}${_c}"
+      _pos=$((_pos + 1))
+      printf "*"
+    else
+      if [ $_pos -eq ${#_buf} ]; then
+        _buf="${_buf}${_c}"
+        _pos=$((_pos + 1))
+        printf "%s" "$_c"
+      else
+        _i=0; _left=""; _right=""; _remaining="$_buf"
+        while [ -n "$_remaining" ]; do
+          if [ $_i -eq $_pos ]; then _right="$_remaining"; break; fi
+          _char="${_remaining%${_remaining#?}}"
+          _left="${_left}${_char}"
+          _remaining="${_remaining#?}"
+          _i=$((_i + 1))
+        done
+        _buf="${_left}${_c}${_right}"
+        _pos=$((_pos + 1))
+        _rem_len=${#_right}
+        if [ $_rem_len -gt 0 ]; then
+          printf "%s%s\033[%dD" "$_c" "$_right" "$_rem_len"
+        else
+          printf "%s" "$_c"
+        fi
+      fi
+    fi
+  done
+
+  if [ -n "$_old_stty" ]; then
+    stty "$_old_stty" 2>/dev/null
+  else
+    stty icanon echo 2>/dev/null
+  fi
+
+  if [ -n "$_target_var" ]; then
+    eval "$_target_var=\"\$_buf\""
+  fi
+  REPLY="$_buf"
+}
