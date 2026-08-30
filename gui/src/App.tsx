@@ -1,18 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import {
   Globe, Server, Terminal, Shield, CheckCircle, AlertTriangle,
-  RefreshCw, LogIn, LogOut, Trash2, Network, Activity, Zap
+  RefreshCw, LogIn, LogOut, Trash2, Network, Activity, Zap, XCircle
 } from 'lucide-react';
 import { ApiClient, NetworkMeta, PeeringSession } from './api/client.ts';
 import {
   validateAsn, validatePublicKey, validateIpv4, validateIpv6Ula,
-  validateLinkLocal, validatePort, calcDefaultPort, formatDefaultLinkLocal,
+  validateLinkLocal, validatePort, validateMtu, calcDefaultPort, formatDefaultLinkLocal,
   normalizeAsn
 } from '@shared/generated/rules.js';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'wizard' | 'sessions' | 'nodes' | 'lg'>('wizard');
   const [meta, setMeta] = useState<NetworkMeta | null>(null);
+  const [wizardNode, setWizardNode] = useState<string>('');
   const [user, setUser] = useState<{ asn: number; asName: string; role: string } | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
 
@@ -21,6 +22,9 @@ export default function App() {
     const metaRes = await ApiClient.getNetworkMeta();
     if (metaRes.success && metaRes.data) {
       setMeta(metaRes.data);
+      if (!wizardNode && metaRes.data.nodes?.length > 0) {
+        setWizardNode(metaRes.data.nodes[0].id);
+      }
     }
     const meRes = await ApiClient.getMe();
     if (meRes.success && meRes.data) {
@@ -33,6 +37,12 @@ export default function App() {
   useEffect(() => {
     loadInitialData();
   }, []);
+
+  useEffect(() => {
+    if (meta?.nodes && meta.nodes.length > 0 && !wizardNode) {
+      setWizardNode(meta.nodes[0].id);
+    }
+  }, [meta, wizardNode]);
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#0b0f19', color: '#e2e8f0' }}>
@@ -93,7 +103,7 @@ export default function App() {
 
             {user ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span className="terminal-badge">AS{user.asn}</span>
+                <span className="terminal-badge">AS{user.asn} ({user.asName || 'Member'})</span>
                 <button
                   onClick={() => { ApiClient.clearToken(); setUser(null); }}
                   style={{ background: 'transparent', border: 'none', color: '#94a3b8', padding: '6px', display: 'flex', alignItems: 'center' }}
@@ -116,9 +126,24 @@ export default function App() {
 
       {/* Main Content Area */}
       <main style={{ flex: 1, maxWidth: '1200px', width: '100%', margin: '0 auto', padding: '24px 20px' }}>
-        {activeTab === 'wizard' && <PeeringWizard meta={meta} onSessionCreated={() => setActiveTab('sessions')} />}
+        {activeTab === 'wizard' && (
+          <PeeringWizard
+            meta={meta}
+            selectedNode={wizardNode}
+            onSelectNode={setWizardNode}
+            onSessionCreated={() => setActiveTab('sessions')}
+          />
+        )}
         {activeTab === 'sessions' && <SessionsDashboard user={user} onOpenLogin={() => setAuthModalOpen(true)} />}
-        {activeTab === 'nodes' && <NodesView meta={meta} onSelectNode={() => setActiveTab('wizard')} />}
+        {activeTab === 'nodes' && (
+          <NodesView
+            meta={meta}
+            onSelectNode={(nodeId) => {
+              if (nodeId) setWizardNode(nodeId);
+              setActiveTab('wizard');
+            }}
+          />
+        )}
         {activeTab === 'lg' && <LookingGlassView meta={meta} />}
       </main>
 
@@ -136,21 +161,38 @@ export default function App() {
 // -----------------------------------------------------------------------------
 // Component: Peering Wizard
 // -----------------------------------------------------------------------------
-function PeeringWizard({ meta, onSessionCreated }: { meta: NetworkMeta | null; onSessionCreated: () => void }) {
-  const [selectedNode, setSelectedNode] = useState(meta?.nodes[0]?.id || 'JP-TYO-1');
+function PeeringWizard({
+  meta,
+  selectedNode,
+  onSelectNode,
+  onSessionCreated
+}: {
+  meta: NetworkMeta | null;
+  selectedNode: string;
+  onSelectNode: (nodeId: string) => void;
+  onSessionCreated: () => void;
+}) {
   const [asn, setAsn] = useState('');
   const [publicKey, setPublicKey] = useState('');
   const [linkLocal, setLinkLocal] = useState('');
   const [ipv4, setIpv4] = useState('');
   const [ipv6Ula, setIpv6Ula] = useState('');
   const [endpoint, setEndpoint] = useState('');
-  const [portChoice, setPortChoice] = useState<'auto' | 'custom'>('auto');
-  const [customPort, setCustomPort] = useState('');
+
+  // Dual Port Controls (R1)
+  const [listenPortChoice, setListenPortChoice] = useState<'auto' | 'custom'>('auto');
+  const [customListenPort, setCustomListenPort] = useState('');
+  const [clientPortChoice, setClientPortChoice] = useState<'auto' | 'custom'>('auto');
+  const [customClientPort, setCustomClientPort] = useState('');
+
   const [mtu, setMtu] = useState('1420');
   const [contact, setContact] = useState('');
 
-  // 0ms Real-time Validation Errors
+  // Error States (R2 & M4)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [unmappedErrors, setUnmappedErrors] = useState<string[]>([]);
+  const [generalError, setGeneralError] = useState<string | null>(null);
+
   const [submitting, setSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<any>(null);
 
@@ -164,9 +206,23 @@ function PeeringWizard({ meta, onSessionCreated }: { meta: NetworkMeta | null; o
     }
   }, [asn, linkLocal]);
 
-  // Realtime 0ms validation
+  // Ensure selectedNode is initialized when meta arrives
+  useEffect(() => {
+    if (meta?.nodes && meta.nodes.length > 0) {
+      if (!selectedNode || !meta.nodes.some(n => n.id === selectedNode)) {
+        onSelectNode(meta.nodes[0].id);
+      }
+    }
+  }, [meta, selectedNode, onSelectNode]);
+
+  // Realtime 0ms validation (M4 + R2)
   const validateForm = () => {
     const errs: Record<string, string> = {};
+
+    if (!selectedNode) {
+      errs.nodeId = 'Target PoP Node is required';
+    }
+
     const asnRes = validateAsn(asn);
     if (!asnRes.valid) errs.asn = asnRes.error || 'Invalid ASN';
 
@@ -186,12 +242,23 @@ function PeeringWizard({ meta, onSessionCreated }: { meta: NetworkMeta | null; o
       if (!v6Res.valid) errs.ipv6Ula = v6Res.error || 'Invalid IPv6 ULA';
     }
 
-    if (portChoice === 'custom' && customPort) {
-      const pRes = validatePort(customPort, false);
-      if (!pRes.valid) errs.port = pRes.error || 'Invalid Port';
+    if (listenPortChoice === 'custom') {
+      const pRes = validatePort(customListenPort, false);
+      if (!pRes.valid) errs.listenPort = pRes.error || 'Invalid Server ListenPort';
     }
 
+    if (clientPortChoice === 'custom' && customClientPort.trim()) {
+      const cpRes = validatePort(customClientPort, false);
+      if (!cpRes.valid) errs.clientPort = cpRes.error || 'Invalid Client ListenPort';
+    }
+
+    // MTU Validation (M4)
+    const mtuRes = validateMtu(mtu);
+    if (!mtuRes.valid) errs.mtu = mtuRes.error || 'Invalid MTU';
+
     setFieldErrors(errs);
+    setUnmappedErrors([]);
+    setGeneralError(null);
     return Object.keys(errs).length === 0;
   };
 
@@ -200,6 +267,9 @@ function PeeringWizard({ meta, onSessionCreated }: { meta: NetworkMeta | null; o
     if (!validateForm()) return;
 
     setSubmitting(true);
+    setGeneralError(null);
+    setUnmappedErrors([]);
+
     const payload = {
       asn: normalizeAsn(asn),
       nodeId: selectedNode,
@@ -208,7 +278,8 @@ function PeeringWizard({ meta, onSessionCreated }: { meta: NetworkMeta | null; o
       ipv4: ipv4.trim() || undefined,
       ipv6Ula: ipv6Ula.trim() || undefined,
       endpoint: endpoint.trim() || undefined,
-      listenPort: portChoice === 'auto' ? 'auto' : parseInt(customPort, 10),
+      listenPort: listenPortChoice === 'auto' ? 'auto' : parseInt(customListenPort, 10),
+      clientPort: clientPortChoice === 'auto' || !customClientPort.trim() ? 'auto' : parseInt(customClientPort, 10),
       mtu: parseInt(mtu, 10) || 1420,
       contact: contact.trim() || undefined,
       bgpMode: 'mpbgp_enh'
@@ -219,12 +290,30 @@ function PeeringWizard({ meta, onSessionCreated }: { meta: NetworkMeta | null; o
 
     if (res.success && res.data) {
       setSubmitResult(res.data);
+      setFieldErrors({});
+      setUnmappedErrors([]);
+      setGeneralError(null);
     } else {
-      if (res.error?.fieldErrors) {
-        setFieldErrors(res.error.fieldErrors);
-      } else {
-        alert(res.error?.message || 'Submission failed');
+      const backendFieldErrors = res.error?.fieldErrors || {};
+      const knownErrors: Record<string, string> = {};
+      const unmapped: string[] = [];
+
+      const RENDERED_FIELDS = new Set([
+        'asn', 'nodeId', 'publicKey', 'linkLocal', 'ipv4', 'ipv6Ula',
+        'endpoint', 'listenPort', 'clientPort', 'mtu', 'contact', 'bgpMode'
+      ]);
+
+      for (const [key, msg] of Object.entries(backendFieldErrors)) {
+        if (RENDERED_FIELDS.has(key)) {
+          knownErrors[key] = msg;
+        } else {
+          unmapped.push(`${key}: ${msg}`);
+        }
       }
+
+      setFieldErrors(knownErrors);
+      setUnmappedErrors(unmapped);
+      setGeneralError(res.error?.message || (unmapped.length > 0 ? '提交未能通过服务端校验' : '提交互联申请失败'));
     }
   };
 
@@ -288,6 +377,22 @@ function PeeringWizard({ meta, onSessionCreated }: { meta: NetworkMeta | null; o
           <Zap size={22} color="#00ffaa" /> DN42 自动互联申请向导
         </h2>
 
+        {/* Global Error Banner / Unmapped Errors (R2) */}
+        {(generalError || unmappedErrors.length > 0) && (
+          <div style={{ backgroundColor: 'rgba(244, 63, 94, 0.1)', border: '1px solid #f43f5e', borderRadius: '8px', padding: '14px', marginBottom: '20px', color: '#fca5a5' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, fontSize: '0.95rem' }}>
+              <XCircle size={18} color="#f43f5e" /> {generalError || '表单提交存在错误，请核对后重试'}
+            </div>
+            {unmappedErrors.length > 0 && (
+              <ul style={{ margin: '8px 0 0 20px', padding: 0, fontSize: '0.85rem' }}>
+                {unmappedErrors.map((err, idx) => (
+                  <li key={idx}><code>{err}</code></li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
         {/* 1. Node Selection */}
         <div style={{ marginBottom: '20px' }}>
           <label style={{ display: 'block', fontWeight: 600, fontSize: '0.9rem', marginBottom: '8px', color: '#cbd5e1' }}>
@@ -297,11 +402,11 @@ function PeeringWizard({ meta, onSessionCreated }: { meta: NetworkMeta | null; o
             {meta?.nodes.map(n => (
               <div
                 key={n.id}
-                onClick={() => setSelectedNode(n.id)}
+                onClick={() => onSelectNode(n.id)}
                 style={{
                   padding: '12px',
                   borderRadius: '8px',
-                  border: selectedNode === n.id ? '2px solid #00ffaa' : '1px solid #1e293b',
+                  border: selectedNode === n.id ? '2px solid #00ffaa' : (fieldErrors.nodeId ? '1px solid #f43f5e' : '1px solid #1e293b'),
                   backgroundColor: selectedNode === n.id ? 'rgba(0, 255, 170, 0.05)' : '#131b2e',
                   cursor: 'pointer'
                 }}
@@ -313,6 +418,7 @@ function PeeringWizard({ meta, onSessionCreated }: { meta: NetworkMeta | null; o
               </div>
             ))}
           </div>
+          {fieldErrors.nodeId && <div style={{ color: '#f43f5e', fontSize: '0.8rem', marginTop: '4px' }}>{fieldErrors.nodeId}</div>}
         </div>
 
         {/* 2. ASN */}
@@ -390,64 +496,113 @@ function PeeringWizard({ meta, onSessionCreated }: { meta: NetworkMeta | null; o
           </div>
         </div>
 
-        {/* 6. Endpoint & ListenPort */}
+        {/* 6. Endpoint */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '6px', color: '#cbd5e1' }}>
+            对端 Endpoint (选填，支持 DDNS:Port)
+          </label>
+          <input
+            type="text"
+            placeholder="your-domain.dn42:23143"
+            value={endpoint}
+            onChange={e => setEndpoint(e.target.value)}
+            style={{ width: '100%', padding: '10px 14px', borderRadius: '6px', backgroundColor: '#070a12', border: fieldErrors.endpoint ? '1px solid #f43f5e' : '1px solid #1e293b', color: '#fff', fontSize: '0.9rem' }}
+          />
+          {fieldErrors.endpoint && <div style={{ color: '#f43f5e', fontSize: '0.8rem', marginTop: '4px' }}>{fieldErrors.endpoint}</div>}
+        </div>
+
+        {/* 7. Dual Port Controls (R1) */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+          {/* Server ListenPort (AkiLab Side) */}
           <div>
-            <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '6px', color: '#cbd5e1' }}>
-              对端 Endpoint (选填，支持 DDNS)
-            </label>
-            <input
-              type="text"
-              placeholder="your-domain.dn42:23143"
-              value={endpoint}
-              onChange={e => setEndpoint(e.target.value)}
-              style={{ width: '100%', padding: '10px 14px', borderRadius: '6px', backgroundColor: '#070a12', border: '1px solid #1e293b', color: '#fff', fontSize: '0.9rem' }}
-            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <label style={{ fontWeight: 600, fontSize: '0.85rem', color: '#cbd5e1' }}>
+                服务端端口 (AkiLab 侧)
+              </label>
+              <button
+                type="button"
+                onClick={() => { setListenPortChoice('custom'); setCustomListenPort(String(expectedPort)); }}
+                style={{ background: 'transparent', border: 'none', color: '#38bdf8', fontSize: '0.75rem', cursor: 'pointer', padding: 0 }}
+                title="填入根据 ASN 算得的建议端口"
+              >
+                填入建议值 ({expectedPort})
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setListenPortChoice('auto')}
+                style={{ flex: 1, padding: '8px', borderRadius: '6px', border: listenPortChoice === 'auto' ? '1px solid #00ffaa' : '1px solid #1e293b', backgroundColor: listenPortChoice === 'auto' ? 'rgba(0, 255, 170, 0.1)' : '#070a12', color: listenPortChoice === 'auto' ? '#00ffaa' : '#94a3b8', fontSize: '0.8rem', fontWeight: 600 }}
+              >
+                自动 (auto 裁决)
+              </button>
+              <button
+                type="button"
+                onClick={() => setListenPortChoice('custom')}
+                style={{ flex: 1, padding: '8px', borderRadius: '6px', border: listenPortChoice === 'custom' ? '1px solid #00ffaa' : '1px solid #1e293b', backgroundColor: listenPortChoice === 'custom' ? 'rgba(0, 255, 170, 0.1)' : '#070a12', color: listenPortChoice === 'custom' ? '#00ffaa' : '#94a3b8', fontSize: '0.8rem', fontWeight: 600 }}
+              >
+                指定端口
+              </button>
+            </div>
+            {listenPortChoice === 'custom' && (
+              <input
+                type="number"
+                placeholder="1024-65535"
+                value={customListenPort}
+                onChange={e => setCustomListenPort(e.target.value)}
+                style={{ width: '100%', marginTop: '8px', padding: '8px 12px', borderRadius: '6px', backgroundColor: '#070a12', border: fieldErrors.listenPort ? '1px solid #f43f5e' : '1px solid #1e293b', color: '#fff', fontSize: '0.9rem' }}
+              />
+            )}
+            {fieldErrors.listenPort && <div style={{ color: '#f43f5e', fontSize: '0.8rem', marginTop: '4px' }}>{fieldErrors.listenPort}</div>}
           </div>
+
+          {/* Client ListenPort (User Side, wg0.conf) */}
           <div>
             <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '6px', color: '#cbd5e1' }}>
-              端口模式 / Port Mode
+              客户端端口 (您本地 wg0.conf)
             </label>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
                 type="button"
-                onClick={() => setPortChoice('auto')}
-                style={{ flex: 1, padding: '9px', borderRadius: '6px', border: portChoice === 'auto' ? '1px solid #00ffaa' : '1px solid #1e293b', backgroundColor: portChoice === 'auto' ? 'rgba(0, 255, 170, 0.1)' : '#070a12', color: portChoice === 'auto' ? '#00ffaa' : '#94a3b8', fontSize: '0.85rem', fontWeight: 600 }}
+                onClick={() => setClientPortChoice('auto')}
+                style={{ flex: 1, padding: '8px', borderRadius: '6px', border: clientPortChoice === 'auto' ? '1px solid #00ffaa' : '1px solid #1e293b', backgroundColor: clientPortChoice === 'auto' ? 'rgba(0, 255, 170, 0.1)' : '#070a12', color: clientPortChoice === 'auto' ? '#00ffaa' : '#94a3b8', fontSize: '0.8rem', fontWeight: 600 }}
               >
-                自动 (公式 {expectedPort})
+                自动 (留空随机)
               </button>
               <button
                 type="button"
-                onClick={() => setPortChoice('custom')}
-                style={{ flex: 1, padding: '9px', borderRadius: '6px', border: portChoice === 'custom' ? '1px solid #00ffaa' : '1px solid #1e293b', backgroundColor: portChoice === 'custom' ? 'rgba(0, 255, 170, 0.1)' : '#070a12', color: portChoice === 'custom' ? '#00ffaa' : '#94a3b8', fontSize: '0.85rem', fontWeight: 600 }}
+                onClick={() => setClientPortChoice('custom')}
+                style={{ flex: 1, padding: '8px', borderRadius: '6px', border: clientPortChoice === 'custom' ? '1px solid #00ffaa' : '1px solid #1e293b', backgroundColor: clientPortChoice === 'custom' ? 'rgba(0, 255, 170, 0.1)' : '#070a12', color: clientPortChoice === 'custom' ? '#00ffaa' : '#94a3b8', fontSize: '0.8rem', fontWeight: 600 }}
               >
-                自定义端口
+                固定端口
               </button>
             </div>
-            {portChoice === 'custom' && (
+            {clientPortChoice === 'custom' && (
               <input
                 type="number"
-                placeholder="1024-65535"
-                value={customPort}
-                onChange={e => setCustomPort(e.target.value)}
-                style={{ width: '100%', marginTop: '8px', padding: '8px 12px', borderRadius: '6px', backgroundColor: '#070a12', border: fieldErrors.port ? '1px solid #f43f5e' : '1px solid #1e293b', color: '#fff', fontSize: '0.9rem' }}
+                placeholder="1024-65535 (选填)"
+                value={customClientPort}
+                onChange={e => setCustomClientPort(e.target.value)}
+                style={{ width: '100%', marginTop: '8px', padding: '8px 12px', borderRadius: '6px', backgroundColor: '#070a12', border: fieldErrors.clientPort ? '1px solid #f43f5e' : '1px solid #1e293b', color: '#fff', fontSize: '0.9rem' }}
               />
             )}
+            {fieldErrors.clientPort && <div style={{ color: '#f43f5e', fontSize: '0.8rem', marginTop: '4px' }}>{fieldErrors.clientPort}</div>}
           </div>
         </div>
 
-        {/* 7. MTU and Contact */}
+        {/* 8. MTU and Contact */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
           <div>
             <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '6px', color: '#cbd5e1' }}>
-              MTU (默认 1420)
+              MTU (默认 1420，范围 1280-1500)
             </label>
             <input
               type="number"
               value={mtu}
               onChange={e => setMtu(e.target.value)}
-              style={{ width: '100%', padding: '10px 14px', borderRadius: '6px', backgroundColor: '#070a12', border: '1px solid #1e293b', color: '#fff', fontSize: '0.9rem' }}
+              style={{ width: '100%', padding: '10px 14px', borderRadius: '6px', backgroundColor: '#070a12', border: fieldErrors.mtu ? '1px solid #f43f5e' : '1px solid #1e293b', color: '#fff', fontSize: '0.9rem' }}
             />
+            {fieldErrors.mtu && <div style={{ color: '#f43f5e', fontSize: '0.8rem', marginTop: '4px' }}>{fieldErrors.mtu}</div>}
           </div>
           <div>
             <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '6px', color: '#cbd5e1' }}>
@@ -458,8 +613,9 @@ function PeeringWizard({ meta, onSessionCreated }: { meta: NetworkMeta | null; o
               placeholder="@your_telegram"
               value={contact}
               onChange={e => setContact(e.target.value)}
-              style={{ width: '100%', padding: '10px 14px', borderRadius: '6px', backgroundColor: '#070a12', border: '1px solid #1e293b', color: '#fff', fontSize: '0.9rem' }}
+              style={{ width: '100%', padding: '10px 14px', borderRadius: '6px', backgroundColor: '#070a12', border: fieldErrors.contact ? '1px solid #f43f5e' : '1px solid #1e293b', color: '#fff', fontSize: '0.9rem' }}
             />
+            {fieldErrors.contact && <div style={{ color: '#f43f5e', fontSize: '0.8rem', marginTop: '4px' }}>{fieldErrors.contact}</div>}
           </div>
         </div>
 
@@ -481,9 +637,9 @@ function PeeringWizard({ meta, onSessionCreated }: { meta: NetworkMeta | null; o
             <Shield size={16} /> 端口与裁决规则
           </h3>
           <div style={{ fontSize: '0.85rem', color: '#94a3b8', lineHeight: 1.6 }}>
-            <p style={{ margin: '0 0 8px 0' }}>• 默认端口公式：<code>20000 + (ASN % 10000)</code></p>
-            <p style={{ margin: '0 0 8px 0' }}>• 预期分配端口：<b style={{ color: '#00ffaa' }}>{expectedPort}</b>（若被占用提交时自动 +10000 顺延）</p>
-            <p style={{ margin: '0' }}>• 权威端口裁决与锁定<b>只在点击提交时原子完成</b>，零竞态。</p>
+            <p style={{ margin: '0 0 8px 0' }}>• 默认端口建议值：<code>20000 + (ASN % 10000)</code> = <b style={{ color: '#00ffaa' }}>{expectedPort}</b></p>
+            <p style={{ margin: '0 0 8px 0' }}>• <b>服务端端口</b>：AkiLab 侧监听端口。默认 <code>auto</code> 由系统自动分配并在冲突时顺延；亦可手动指定。</p>
+            <p style={{ margin: '0' }}>• <b>客户端端口</b>：若填写则写入本地 <code>wg0.conf</code> 的 <code>ListenPort</code>；留空则客户端系统自动分配随机 UDP 端口。</p>
           </div>
         </div>
 
@@ -492,10 +648,12 @@ function PeeringWizard({ meta, onSessionCreated }: { meta: NetworkMeta | null; o
             <Terminal size={16} /> 0ms 本地前置预览
           </h3>
           <div style={{ fontSize: '0.8rem', color: '#cbd5e1', backgroundColor: '#070a12', padding: '12px', borderRadius: '6px', border: '1px solid #1e293b' }}>
-            <div><b>Peer Node</b>: {selectedNode}</div>
+            <div><b>Target PoP</b>: {selectedNode || 'None selected'}</div>
             <div><b>Target ASN</b>: AS{asn || '424242xxxx'}</div>
             <div><b>LLA</b>: {linkLocal || 'fe80::...'}</div>
-            <div><b>Estimated Port</b>: {portChoice === 'custom' ? (customPort || 'Custom') : expectedPort}</div>
+            <div><b>Server Port</b>: {listenPortChoice === 'custom' ? (customListenPort || 'Custom') : `auto (建议 ${expectedPort})`}</div>
+            <div><b>Client Port</b>: {clientPortChoice === 'custom' ? (customClientPort || 'auto') : 'auto (随机)'}</div>
+            <div><b>MTU</b>: {mtu || 1420}</div>
           </div>
         </div>
       </div>
@@ -615,7 +773,7 @@ function SessionsDashboard({ user, onOpenLogin }: { user: any; onOpenLogin: () =
 // -----------------------------------------------------------------------------
 // Component: Nodes View
 // -----------------------------------------------------------------------------
-function NodesView({ meta, onSelectNode }: { meta: NetworkMeta | null; onSelectNode: () => void }) {
+function NodesView({ meta, onSelectNode }: { meta: NetworkMeta | null; onSelectNode: (nodeId?: string) => void }) {
   return (
     <div>
       <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -642,7 +800,7 @@ function NodesView({ meta, onSelectNode }: { meta: NetworkMeta | null; onSelectN
             </div>
 
             <button
-              onClick={onSelectNode}
+              onClick={() => onSelectNode(n.id)}
               style={{ marginTop: '20px', width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid rgba(0, 255, 170, 0.3)', backgroundColor: 'rgba(0, 255, 170, 0.05)', color: '#00ffaa', fontWeight: 600, fontSize: '0.9rem' }}
             >
               接入此节点 / Peer on this PoP
@@ -663,6 +821,12 @@ function LookingGlassView({ meta }: { meta: NetworkMeta | null }) {
   const [target, setTarget] = useState('');
   const [output, setOutput] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (meta?.nodes && meta.nodes.length > 0 && !selectedNode) {
+      setSelectedNode(meta.nodes[0].id);
+    }
+  }, [meta, selectedNode]);
 
   const handleQuery = async () => {
     setLoading(true);
@@ -706,7 +870,8 @@ function LookingGlassView({ meta }: { meta: NetworkMeta | null }) {
           value={target}
           onChange={e => setTarget(e.target.value)}
           style={{ padding: '10px 14px', borderRadius: '6px', backgroundColor: '#070a12', border: '1px solid #1e293b', color: '#fff' }}
-        />
+        >
+        </input>
 
         <button
           onClick={handleQuery}
@@ -758,12 +923,12 @@ function AuthModal({ onClose, onAuthSuccess }: { onClose: () => void; onAuthSucc
       ApiClient.setToken(res.data.token);
       onAuthSuccess(res.data);
     } else {
-      alert(res.error?.message || 'Signature verification failed');
+      alert(res.error?.message || 'SSH Signature Verification Failed');
     }
   };
 
-  const handlePasswordLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handlePasswordLogin = async () => {
+    if (!username || !password) return;
     setLoading(true);
     const res = await ApiClient.loginPassword(username, password, rememberMe);
     setLoading(false);
@@ -771,30 +936,37 @@ function AuthModal({ onClose, onAuthSuccess }: { onClose: () => void; onAuthSucc
       ApiClient.setToken(res.data.token);
       onAuthSuccess(res.data);
     } else {
-      alert(res.error?.message || 'Invalid credentials');
+      alert(res.error?.message || 'Login failed');
     }
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-      <div className="glass-card" style={{ padding: '32px', maxWidth: '640px', width: '90%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h2 style={{ fontSize: '1.3rem', fontWeight: 700, margin: 0 }}>身份鉴权 / Authenticate</h2>
-          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '1.2rem' }}>✕</button>
-        </div>
+    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '20px' }}>
+      <div className="glass-card" style={{ maxWidth: '520px', width: '100%', padding: '28px', position: 'relative' }}>
+        <button
+          onClick={onClose}
+          style={{ position: 'absolute', top: '16px', right: '16px', background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '1.2rem', cursor: 'pointer' }}
+        >
+          ✕
+        </button>
 
+        <h2 style={{ fontSize: '1.3rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Shield size={20} color="#00ffaa" /> 身份验证 / Authentication
+        </h2>
+
+        {/* Tab Switcher */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
           <button
             onClick={() => setTab('ssh')}
-            style={{ flex: 1, padding: '10px', borderRadius: '6px', border: tab === 'ssh' ? '1px solid #00ffaa' : '1px solid #1e293b', backgroundColor: tab === 'ssh' ? 'rgba(0, 255, 170, 0.1)' : '#070a12', color: tab === 'ssh' ? '#00ffaa' : '#94a3b8', fontWeight: 600 }}
+            style={{ flex: 1, padding: '8px', borderRadius: '6px', border: 'none', backgroundColor: tab === 'ssh' ? '#1e293b' : 'transparent', color: tab === 'ssh' ? '#00ffaa' : '#94a3b8', fontWeight: 600, fontSize: '0.9rem' }}
           >
-            SSH 签名认证
+            SSH 密码学验签 (权威)
           </button>
           <button
             onClick={() => setTab('password')}
-            style={{ flex: 1, padding: '10px', borderRadius: '6px', border: tab === 'password' ? '1px solid #00ffaa' : '1px solid #1e293b', backgroundColor: tab === 'password' ? 'rgba(0, 255, 170, 0.1)' : '#070a12', color: tab === 'password' ? '#00ffaa' : '#94a3b8', fontWeight: 600 }}
+            style={{ flex: 1, padding: '8px', borderRadius: '6px', border: 'none', backgroundColor: tab === 'password' ? '#1e293b' : 'transparent', color: tab === 'password' ? '#00ffaa' : '#94a3b8', fontWeight: 600, fontSize: '0.9rem' }}
           >
-            密码登录 (测试/管理员)
+            密码登录 / 快捷凭证
           </button>
         </div>
 
@@ -802,86 +974,118 @@ function AuthModal({ onClose, onAuthSuccess }: { onClose: () => void; onAuthSucc
           <div>
             {!challengeData ? (
               <div>
-                <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '6px' }}>输入 ASN 生成签名指令</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input
-                    type="text"
-                    placeholder="4242423143"
-                    value={asnInput}
-                    onChange={e => setAsnInput(e.target.value)}
-                    style={{ flex: 1, padding: '10px 14px', borderRadius: '6px', backgroundColor: '#070a12', border: '1px solid #1e293b', color: '#fff' }}
-                  />
-                  <button
-                    onClick={handleGetChallenge}
-                    disabled={loading}
-                    style={{ padding: '10px 20px', borderRadius: '6px', border: 'none', backgroundColor: '#00ffaa', color: '#0b0f19', fontWeight: 700 }}
-                  >
-                    生成指令
-                  </button>
-                </div>
+                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '6px', color: '#cbd5e1' }}>
+                  您的 DN42 ASN / Account
+                </label>
+                <input
+                  type="text"
+                  placeholder="4242423143"
+                  value={asnInput}
+                  onChange={e => setAsnInput(e.target.value)}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '6px', backgroundColor: '#070a12', border: '1px solid #1e293b', color: '#fff', fontSize: '0.95rem', marginBottom: '16px' }}
+                />
+                <button
+                  onClick={handleGetChallenge}
+                  disabled={loading || !asnInput}
+                  style={{ width: '100%', padding: '12px', borderRadius: '6px', border: 'none', backgroundColor: '#00ffaa', color: '#0b0f19', fontWeight: 700 }}
+                >
+                  {loading ? '获取 Challenge 中...' : '获取随机 Challenge / Get Challenge'}
+                </button>
               </div>
             ) : (
               <div>
-                <p style={{ fontSize: '0.85rem', color: '#94a3b8', margin: '0 0 8px 0' }}>请在终端运行以下自毁签名指令（PowerShell 或 Linux）：</p>
-                <pre style={{ backgroundColor: '#070a12', padding: '12px', borderRadius: '6px', border: '1px solid #1e293b', fontSize: '0.75rem', overflowX: 'auto', color: '#38bdf8' }}>
-                  {challengeData.commands.ssh_powershell}
-                </pre>
+                <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '8px' }}>
+                  请使用您在 DN42 Registry 注册的 SSH 私钥执行以下命令进行离线签名：
+                </p>
+                <div style={{ backgroundColor: '#070a12', padding: '10px', borderRadius: '6px', border: '1px solid #1e293b', fontSize: '0.8rem', color: '#38bdf8', marginBottom: '12px', wordBreak: 'break-all' }}>
+                  <code>{challengeData.commandLinux || challengeData.commands?.ssh_linux}</code>
+                </div>
+
+                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '6px', color: '#cbd5e1' }}>
+                  粘贴完整的 SSH 签名块 / Paste Signature
+                </label>
                 <textarea
                   rows={4}
-                  placeholder="粘贴 -----BEGIN SSH SIGNATURE----- 块"
+                  placeholder="-----BEGIN SSH SIGNATURE-----&#10;...&#10;-----END SSH SIGNATURE-----"
                   value={signature}
                   onChange={e => setSignature(e.target.value)}
-                  style={{ width: '100%', padding: '10px', borderRadius: '6px', backgroundColor: '#070a12', border: '1px solid #1e293b', color: '#fff', fontSize: '0.8rem', fontFamily: 'monospace', margin: '12px 0' }}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '6px', backgroundColor: '#070a12', border: '1px solid #1e293b', color: '#fff', fontSize: '0.85rem', fontFamily: 'monospace', marginBottom: '16px' }}
                 />
-                <button
-                  onClick={handleVerifySig}
-                  disabled={loading}
-                  style={{ width: '100%', padding: '12px', borderRadius: '6px', border: 'none', backgroundColor: '#00ffaa', color: '#0b0f19', fontWeight: 700 }}
-                >
-                  验证并登录
-                </button>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                  <input
+                    type="checkbox"
+                    id="rem"
+                    checked={rememberMe}
+                    onChange={e => setRememberMe(e.target.checked)}
+                  />
+                  <label htmlFor="rem" style={{ fontSize: '0.85rem', color: '#94a3b8' }}>30 天内保持登录 / Remember Me</label>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    onClick={() => setChallengeData(null)}
+                    style={{ padding: '10px 16px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: '#fff' }}
+                  >
+                    重置
+                  </button>
+                  <button
+                    onClick={handleVerifySig}
+                    disabled={loading || !signature}
+                    style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', backgroundColor: '#00ffaa', color: '#0b0f19', fontWeight: 700 }}
+                  >
+                    {loading ? '校验签名中...' : '提交签名 / Verify & Sign In'}
+                  </button>
+                </div>
               </div>
             )}
           </div>
         ) : (
-          <form onSubmit={handlePasswordLogin}>
+          <div>
             <div style={{ marginBottom: '14px' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '6px' }}>用户名 / ASN</label>
+              <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '6px', color: '#cbd5e1' }}>
+                ASN 或用户名
+              </label>
               <input
                 type="text"
                 placeholder="4242423143"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
-                style={{ width: '100%', padding: '10px 14px', borderRadius: '6px', backgroundColor: '#070a12', border: '1px solid #1e293b', color: '#fff' }}
+                style={{ width: '100%', padding: '10px 14px', borderRadius: '6px', backgroundColor: '#070a12', border: '1px solid #1e293b', color: '#fff', fontSize: '0.95rem' }}
               />
             </div>
-            <div style={{ marginBottom: '14px' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '6px' }}>密码</label>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '6px', color: '#cbd5e1' }}>
+                密码
+              </label>
               <input
                 type="password"
                 placeholder="••••••••"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                style={{ width: '100%', padding: '10px 14px', borderRadius: '6px', backgroundColor: '#070a12', border: '1px solid #1e293b', color: '#fff' }}
+                style={{ width: '100%', padding: '10px 14px', borderRadius: '6px', backgroundColor: '#070a12', border: '1px solid #1e293b', color: '#fff', fontSize: '0.95rem' }}
               />
             </div>
-            <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
               <input
                 type="checkbox"
-                id="rememberMeCheckbox"
+                id="remPass"
                 checked={rememberMe}
                 onChange={e => setRememberMe(e.target.checked)}
               />
-              <label htmlFor="rememberMeCheckbox" style={{ fontSize: '0.85rem', color: '#94a3b8' }}>记住我 30 天 / Remember for 30 days</label>
+              <label htmlFor="remPass" style={{ fontSize: '0.85rem', color: '#94a3b8' }}>30 天内保持登录 / Remember Me</label>
             </div>
+
             <button
-              type="submit"
-              disabled={loading}
+              onClick={handlePasswordLogin}
+              disabled={loading || !username || !password}
               style={{ width: '100%', padding: '12px', borderRadius: '6px', border: 'none', backgroundColor: '#00ffaa', color: '#0b0f19', fontWeight: 700 }}
             >
-              登录
+              {loading ? '登录中...' : '登录 / Sign In'}
             </button>
-          </form>
+          </div>
         )}
       </div>
     </div>
