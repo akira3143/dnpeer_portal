@@ -100,8 +100,10 @@ describe('Shell Rules POSIX Validation Tests', { skip: !shBin ? 'sh binary not f
     const res = runShScript(`
       validate_ipv6_ula "fd00:4242:3143::1" || echo "fail 1"
       validate_ipv6_ula "2001:db8::1" && echo "should have failed 2"
-      validate_link_local "fe80::4242:3143" || echo "fail 3"
-      validate_link_local "fd00::1" && echo "should have failed 4"
+      validate_link_local "fe80::3143" || echo "fail 3"
+      validate_link_local "fe80::4242:3143" || echo "fail 4"
+      validate_link_local "fe80::4242423143" && echo "should have failed 5"
+      validate_link_local "fd00::1" && echo "should have failed 6"
       echo "done"
     `);
     assert.equal(res.status, 0);

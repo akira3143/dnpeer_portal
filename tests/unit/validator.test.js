@@ -9,6 +9,7 @@ import {
   validatePort,
   validateMtu,
   calcDefaultPort,
+  formatDefaultLinkLocal,
   validatePeeringSubmission,
   normalizeAsn
 } from '../../server/utils/validator.js';
@@ -79,10 +80,15 @@ describe('Authoritative Validator Unit Tests', () => {
       assert.equal(validateIpv6Ula('2001:db8::1').valid, false);
     });
 
-    test('validates Link-Local starting with fe80:', () => {
+    test('validates Link-Local starting with fe80: and rejects illegal hextets (U14)', () => {
       assert.equal(validateLinkLocal('fe80::4242:3143').valid, true);
+      assert.equal(validateLinkLocal('fe80::3143').valid, true);
       assert.equal(validateLinkLocal('fe80::1').valid, true);
+      assert.equal(validateLinkLocal('fe80::3143/64').valid, true);
+      assert.equal(validateLinkLocal('fe80::4242423143').valid, false, 'fe80::4242423143 must be rejected');
+      assert.equal(validateLinkLocal('fe80::12345').valid, false, 'Hextet > 4 chars must be rejected');
       assert.equal(validateLinkLocal('fd00::1').valid, false);
+      assert.equal(formatDefaultLinkLocal('4242423143'), 'fe80::3143', 'Default LLA must format with last 4 digits');
     });
   });
 

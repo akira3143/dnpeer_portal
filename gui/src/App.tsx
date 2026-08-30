@@ -455,7 +455,7 @@ function PeeringWizard({
           </label>
           <input
             type="text"
-            placeholder="fe80::4242:3143"
+            placeholder="fe80::3143"
             value={linkLocal}
             onChange={e => setLinkLocal(e.target.value)}
             style={{ width: '100%', padding: '10px 14px', borderRadius: '6px', backgroundColor: '#070a12', border: fieldErrors.linkLocal ? '1px solid #f43f5e' : '1px solid #1e293b', color: '#fff', fontSize: '0.95rem', fontFamily: 'monospace' }}

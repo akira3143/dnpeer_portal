@@ -88,10 +88,37 @@ validate_link_local() {
   _val="${_val%% }"
   _val="${_val## }"
   [ -z "$_val" ] && return 1
-  case "$_val" in
-    [fF][eE]80:*|[fF][eE]80::*) return 0 ;;
+  _addr="${_val%%/*}"
+  case "$_addr" in
+    [fF][eE]80:*|[fF][eE]80::*) ;;
     *) return 1 ;;
   esac
+  case "$_addr" in
+    *[!0-9a-fA-F:]*) return 1 ;;
+    *:::*) return 1 ;;
+  esac
+  _temp="${_addr%::*}"
+  _rest="${_addr#*::}"
+  if [ "$_temp" != "$_addr" ]; then
+    _combined="$_temp:$_rest"
+  else
+    _combined="$_addr"
+  fi
+  _combined="${_combined#:}"
+  _combined="${_combined%:}"
+  
+  _old_ifs="$IFS"
+  IFS=":"
+  set -- $_combined
+  IFS="$_old_ifs"
+  
+  for _group in "$@"; do
+    [ -z "$_group" ] && continue
+    if [ ${#_group} -gt 4 ]; then
+      return 1
+    fi
+  done
+  return 0
 }
 
 validate_port() {

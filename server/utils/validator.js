@@ -42,9 +42,9 @@ export const RULES = {
   "linkLocal": {
     "name": "IPv6 Link-Local",
     "description": "IPv6 Link-Local Address (starts with fe80:)",
-    "regexStr": "^fe80:[0-9a-fA-F:]+$",
-    "example": "fe80::4242:3143",
-    "errorMessage": "Link-Local Address must start with fe80: (e.g. fe80::4242:3143)"
+    "regexStr": "^(?:fe80|FE80):(?::|(?:(?::[0-9a-fA-F]{1,4}){1,7})|(?:(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4})|(?:(?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4})|(?:[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4}){0,6}::(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}))(?:\\/(?:[0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?$",
+    "example": "fe80::3143",
+    "errorMessage": "Link-Local Address must start with fe80: and be valid IPv6 (e.g. fe80::3143)"
   },
   "port": {
     "name": "WireGuard ListenPort",
@@ -81,7 +81,7 @@ export const ASN_REGEX = new RegExp("^(424242[0-9]{4}|[0-9]{1,10})$");
 export const PUBLIC_KEY_REGEX = new RegExp("^[A-Za-z0-9+/]{43}=$");
 export const IPV4_REGEX = new RegExp("^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\\/(?:[0-9]|[12][0-9]|3[0-2]))?$");
 export const IPV6_ULA_REGEX = new RegExp("^fd[0-9a-fA-F]{2}:[0-9a-fA-F:]+(?:\\/(?:[0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?$");
-export const LINK_LOCAL_REGEX = new RegExp("^fe80:[0-9a-fA-F:]+$");
+export const LINK_LOCAL_REGEX = new RegExp("^(?:fe80|FE80):(?::|(?:(?::[0-9a-fA-F]{1,4}){1,7})|(?:(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4})|(?:(?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4})|(?:[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4}){0,6}::(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}))(?:\\/(?:[0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?$");
 
 export function normalizeAsn(val) {
   if (val === null || val === undefined) return '';
@@ -92,6 +92,14 @@ export function calcDefaultPort(asn) {
   const cleanAsn = parseInt(normalizeAsn(asn), 10);
   if (isNaN(cleanAsn) || cleanAsn <= 0) return 20001;
   return 20000 + (cleanAsn % 10000);
+}
+
+export function formatDefaultLinkLocal(asn) {
+  const cleanAsn = normalizeAsn(asn);
+  if (!cleanAsn) return 'fe80::1';
+  const num = parseInt(cleanAsn, 10);
+  const suffix = isNaN(num) ? cleanAsn.slice(-4) : (num % 10000);
+  return `fe80::${suffix}`;
 }
 
 export function validateAsn(val) {
@@ -142,7 +150,7 @@ export function validateLinkLocal(val) {
   if (!val || typeof val !== 'string') return { valid: false, error: 'Link-Local address is required' };
   const trimmed = val.trim();
   if (!LINK_LOCAL_REGEX.test(trimmed)) {
-    return { valid: false, error: "Link-Local Address must start with fe80: (e.g. fe80::4242:3143)" };
+    return { valid: false, error: "Link-Local Address must start with fe80: and be valid IPv6 (e.g. fe80::3143)" };
   }
   return { valid: true, value: trimmed };
 }

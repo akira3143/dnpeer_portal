@@ -45,9 +45,9 @@ export const RULES = {
   linkLocal: {
     name: 'IPv6 Link-Local',
     description: 'IPv6 Link-Local Address (starts with fe80:)',
-    regexStr: '^fe80:[0-9a-fA-F:]+$',
-    example: 'fe80::4242:3143',
-    errorMessage: 'Link-Local Address must start with fe80: (e.g. fe80::4242:3143)'
+    regexStr: '^(?:fe80|FE80):(?::|(?:(?::[0-9a-fA-F]{1,4}){1,7})|(?:(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4})|(?:(?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4})|(?:[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4}){0,6}::(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}))(?:\\/(?:[0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?$',
+    example: 'fe80::3143',
+    errorMessage: 'Link-Local Address must start with fe80: and be valid IPv6 (e.g. fe80::3143)'
   },
 
   port: {
