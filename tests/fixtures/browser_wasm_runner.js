@@ -13,6 +13,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { createIsolatedTestDataDir } from './tmpDataDir.js';
+
+const testData = createIsolatedTestDataDir('dn42-test-wasm-');
+
 import { createServer } from '../../server/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -278,13 +282,17 @@ async function main() {
     console.log(`Saved screenshot to artifacts dir: ${artPath}`);
   }
 
-  // Clean up Chrome process & user data
-  await cdp.close();
-  chromeProc.kill();
-  try { fs.rmSync(userDataDir, { recursive: true, force: true }); } catch {}
+  try {
+    // Clean up Chrome process & user data
+    await cdp.close();
+    chromeProc.kill();
+    try { fs.rmSync(userDataDir, { recursive: true, force: true }); } catch {}
 
-  await server.closeAll();
-  console.log('Verification Finished Successfully!');
+    await server.closeAll();
+    console.log('Verification Finished Successfully!');
+  } finally {
+    testData.cleanup();
+  }
 }
 
 main().catch((err) => {

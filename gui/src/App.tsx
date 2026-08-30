@@ -339,14 +339,11 @@ function PeeringWizard({
           )}
         </div>
 
-        <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '12px' }}>WireGuard 客户端配置 (wg0.conf)</h3>
+        <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '12px' }}>
+          WireGuard 客户端配置示例 / Client WireGuard Config (Reference Only)
+        </h3>
         <pre style={{ backgroundColor: '#070a12', padding: '16px', borderRadius: '8px', border: '1px solid #1e293b', overflowX: 'auto', fontSize: '0.85rem', color: '#38bdf8' }}>
-          {submitResult.configs?.clientWireguard}
-        </pre>
-
-        <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: '20px 0 12px 0' }}>BIRD2 BGP 客户端配置</h3>
-        <pre style={{ backgroundColor: '#070a12', padding: '16px', borderRadius: '8px', border: '1px solid #1e293b', overflowX: 'auto', fontSize: '0.85rem', color: '#00ffaa' }}>
-          {submitResult.configs?.clientBird}
+          {submitResult.clientWireguard || submitResult.configs?.clientWireguard}
         </pre>
 
         <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
@@ -499,11 +496,11 @@ function PeeringWizard({
         {/* 6. Endpoint */}
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '6px', color: '#cbd5e1' }}>
-            对端 Endpoint (选填，支持 DDNS:Port)
+            对端 Endpoint (选填，支持 DDNS)
           </label>
           <input
             type="text"
-            placeholder="your-domain.dn42:23143"
+            placeholder="your-domain.dn42"
             value={endpoint}
             onChange={e => setEndpoint(e.target.value)}
             style={{ width: '100%', padding: '10px 14px', borderRadius: '6px', backgroundColor: '#070a12', border: fieldErrors.endpoint ? '1px solid #f43f5e' : '1px solid #1e293b', color: '#fff', fontSize: '0.9rem' }}

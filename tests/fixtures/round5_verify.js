@@ -1,13 +1,18 @@
 import assert from 'node:assert/strict';
+import { createIsolatedTestDataDir } from './tmpDataDir.js';
+
+const testData = createIsolatedTestDataDir('dn42-test-round5-');
+
 import { createServer } from '../../server/index.js';
 import { AuthService } from '../../server/services/authService.js';
 import { LookingGlassService } from '../../server/services/lookingGlassService.js';
 import { ScannerService } from '../../server/services/scannerService.js';
 
 async function main() {
-  console.log('=== 1. Starting Test Server on Port 4247 ===');
-  const server = createServer();
-  await new Promise(r => server.listen(4247, '127.0.0.1', r));
+  try {
+    console.log('=== 1. Starting Test Server on Port 4247 ===');
+    const server = createServer();
+    await new Promise(r => server.listen(4247, '127.0.0.1', r));
 
   // --- Test R1: Dual Port Submission & Config Output ---
   console.log('\n=== 2. Testing R1: Dual Port Submission & Config Engine Outputs ===');
@@ -95,6 +100,9 @@ async function main() {
   // Clean up
   await server.closeAll();
   console.log('\nALL ROUND 5 VERIFICATIONS PASSED SUCCESSFULLY!');
+  } finally {
+    testData.cleanup();
+  }
 }
 
 main().catch(err => {
