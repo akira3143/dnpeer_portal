@@ -112,7 +112,7 @@ flush_after_input() {
 }
 
 # read_line_edit <var_name> [-s/--secret]
-# Minimal line editor supporting Left/Right/Home/End/Backspace/Delete without terminal ESC clutter (U15)
+# Minimal line editor supporting Left/Right/Home/End/Backspace/Delete with 0-fork built-in read (U16)
 read_line_edit() {
   local _target_var="$1"
   local _is_secret="$2"
@@ -140,9 +140,13 @@ read_line_edit() {
   stty -icanon -echo min 1 time 0 2>/dev/null || stty raw -echo 2>/dev/null
 
   while true; do
-    _c=$(dd bs=1 count=1 2>/dev/null)
+    _c=""
+    if ! IFS= read -r -n 1 _c; then
+      printf "\r\n"
+      break
+    fi
 
-    # Enter (\r or \n or EOF)
+    # Enter (\r or \n or empty when Enter key pressed)
     if [ "$_c" = "$(printf '\r')" ] || [ "$_c" = "$(printf '\n')" ] || [ -z "$_c" ]; then
       printf "\r\n"
       break
@@ -181,11 +185,13 @@ read_line_edit() {
       continue
     fi
 
-    # Escape Sequences
+    # Escape Sequences (\033)
     if [ "$_c" = "$(printf '\033')" ]; then
-      _c2=$(dd bs=1 count=1 2>/dev/null)
+      _c2=""
+      IFS= read -r -n 1 -t 1 _c2 2>/dev/null || IFS= read -r -n 1 _c2
       if [ "$_c2" = "[" ] || [ "$_c2" = "O" ]; then
-        _c3=$(dd bs=1 count=1 2>/dev/null)
+        _c3=""
+        IFS= read -r -n 1 -t 1 _c3 2>/dev/null || IFS= read -r -n 1 _c3
         case "$_c3" in
           "D") # Left Arrow
             if [ $_pos -gt 0 ]; then
@@ -213,14 +219,14 @@ read_line_edit() {
             fi
             ;;
           "1"|"7") # Extended Home (1~ or 7~)
-            dd bs=1 count=1 >/dev/null 2>&1
+            IFS= read -r -n 1 -t 1 _c4 2>/dev/null
             if [ $_pos -gt 0 ]; then
               printf "\033[%dD" "$_pos"
               _pos=0
             fi
             ;;
           "4"|"8") # Extended End (4~ or 8~)
-            dd bs=1 count=1 >/dev/null 2>&1
+            IFS= read -r -n 1 -t 1 _c4 2>/dev/null
             if [ $_pos -lt ${#_buf} ]; then
               _diff=$(( ${#_buf} - _pos ))
               printf "\033[%dC" "$_diff"
@@ -228,7 +234,7 @@ read_line_edit() {
             fi
             ;;
           "3") # Delete (3~)
-            dd bs=1 count=1 >/dev/null 2>&1
+            IFS= read -r -n 1 -t 1 _c4 2>/dev/null
             if [ $_pos -lt ${#_buf} ]; then
               _i=0; _left=""; _right=""; _remaining="$_buf"
               while [ -n "$_remaining" ]; do
