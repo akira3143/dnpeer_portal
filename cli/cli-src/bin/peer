@@ -318,11 +318,13 @@ do_rm() {
   fi
 
   echo -e "\033[90mRevoking session $target_id and releasing port...\033[0m"
-  resp=$(api_delete "/api/sessions/$target_id")
+  resp=$(api_post "/api/sessions/remove" "{\"sessionId\":\"$target_id\"}")
   if echo "$resp" | grep -q '"success":true'; then
     echo -e "\033[32mSession $target_id revoked successfully.\033[0m"
   else
-    echo -e "\033[31merror: $(json_field "$resp" message)\033[0m"
+    err_msg=$(json_field "$resp" message)
+    [ -z "$err_msg" ] && err_msg="Failed to revoke session"
+    echo -e "\033[31merror: $err_msg\033[0m"
   fi
 }
 

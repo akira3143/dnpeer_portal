@@ -61,17 +61,13 @@ api_post() {
   printf '%s' "$resp"
 }
 
-# api_delete <path>  → stdout response body
+# api_delete <path> [optional_id] → stdout response body
 api_delete() {
-  local token resp
-  token=$(dn42_token)
-  if [ -n "$token" ]; then
-    resp=$(wget -q -T 15 -O - --method=DELETE --header="Authorization: Bearer $token" "$API_BASE$1" 2>/dev/null || curl -s -m 15 -X DELETE -H "Authorization: Bearer $token" "$API_BASE$1" 2>/dev/null)
-  else
-    resp=$(wget -q -T 15 -O - --method=DELETE "$API_BASE$1" 2>/dev/null || curl -s -m 15 -X DELETE "$API_BASE$1" 2>/dev/null)
+  local target_id="$2"
+  if [ -z "$target_id" ]; then
+    target_id="${1##*/}"
   fi
-  check_auth_response "$resp"
-  printf '%s' "$resp"
+  api_post "/api/sessions/remove" "{\"sessionId\":\"$target_id\"}"
 }
 
 json_field() {

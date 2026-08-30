@@ -185,6 +185,16 @@ export function createServer() {
           return sendJson(res, resp.code || 200, resp);
         }
 
+        if (pathname === '/api/sessions/remove' && method === 'POST') {
+          const user = extractUser(req);
+          if (!user) return sendJson(res, 401, errorEnvelope('Unauthorized', null, 401));
+          const body = await parseJsonBody(req);
+          const id = body.sessionId || body.id;
+          if (!id) return sendJson(res, 200, errorEnvelope('Session ID is required', null, 200));
+          const resp = await SessionController.deleteSession(id, user);
+          return sendJson(res, resp.code || 200, resp);
+        }
+
         // Looking Glass
         if ((pathname === '/api/looking-glass' || pathname === '/api/looking-glass/query') && method === 'POST') {
           const body = await parseJsonBody(req);
