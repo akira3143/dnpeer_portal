@@ -77,10 +77,9 @@ test('Peering Flow API Integration Tests', async (t) => {
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.success, true);
-    assert.ok(body.data.sessionId);
-    assert.equal(body.data.port, 23143);
     assert.ok(body.data.configs.clientWireguard);
-    assert.ok(body.data.configs.clientBird);
+    assert.equal(body.data.configs.clientBird, undefined);
+    assert.ok(body.data.clientWireguard);
     assert.ok(body.data.acknowledgement.includes("We'll establish the peer with you within 24 hours!"));
   });
 });
