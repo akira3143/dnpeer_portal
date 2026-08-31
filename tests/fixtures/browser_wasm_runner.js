@@ -234,31 +234,46 @@ async function main() {
   await delay(1000);
   await waitForPrompt('peer@AS4242423143:~#');
 
-  // 8. Execute: peer new
+  // 8. Execute: peer new (V1: nano editor workflow)
   console.log('Executing: peer new');
   await sendInput('peer new\n');
   await waitForPrompt('Select target node');
   await sendInput('1\n');
-  await waitForPrompt('Your IPv6 Link-Local');
-  await sendInput('\n'); // Accept default LLA
-  await waitForPrompt('Your DN42 IPv4 (optional)');
-  await sendInput('172.20.150.1\n');
-  await waitForPrompt('Your DN42 IPv6 ULA (optional)');
-  await sendInput('fd00:4242:3143::1\n');
-  await waitForPrompt('Your WireGuard Public Key');
-  await sendInput('yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=\n');
-  await waitForPrompt('Your Endpoint hostname (optional)');
-  await sendInput('myhost.dn42\n');
-  await waitForPrompt('Peer ListenPort');
-  await sendInput('\n'); // auto
-  await waitForPrompt('Your ListenPort');
-  await sendInput('\n'); // auto
-  await waitForPrompt('MTU (default 1420)');
-  await sendInput('\n'); // 1420
+  await waitForPrompt('GNU nano 7.2');
+  console.log('GNU nano editor opened with peer template!');
+  await delay(1000);
+
+  // Navigate in nano: Down 5 times to Line 5 (IPv4)
+  const downKey = '\x1b[B';
+  const endKey = '\x1b[F';
+  await sendInput(downKey + downKey + downKey + downKey + downKey);
+  await delay(300);
+  await sendInput(endKey + '172.20.150.1');
+  await delay(300);
+
+  // Down to Line 6 (IPv6 ULA)
+  await sendInput(downKey + endKey + 'fd00:4242:3143::1');
+  await delay(300);
+
+  // Down to Line 7 (WG PubKey)
+  await sendInput(downKey + endKey + 'yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=');
+  await delay(300);
+
+  // Down to Line 8 (Endpoint)
+  await sendInput(downKey + endKey + 'myhost.dn42');
+  await delay(500);
+
+  // Save (Ctrl+O) and Exit (Ctrl+X)
+  await sendInput('\x0f'); // Ctrl+O
+  await delay(500);
+  await sendInput('\x18'); // Ctrl+X
+  await delay(500);
+
+  await waitForPrompt('-------- REVIEW --------');
   await waitForPrompt('Confirm and submit?');
   await sendInput('y\n');
   await waitForPrompt('peer@AS4242423143:~#', 20);
-  console.log('Peer created successfully with maintainer handle ID format!');
+  console.log('Peer created successfully via nano editor workflow!');
 
   // 9. Execute: peer ls
   console.log('Executing: peer ls');
