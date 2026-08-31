@@ -161,19 +161,25 @@ draw_screen
 while true; do
   _c=""
   IFS= read -r -n 1 _c
-  [ -z "$_c" ] && _c="$ENTER" # handle Enter or null
+  _code=0
+  if [ -n "$_c" ]; then
+    _code=$(printf '%d' "'$_c" 2>/dev/null || echo 0)
+  else
+    _code=10
+  fi
   
   # Clear one-time status messages after next key
   STATUS_MSG=""
   
-  case "$_c" in
-    # Ctrl+X (0x18) or Ctrl+Q (0x11) -> Exit
-    "$CTRL_X"|"$CTRL_Q")
+  case "$_code" in
+    # 24 (Ctrl+X) or 17 (Ctrl+Q) -> Exit
+    24|17)
       if [ "$MODIFIED" -eq 1 ]; then
         printf "\033[%d;1H\033[7mSave modified buffer? (Answering \"No\" will DISCARD changes)  Y:Yes, N:No, C:Cancel\033[0m\033[K" $((ROWS - 2))
         _ans=""
         while true; do
           IFS= read -r -n 1 _ans
+          _ans_code=$(printf '%d' "'$_ans" 2>/dev/null || echo 0)
           case "$_ans" in
             [yY])
               save_file
@@ -184,9 +190,15 @@ while true; do
               cleanup
               exit 0
               ;;
-            [cC]|"$CTRL_C")
+            [cC])
               STATUS_MSG="Cancelled"
               break
+              ;;
+            *)
+              if [ "$_ans_code" -eq 3 ] || [ "$_ans_code" -eq 27 ]; then # Ctrl+C or ESC
+                STATUS_MSG="Cancelled"
+                break
+              fi
               ;;
           esac
         done
@@ -196,19 +208,19 @@ while true; do
       fi
       ;;
       
-    # Ctrl+O (0x0F) or Ctrl+S (0x13) -> WriteOut
-    "$CTRL_O"|"$CTRL_S")
+    # 15 (Ctrl+O) or 19 (Ctrl+S) -> WriteOut
+    15|19)
       save_file
       ;;
       
-    # Ctrl+C (0x03) -> Show cursor position
-    "$CTRL_C")
+    # 3 (Ctrl+C) -> Show cursor position
+    3)
       eval "_cur_len=\${#L_$CUR_ROW}"
       STATUS_MSG="[ line $((CUR_ROW + 1))/$NUM_LINES, col $((CUR_COL + 1))/$_cur_len ]"
       ;;
       
-    # Enter (0x0A / 0x0D) -> Split line
-    "$ENTER"|"$CR")
+    # 10 (LF) or 13 (CR) -> Split line
+    10|13)
       eval "_cur_text=\$L_$CUR_ROW"
       _left="${_cur_text:0:$CUR_COL}"
       _right="${_cur_text:$CUR_COL}"
@@ -228,8 +240,8 @@ while true; do
       MODIFIED=1
       ;;
       
-    # Backspace (0x7F / 0x08)
-    "$BS1"|"$BS2")
+    # 127 (DEL) or 8 (BS) -> Backspace
+    127|8)
       eval "_cur_text=\$L_$CUR_ROW"
       if [ "$CUR_COL" -gt 0 ]; then
         _before="${_cur_text:0:$((CUR_COL - 1))}"
@@ -258,8 +270,8 @@ while true; do
       fi
       ;;
       
-    # ESC sequence (Arrows, Home, End, Delete)
-    "$ESC")
+    # 27 (ESC) -> Escape sequence (Arrows, Home, End, Delete)
+    27)
       _seq=""
       _c2=""
       IFS= read -r -n 1 -t 0.05 _c2 2>/dev/null || IFS= read -r -n 1 -t 1 _c2 2>/dev/null
@@ -343,14 +355,16 @@ while true; do
       esac
       ;;
       
-    # Normal printable character insertion
+    # Normal printable character insertion (filter out stray unhandled control codes)
     *)
-      eval "_cur_text=\$L_$CUR_ROW"
-      _before="${_cur_text:0:$CUR_COL}"
-      _after="${_cur_text:$CUR_COL}"
-      eval "L_$CUR_ROW=\"\${_before}\${_c}\${_after}\""
-      CUR_COL=$((CUR_COL + ${#_c}))
-      MODIFIED=1
+      if [ "$_code" -ge 32 ] || [ "$_code" -gt 127 ]; then
+        eval "_cur_text=\$L_$CUR_ROW"
+        _before="${_cur_text:0:$CUR_COL}"
+        _after="${_cur_text:$CUR_COL}"
+        eval "L_$CUR_ROW=\"\${_before}\${_c}\${_after}\""
+        CUR_COL=$((CUR_COL + 1))
+        MODIFIED=1
+      fi
       ;;
   esac
   

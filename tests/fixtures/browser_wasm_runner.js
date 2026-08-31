@@ -264,11 +264,9 @@ async function main() {
   await delay(500);
 
   // Save (Ctrl+O) and Exit (Ctrl+X)
-  await sendInput('\x0f'); // Ctrl+O
+  await sendInput('\x0f'); // Ctrl+O (15)
   await delay(800);
-  await sendInput('\x18'); // Ctrl+X
-  await delay(800);
-  await sendInput('y'); // Confirm save if prompted on exit
+  await sendInput('\x18'); // Ctrl+X (24)
   await delay(800);
 
   await waitForPrompt('-------- REVIEW --------');
