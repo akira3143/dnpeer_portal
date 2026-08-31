@@ -74,15 +74,15 @@ describe('PortLedgerService Unit Tests', () => {
     assert.equal(res3.isShifted, true);
   });
 
-  test('P2-2: fallback linear search covers 1024-20000 range when 20000-65535 are occupied', async () => {
+  test('fallback linear search covers 20000..65535 range starting at RULES.port.min', async () => {
     const ledger = await PortLedgerService.getLedger();
     ledger['JP-TYO-1'] = [];
-    // Occupy 20000..65535
-    for (let p = 20000; p <= 65535; p++) {
+    // Occupy formula shifts
+    for (let p of [23143, 33143, 43143, 53143, 63143]) {
       ledger['JP-TYO-1'].push({ port: p, source: 'test_fill' });
     }
-    // Also occupy 1024..1050
-    for (let p = 1024; p <= 1050; p++) {
+    // Also occupy 20000..20005
+    for (let p = 20000; p <= 20005; p++) {
       ledger['JP-TYO-1'].push({ port: p, source: 'test_fill' });
     }
     await PortLedgerService.saveLedger(ledger);
@@ -94,7 +94,7 @@ describe('PortLedgerService Unit Tests', () => {
       sessionId: 'sess_fallback_test'
     });
 
-    assert.equal(res.port, 1051, 'Fallback must find first free port starting at RULES.port.min (1024)');
+    assert.equal(res.port, 20006, 'Fallback must find first free port starting at RULES.port.min (20000)');
     assert.equal(res.isShifted, true);
   });
 

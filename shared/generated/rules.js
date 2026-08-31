@@ -53,14 +53,14 @@ export const RULES = {
   },
   "port": {
     "name": "WireGuard ListenPort",
-    "description": "UDP port between 1024 and 65535. Default calculated from ASN",
-    "min": 1024,
+    "description": "UDP port between 20000 and 65535. Default calculated from ASN",
+    "min": 20000,
     "max": 65535,
     "baseOffset": 20000,
     "modulo": 10000,
     "conflictStep": 10000,
     "example": 23143,
-    "errorMessage": "Port must be an integer between 1024 and 65535"
+    "errorMessage": "Port must be an integer between 20000 and 65535"
   },
   "mtu": {
     "name": "MTU",
@@ -198,8 +198,8 @@ export function validatePort(val, isOptional = false) {
     return { valid: false, error: 'Port is required' };
   }
   const num = parseInt(val, 10);
-  if (isNaN(num) || num < 1024 || num > 65535) {
-    return { valid: false, error: "Port must be an integer between 1024 and 65535" };
+  if (isNaN(num) || num < 20000 || num > 65535) {
+    return { valid: false, error: "Port must be an integer between 20000 and 65535" };
   }
   return { valid: true, value: num };
 }

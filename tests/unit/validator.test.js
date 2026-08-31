@@ -114,9 +114,12 @@ describe('Authoritative Validator Unit Tests', () => {
   });
 
   describe('Port and MTU Validation', () => {
-    test('validates port range and auto mode', () => {
+    test('validates port range (20000-65535) and auto mode', () => {
       assert.equal(validatePort('auto').valid, true);
+      assert.equal(validatePort(20000).valid, true);
       assert.equal(validatePort(22466).valid, true);
+      assert.equal(validatePort(65535).valid, true);
+      assert.equal(validatePort(19999).valid, false);
       assert.equal(validatePort(1023).valid, false);
       assert.equal(validatePort(65536).valid, false);
     });

@@ -1,4 +1,4 @@
 # /etc/profile —— ash 交互 shell 启动时经 $ENV 加载
-# help 与 ash 内建同名且内建优先于 PATH；本 ash 未编译 alias 支持，
-# 用函数遮蔽内建（函数优先级高于 regular builtin）
+export TERM=xterm-256color
+export EDITOR=nano
 help() { /bin/help "$@"; }

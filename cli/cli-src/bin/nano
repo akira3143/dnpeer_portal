@@ -1,0 +1,347 @@
+#!/bin/busybox sh
+# ==============================================================================
+# GNU nano-compatible POSIX Terminal Editor for AkiLab DN42 WASM Linux
+# ==============================================================================
+
+FILE="$1"
+if [ -z "$FILE" ]; then
+  echo "Usage: nano <filename>"
+  exit 1
+fi
+
+# Clean exit trap
+cleanup() {
+  stty sane 2>/dev/null
+  printf "\033[?1049l\033[?25h" # Restore screen buffer and cursor
+}
+trap cleanup EXIT INT TERM
+
+# Switch to alternate screen buffer and hide cursor during initial draw
+printf "\033[?1049h\033[2J\033[H"
+
+# Terminal dimensions
+get_termsize() {
+  _sz="$(stty size 2>/dev/null)"
+  if [ -n "$_sz" ]; then
+    ROWS="${_sz%% *}"
+    COLS="${_sz##* }"
+  else
+    ROWS=24
+    COLS=80
+  fi
+  [ "$ROWS" -lt 10 ] && ROWS=24
+  [ "$COLS" -lt 20 ] && COLS=80
+  EDIT_ROWS=$((ROWS - 4))
+}
+get_termsize
+
+# Load file lines into in-memory array L_0 ... L_N
+NUM_LINES=0
+if [ -f "$FILE" ]; then
+  while IFS= read -r _line || [ -n "$_line" ]; do
+    _clean_line="$(printf '%s' "$_line" | tr -d '\r')"
+    eval "L_$NUM_LINES=\$_clean_line"
+    NUM_LINES=$((NUM_LINES + 1))
+  done < "$FILE"
+fi
+
+if [ "$NUM_LINES" -eq 0 ]; then
+  eval "L_0=''"
+  NUM_LINES=1
+fi
+
+# Editor state
+CUR_ROW=0       # Current line index (0-indexed)
+CUR_COL=0       # Current char column in line (0-indexed)
+TOP_LINE=0      # First visible line in editor viewport
+LEFT_COL=0      # First visible char column in viewport
+MODIFIED=0      # 0 = clean, 1 = modified
+STATUS_MSG="[ Read $NUM_LINES lines ]"
+STATUS_TIME=$(date +%s 2>/dev/null || echo 0)
+
+# Render complete UI
+draw_screen() {
+  get_termsize
+  # Title bar (Row 1)
+  _title="  GNU nano 7.2"
+  _file_str="File: $FILE"
+  _mod_str=""
+  [ "$MODIFIED" -eq 1 ] && _mod_str="[Modified]"
+  
+  _pad_len=$((COLS - ${#_title} - ${#_file_str} - ${#_mod_str} - 4))
+  [ "$_pad_len" -lt 1 ] && _pad_len=1
+  _spaces="$(printf '%*s' "$_pad_len" '')"
+  
+  printf "\033[H\033[7m%s%s%s %s\033[0m\033[K\n" "$_title" "$_spaces" "$_file_str" "$_mod_str"
+  
+  # Editor Buffer Lines (Rows 2 to ROWS-3)
+  _r=0
+  while [ "$_r" -lt "$EDIT_ROWS" ]; do
+    _line_idx=$((TOP_LINE + _r))
+    if [ "$_line_idx" -lt "$NUM_LINES" ]; then
+      eval "_txt=\$L_$_line_idx"
+      # Truncate to viewport
+      _disp="${_txt:$LEFT_COL:$COLS}"
+      printf "\033[%d;1H%s\033[K" $((_r + 2)) "$_disp"
+    else
+      printf "\033[%d;1H~\033[K" $((_r + 2))
+    fi
+    _r=$((_r + 1))
+  done
+  
+  # Status Bar (Row ROWS-2)
+  printf "\033[%d;1H\033[K" $((ROWS - 2))
+  if [ -n "$STATUS_MSG" ]; then
+    printf "\033[%d;1H%s" $((ROWS - 2)) "$STATUS_MSG"
+  fi
+  
+  # Shortcuts Help (Rows ROWS-1 and ROWS)
+  _s1="\033[7m^G\033[0m Get Help  \033[7m^O\033[0m WriteOut  \033[7m^W\033[0m Where Is  \033[7m^K\033[0m Cut       \033[7m^T\033[0m Execute"
+  _s2="\033[7m^X\033[0m Exit      \033[7m^R\033[0m Read File \033[7m^\\ \033[0m Replace   \033[7m^U\033[0m Paste     \033[7m^J\033[0m Justify"
+  printf "\033[%d;1H%b\033[K\n" $((ROWS - 1)) "$_s1"
+  printf "\033[%d;1H%b\033[K" "$ROWS" "$_s2"
+  
+  # Reposition cursor
+  _screen_row=$((CUR_ROW - TOP_LINE + 2))
+  _screen_col=$((CUR_COL - LEFT_COL + 1))
+  printf "\033[%d;%dH\033[?25h" "$_screen_row" "$_screen_col"
+}
+
+# Save buffer to file
+save_file() {
+  _tmp_out="${FILE}.tmp.$$"
+  _i=0
+  > "$_tmp_out"
+  while [ "$_i" -lt "$NUM_LINES" ]; do
+    eval "_l=\$L_$_i"
+    printf "%s\n" "$_l" >> "$_tmp_out"
+    _i=$((_i + 1))
+  done
+  mv -f "$_tmp_out" "$FILE"
+  MODIFIED=0
+  STATUS_MSG="[ Wrote $NUM_LINES lines ]"
+}
+
+# Adjust viewport scrolling
+adjust_viewport() {
+  get_termsize
+  if [ "$CUR_ROW" -lt "$TOP_LINE" ]; then
+    TOP_LINE="$CUR_ROW"
+  elif [ "$CUR_ROW" -ge $((TOP_LINE + EDIT_ROWS)) ]; then
+    TOP_LINE=$((CUR_ROW - EDIT_ROWS + 1))
+  fi
+  
+  if [ "$CUR_COL" -lt "$LEFT_COL" ]; then
+    LEFT_COL="$CUR_COL"
+  elif [ "$CUR_COL" -ge $((LEFT_COL + COLS)) ]; then
+    LEFT_COL=$((CUR_COL - COLS + 1))
+  fi
+}
+
+# Enter raw mode
+stty -echo -icanon min 1 time 0 2>/dev/null || stty raw -echo 2>/dev/null
+
+# Initial render
+adjust_viewport
+draw_screen
+
+# Main input loop
+while true; do
+  _c=""
+  IFS= read -r -n 1 _c
+  [ -z "$_c" ] && _c="$(printf '\n')" # handle Enter or null
+  
+  # Clear one-time status messages after next key
+  STATUS_MSG=""
+  
+  case "$_c" in
+    # Ctrl+X (0x18 / 24) -> Exit
+    $(printf '\030'))
+      if [ "$MODIFIED" -eq 1 ]; then
+        printf "\033[%d;1H\033[7mSave modified buffer? (Answering \"No\" will DISCARD changes)  Y:Yes, N:No, C:Cancel\033[0m\033[K" $((ROWS - 2))
+        _ans=""
+        while true; do
+          IFS= read -r -n 1 _ans
+          case "$_ans" in
+            [yY])
+              save_file
+              cleanup
+              exit 0
+              ;;
+            [nN])
+              cleanup
+              exit 0
+              ;;
+            [cC]|$(printf '\003'))
+              STATUS_MSG="Cancelled"
+              break
+              ;;
+          esac
+        done
+      else
+        cleanup
+        exit 0
+      fi
+      ;;
+      
+    # Ctrl+O (0x0F / 15) -> WriteOut
+    $(printf '\017'))
+      save_file
+      ;;
+      
+    # Ctrl+C (0x03) -> Show cursor position
+    $(printf '\003'))
+      eval "_cur_len=\${#L_$CUR_ROW}"
+      STATUS_MSG="[ line $((CUR_ROW + 1))/$NUM_LINES, col $((CUR_COL + 1))/$_cur_len ]"
+      ;;
+      
+    # Enter (0x0A / 0x0D) -> Split line
+    $(printf '\n')|$(printf '\r'))
+      eval "_cur_text=\$L_$CUR_ROW"
+      _left="${_cur_text:0:$CUR_COL}"
+      _right="${_cur_text:$CUR_COL}"
+      
+      # Shift lines down
+      _j=$NUM_LINES
+      while [ "$_j" -gt "$((CUR_ROW + 1))" ]; do
+        eval "L_$_j=\$L_$((_j - 1))"
+        _j=$((_j - 1))
+      done
+      
+      eval "L_$CUR_ROW=\$_left"
+      eval "L_$((CUR_ROW + 1))=\$_right"
+      NUM_LINES=$((NUM_LINES + 1))
+      CUR_ROW=$((CUR_ROW + 1))
+      CUR_COL=0
+      MODIFIED=1
+      ;;
+      
+    # Backspace (0x7F / 0x08)
+    $(printf '\177')|$(printf '\b'))
+      eval "_cur_text=\$L_$CUR_ROW"
+      if [ "$CUR_COL" -gt 0 ]; then
+        _before="${_cur_text:0:$((CUR_COL - 1))}"
+        _after="${_cur_text:$CUR_COL}"
+        eval "L_$CUR_ROW=\${_before}\${_after}"
+        CUR_COL=$((CUR_COL - 1))
+        MODIFIED=1
+      elif [ "$CUR_ROW" -gt 0 ]; then
+        # Merge with previous line
+        _prev_row=$((CUR_ROW - 1))
+        eval "_prev_text=\$L_$_prev_row"
+        _prev_len=${#_prev_text}
+        eval "L_$_prev_row=\${_prev_text}\${_cur_text}"
+        
+        # Shift lines up
+        _j=$CUR_ROW
+        while [ "$_j" -lt $((NUM_LINES - 1)) ]; do
+          eval "L_$_j=\$L_$((_j + 1))"
+          _j=$((_j + 1))
+        done
+        eval "unset L_$((NUM_LINES - 1))"
+        NUM_LINES=$((NUM_LINES - 1))
+        CUR_ROW="$_prev_row"
+        CUR_COL="$_prev_len"
+        MODIFIED=1
+      fi
+      ;;
+      
+    # ESC sequence (Arrows, Home, End, Delete)
+    $(printf '\033'))
+      _seq=""
+      _c2=""
+      IFS= read -r -n 1 -t 0.05 _c2 2>/dev/null || IFS= read -r -n 1 -t 1 _c2 2>/dev/null
+      if [ -n "$_c2" ]; then
+        _seq="$_c2"
+        if [ "$_c2" = "[" ] || [ "$_c2" = "O" ]; then
+          _c3=""
+          IFS= read -r -n 1 -t 0.05 _c3 2>/dev/null || IFS= read -r -n 1 -t 1 _c3 2>/dev/null
+          _seq="$_seq$_c3"
+          if [ "$_c3" = "1" ] || [ "$_c3" = "3" ] || [ "$_c3" = "4" ] || [ "$_c3" = "5" ] || [ "$_c3" = "6" ]; then
+            _c4=""
+            IFS= read -r -n 1 -t 0.05 _c4 2>/dev/null || IFS= read -r -n 1 -t 1 _c4 2>/dev/null
+            _seq="$_seq$_c4"
+          fi
+        fi
+      fi
+      
+      case "$_seq" in
+        "[A"|"OA") # Up
+          if [ "$CUR_ROW" -gt 0 ]; then
+            CUR_ROW=$((CUR_ROW - 1))
+            eval "_len=\${#L_$CUR_ROW}"
+            [ "$CUR_COL" -gt "$_len" ] && CUR_COL="$_len"
+          fi
+          ;;
+        "[B"|"OB") # Down
+          if [ "$CUR_ROW" -lt $((NUM_LINES - 1)) ]; then
+            CUR_ROW=$((CUR_ROW + 1))
+            eval "_len=\${#L_$CUR_ROW}"
+            [ "$CUR_COL" -gt "$_len" ] && CUR_COL="$_len"
+          fi
+          ;;
+        "[C"|"OC") # Right
+          eval "_len=\${#L_$CUR_ROW}"
+          if [ "$CUR_COL" -lt "$_len" ]; then
+            CUR_COL=$((CUR_COL + 1))
+          elif [ "$CUR_ROW" -lt $((NUM_LINES - 1)) ]; then
+            CUR_ROW=$((CUR_ROW + 1))
+            CUR_COL=0
+          fi
+          ;;
+        "[D"|"OD") # Left
+          if [ "$CUR_COL" -gt 0 ]; then
+            CUR_COL=$((CUR_COL - 1))
+          elif [ "$CUR_ROW" -gt 0 ]; then
+            CUR_ROW=$((CUR_ROW - 1))
+            eval "_len=\${#L_$CUR_ROW}"
+            CUR_COL="$_len"
+          fi
+          ;;
+        "[H"|"[1~"|"OH") # Home
+          CUR_COL=0
+          ;;
+        "[F"|"[4~"|"OF") # End
+          eval "_len=\${#L_$CUR_ROW}"
+          CUR_COL="$_len"
+          ;;
+        "[3~") # Delete
+          eval "_cur_text=\$L_$CUR_ROW"
+          _cur_len=${#_cur_text}
+          if [ "$CUR_COL" -lt "$_cur_len" ]; then
+            _before="${_cur_text:0:$CUR_COL}"
+            _after="${_cur_text:$((CUR_COL + 1))}"
+            eval "L_$CUR_ROW=\${_before}\${_after}"
+            MODIFIED=1
+          elif [ "$CUR_ROW" -lt $((NUM_LINES - 1)) ]; then
+            # Merge next line
+            _next_row=$((CUR_ROW + 1))
+            eval "_next_text=\$L_$_next_row"
+            eval "L_$CUR_ROW=\${_cur_text}\${_next_text}"
+            _j=$_next_row
+            while [ "$_j" -lt $((NUM_LINES - 1)) ]; do
+              eval "L_$_j=\$L_$((_j + 1))"
+              _j=$((_j + 1))
+            done
+            eval "unset L_$((NUM_LINES - 1))"
+            NUM_LINES=$((NUM_LINES - 1))
+            MODIFIED=1
+          fi
+          ;;
+      esac
+      ;;
+      
+    # Normal printable character insertion
+    *)
+      eval "_cur_text=\$L_$CUR_ROW"
+      _before="${_cur_text:0:$CUR_COL}"
+      _after="${_cur_text:$CUR_COL}"
+      eval "L_$CUR_ROW=\"\${_before}\${_c}\${_after}\""
+      CUR_COL=$((CUR_COL + ${#_c}))
+      MODIFIED=1
+      ;;
+  esac
+  
+  adjust_viewport
+  draw_screen
+done

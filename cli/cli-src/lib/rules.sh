@@ -152,7 +152,7 @@ validate_port() {
   case "$_val" in
     ''|*[!0-9]*) return 1 ;;
   esac
-  if [ "$_val" -ge 1024 ] && [ "$_val" -le 65535 ]; then
+  if [ "$_val" -ge 20000 ] && [ "$_val" -le 65535 ]; then
     return 0
   fi
   return 1
