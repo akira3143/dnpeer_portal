@@ -29,30 +29,28 @@ do_new() {
   [ ! -f "$template_file" ] && template_file="cli-src/etc/peer_template"
 
   echo -e "\033[90mQuerying AkiLab node matrix...\033[0m"
-  meta=$(api_get "/api/network-meta")
-  if ! echo "$meta" | grep -q '"success":true'; then
-    echo -e "\033[31merror: Cannot fetch node list, try again later.\033[0m"
-    return 1
+  if [ ! -s /tmp/dn42_nodes ]; then
+    meta=$(api_get "/api/network-meta")
+    if ! echo "$meta" | grep -q '"success":true'; then
+      echo -e "\033[31merror: Cannot fetch node list, try again later.\033[0m"
+      return 1
+    fi
+
+    # Extract nodes array into /tmp/dn42_nodes (cached for the session)
+    echo "$meta" | sed 's/},{/}\n{/g' | grep '"endpointDomain"' > /tmp/dn42_nodes_raw
+    rm -f /tmp/dn42_nodes
+    while IFS= read -r line; do
+      nid=${line#*\"id\":\"}; nid=${nid%%\"*}
+      nname=${line#*\"name\":\"}; nname=${nname%%\"*}
+      nend=${line#*\"endpointDomain\":\"}; nend=${nend%%\"*}
+      echo "$nid|$nname|$nend" >> /tmp/dn42_nodes
+    done < /tmp/dn42_nodes_raw
+    rm -f /tmp/dn42_nodes_raw
   fi
 
-  # Extract nodes array into /tmp/dn42_nodes
-  echo "$meta" | sed 's/},{/}\n{/g' | grep '"endpointDomain"' > /tmp/dn42_nodes_raw
-  rm -f /tmp/dn42_nodes
   node_idx=0
-  while IFS= read -r line; do
-    node_idx=$((node_idx + 1))
-    nid=${line#*\"id\":\"}; nid=${nid%%\"*}
-    ncode=${line#*\"code\":\"}; ncode=${ncode%%\"*}
-    nname=${line#*\"name\":\"}; nname=${nname%%\"*}
-    ncity=${line#*\"city\":\"}; [ "$ncity" = "$line" ] && ncity=""; ncity=${ncity%%\"*}
-    nend=${line#*\"endpointDomain\":\"}; nend=${nend%%\"*}
-    nv4=${line#*\"tunnelIpv4\":\"}; [ "$nv4" = "$line" ] && nv4=""; nv4=${nv4%%\"*}
-    nlla=${line#*\"tunnelIpv6LLA\":\"}; [ "$nlla" = "$line" ] && nlla=""; nlla=${nlla%%\"*}
-    nmtu=${line#*\"mtu\":}; [ "$nmtu" = "$line" ] && nmtu=""; nmtu=${nmtu%%,*}; nmtu=${nmtu%%\}*}
-    echo "$nid|$ncode|$nname|$ncity|$nend|$nv4|$nlla|${nmtu:-1420}" >> /tmp/dn42_nodes
-  done < /tmp/dn42_nodes_raw
-
-  if [ ! -s /tmp/dn42_nodes ]; then
+  while IFS= read -r _; do node_idx=$((node_idx + 1)); done < /tmp/dn42_nodes
+  if [ "$node_idx" -eq 0 ]; then
     echo -e "\033[31merror: Node list is empty.\033[0m"
     return 1
   fi
@@ -63,11 +61,11 @@ do_new() {
   if [ -n "$target_arg" ]; then
     if echo "$target_arg" | grep -q '^[0-9][0-9]*$' && [ "$target_arg" -ge 1 ] && [ "$target_arg" -le "$node_idx" ]; then
       sel_line=$(sed -n "${target_arg}p" /tmp/dn42_nodes)
-      sel_nid=$(echo "$sel_line" | cut -d'|' -f1)
-      sel_nname=$(echo "$sel_line" | cut -d'|' -f3)
+      sel_nid=${sel_line%%|*}
+      sel_nname=${sel_line#*|}; sel_nname=${sel_nname%%|*}
     else
       # Match by node ID (case-insensitive)
-      while IFS='|' read -r _nid _ncode _nname _ncity _nend _nv4 _nlla _nmtu; do
+      while IFS='|' read -r _nid _nname _nend; do
         if [ "$(echo "$_nid" | tr '[:upper:]' '[:lower:]')" = "$(echo "$target_arg" | tr '[:upper:]' '[:lower:]')" ]; then
           sel_nid="$_nid"
           sel_nname="$_nname"
@@ -83,7 +81,7 @@ do_new() {
     echo ""
     echo -e "Available Nodes:"
     i=0
-    while IFS='|' read -r _nid _ncode _nname _ncity _nend _nv4 _nlla _nmtu; do
+    while IFS='|' read -r _nid _nname _nend; do
       i=$((i + 1))
       echo -e "  \033[32m[$i]\033[0m \033[1m$_nid\033[0m - $_nname"
     done < /tmp/dn42_nodes
@@ -96,8 +94,8 @@ do_new() {
       { [ "$choice" = "q" ] || [ "$choice" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 0; }
       if echo "$choice" | grep -q '^[0-9][0-9]*$' && [ "$choice" -ge 1 ] && [ "$choice" -le "$i" ]; then
         sel_line=$(sed -n "${choice}p" /tmp/dn42_nodes)
-        sel_nid=$(echo "$sel_line" | cut -d'|' -f1)
-        sel_nname=$(echo "$sel_line" | cut -d'|' -f3)
+        sel_nid=${sel_line%%|*}
+        sel_nname=${sel_line#*|}; sel_nname=${sel_nname%%|*}
         break
       else
         echo -e "\033[31merror: Invalid selection. Enter 1-$i or q to cancel.\033[0m"
@@ -105,18 +103,15 @@ do_new() {
     done
   fi
 
-  clean_asn=$(dn42_asn | tr -cd '0-9')
+  clean_asn=$(cat /tmp/dn42_asn 2>/dev/null)
   default_peer_port=$(calc_default_port "$clean_asn")
   [ -z "$default_peer_port" ] && default_peer_port=$((20000 + (clean_asn % 10000)))
   clean_tail=$((clean_asn % 10000))
   default_lla="fe80::$clean_tail"
 
-  # Initialize draft from template
+  # Initialize draft from template (single sed pass)
   cp -f "$template_file" "$draft_file"
-  sed -i "s/__NODE__/$sel_nid/g" "$draft_file"
-  sed -i "s/__LLA__/$default_lla/g" "$draft_file"
-  sed -i "s/__ASN__/$clean_asn/g" "$draft_file"
-  sed -i "s/__DEFAULT_PORT__/$default_peer_port/g" "$draft_file"
+  sed -i -e "s/__NODE__/$sel_nid/g" -e "s/__LLA__/$default_lla/g" -e "s/__ASN__/$clean_asn/g" -e "s/__DEFAULT_PORT__/$default_peer_port/g" "$draft_file"
 
   # Initial baseline values for untouched comparison
   init_node="$sel_nid"
@@ -224,7 +219,7 @@ do_new() {
       err_msg_list="${err_msg_list}  • Node: Target PoP Node is required.\n"
     else
       node_found=0
-      while IFS='|' read -r _nid _ncode _nname _ncity _nend _nv4 _nlla _nmtu; do
+      while IFS='|' read -r _nid _nname _nend; do
         if [ "$_nid" = "$parsed_node" ]; then
           node_found=1
           sel_nid="$_nid"
