@@ -30,7 +30,13 @@ do_new() {
 
   echo -e "\033[90mQuerying AkiLab node matrix...\033[0m"
   if [ ! -s /tmp/dn42_nodes ]; then
-    meta=$(api_get "/api/network-meta")
+    if [ -s /tmp/dn42_meta ]; then
+      meta=$(cat /tmp/dn42_meta)
+    else
+      echo -e "\033[90mQuerying AkiLab node matrix...\033[0m"
+      meta=$(api_get "/api/network-meta")
+      echo "$meta" > /tmp/dn42_meta
+    fi
     if ! echo "$meta" | grep -q '"success":true'; then
       echo -e "\033[31merror: Cannot fetch node list, try again later.\033[0m"
       return 1
