@@ -143,7 +143,7 @@ do_new() {
       return 1
     fi
 
-    # 2. Parse draft key=value pairs
+    # 2. Parse draft key=value pairs + bare-value fallback (single awk pass, one fork)
     parsed_node=""
     parsed_lla=""
     parsed_ipv4=""
@@ -160,61 +160,44 @@ do_new() {
       return 0
     fi
 
-    while IFS= read -r raw_line || [ -n "$raw_line" ]; do
-      line=$(printf '%s' "$raw_line" | tr -d '\r')
-      # Skip comments and empty lines
-      case "$line" in
-        ''|\#*) continue ;;
-        *=*)
-          key="${line%%=*}"
-          val="${line#*=}"
-          # Normalize key (strip whitespace & lowercase)
-          ckey=$(echo "$key" | tr '[:upper:]' '[:lower:]' | tr -d ' \t')
-          cval=$(echo "$val" | sed 's/^[ \t]*//;s/[ \t]*$//')
-          case "$ckey" in
-            node) parsed_node="$cval" ;;
-            link-localipv6\(lla\)|link-local|lla|linklocal) parsed_lla="$cval" ;;
-            dn42ipv4\(optional\)|dn42ipv4|ipv4) parsed_ipv4="$cval" ;;
-            ipv6ula\(optional\)|ipv6ula|ula) parsed_ula="$cval" ;;
-            wireguardpublickey|publickey|pubkey) parsed_pubkey="$cval" ;;
-            wireguardendpoint|endpoint) parsed_ep="$cval" ;;
-            peerport|peer_port) [ -n "$cval" ] && parsed_peer_port="$cval" ;;
-            listenport|listen_port) [ -n "$cval" ] && parsed_listen_port="$cval" ;;
-            mtu) [ -n "$cval" ] && parsed_mtu="$cval" ;;
-            *)
-              if [ -n "$cval" ] || [ -n "$key" ]; then
-                unknown_keys="${unknown_keys}${unknown_keys:+, }'$key'"
-              fi
-              ;;
-          esac
-          ;;
-        *)
-          # bare value line (no =): content-based fallback recognition
-          bare=$(echo "$line" | tr -d ' \t')
-          [ -z "$bare" ] && continue
-          if validate_link_local "$bare"; then
-            [ -z "$parsed_lla" ] && parsed_lla="$bare"
-          elif validate_pubkey "$bare"; then
-            [ -z "$parsed_pubkey" ] && parsed_pubkey="$bare"
-          elif validate_ipv4 "$bare"; then
-            [ -z "$parsed_ipv4" ] && parsed_ipv4="$bare"
-          elif validate_ipv6_ula "$bare"; then
-            [ -z "$parsed_ula" ] && parsed_ula="$bare"
-          elif validate_endpoint "$bare"; then
-            [ -z "$parsed_ep" ] && parsed_ep="$bare"
-          elif echo "$bare" | grep -q '^[0-9][0-9]*$'; then
-            _n=$((bare + 0))
-            if [ "$_n" -ge 1280 ] && [ "$_n" -le 1500 ]; then
-              [ "$parsed_mtu" = "1420" ] && parsed_mtu="$bare"
-            else
-              unknown_keys="${unknown_keys}${unknown_keys:+, }'$bare' (ambiguous port value)"
-            fi
-          else
-            unknown_keys="${unknown_keys}${unknown_keys:+, }'$bare'"
-          fi
-          ;;
-      esac
-    done < "$draft_file"
+    eval "$(awk '
+      {
+        line=$0; sub(/\r$/, "", line)
+        if (line ~ /^[[:space:]]*#/ || line ~ /^[[:space:]]*$/) next
+        if (index(line, "=") > 0) {
+          key=substr(line, 1, index(line, "=")-1)
+          val=substr(line, index(line, "=")+1)
+          gsub(/[ \t]/, "", key)
+          key=tolower(key)
+          sub(/^[ \t]+/, "", val); sub(/[ \t]+$/, "", val)
+          gsub(/[^A-Za-z0-9.:\/+_<>-]/, "", val)
+          if (key=="node") printf "parsed_node=%s\n", val
+          else if (key=="link-localipv6(lla)" || key=="link-local" || key=="lla" || key=="linklocal") printf "parsed_lla=%s\n", val
+          else if (key=="dn42ipv4(optional)" || key=="dn42ipv4" || key=="ipv4") printf "parsed_ipv4=%s\n", val
+          else if (key=="ipv6ula(optional)" || key=="ipv6ula" || key=="ula") printf "parsed_ula=%s\n", val
+          else if (key=="wireguardpublickey" || key=="publickey" || key=="pubkey") printf "parsed_pubkey=%s\n", val
+          else if (key=="wireguardendpoint" || key=="endpoint") printf "parsed_ep=%s\n", val
+          else if (key=="peerport" || key=="peer_port") { if (val!="") printf "parsed_peer_port=%s\n", val }
+          else if (key=="listenport" || key=="listen_port") { if (val!="") printf "parsed_listen_port=%s\n", val }
+          else if (key=="mtu") { if (val!="") printf "parsed_mtu=%s\n", val }
+          else { if (unk=="") unk=key; else unk=unk ", " key }
+        } else {
+          bare=line; gsub(/[ \t]/, "", bare)
+          if (bare=="") next
+          if (bare ~ /^[fF][eE]80:[0-9a-fA-F:]+$/) printf "parsed_lla=%s\n", bare
+          else if (bare ~ /^[A-Za-z0-9+\/]{43}=$/) printf "parsed_pubkey=%s\n", bare
+          else if (bare ~ /^(172\.(2[0-3]|[0-9])\.|10\.)/) printf "parsed_ipv4=%s\n", bare
+          else if (bare ~ /^[fF][dD][0-9a-fA-F:]+/) printf "parsed_ula=%s\n", bare
+          else if (bare ~ /^[A-Za-z0-9.-]+$/) printf "parsed_ep=%s\n", bare
+          else if (bare ~ /^[0-9]+$/) {
+            if (bare+0>=1280 && bare+0<=1500) printf "parsed_mtu=%s\n", bare
+            else { if (unk=="") unk="ambiguous port '" bare "'"; else unk=unk ", ambiguous port '" bare "'" }
+          }
+          else { if (unk=="") unk="unrecognized '" bare "'"; else unk=unk ", unrecognized '" bare "'" }
+        }
+      }
+      END { if (unk!="") printf "unknown_keys=%s\n", unk }
+    ' "$draft_file")"
 
     # 3. Content Comparison: if completely untouched baseline -> Cancelled
     if [ "$parsed_node" = "$init_node" ] && \

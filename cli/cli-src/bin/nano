@@ -26,7 +26,6 @@ cleanup() {
   stty sane 2>/dev/null
   exit ${1:-0}
 }
-trap 'cleanup 0' EXIT
 trap 'cleanup 1' INT TERM
 
 printf "\033[?1049h\033[2J\033[H"
