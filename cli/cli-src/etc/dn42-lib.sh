@@ -185,13 +185,13 @@ read_line_edit() {
       continue
     fi
 
-    # Escape Sequences (\033)
+    # Escape Sequences (\033) - V3: 0.05s timeout to prevent standalone ESC lag
     if [ "$_c" = "$(printf '\033')" ]; then
       _c2=""
-      IFS= read -r -n 1 -t 1 _c2 2>/dev/null || IFS= read -r -n 1 _c2
+      IFS= read -r -n 1 -t 0.05 _c2 2>/dev/null
       if [ "$_c2" = "[" ] || [ "$_c2" = "O" ]; then
         _c3=""
-        IFS= read -r -n 1 -t 1 _c3 2>/dev/null || IFS= read -r -n 1 _c3
+        IFS= read -r -n 1 -t 0.05 _c3 2>/dev/null
         case "$_c3" in
           "D") # Left Arrow
             if [ $_pos -gt 0 ]; then
@@ -219,14 +219,14 @@ read_line_edit() {
             fi
             ;;
           "1"|"7") # Extended Home (1~ or 7~)
-            IFS= read -r -n 1 -t 1 _c4 2>/dev/null
+            IFS= read -r -n 1 -t 0.05 _c4 2>/dev/null
             if [ $_pos -gt 0 ]; then
               printf "\033[%dD" "$_pos"
               _pos=0
             fi
             ;;
           "4"|"8") # Extended End (4~ or 8~)
-            IFS= read -r -n 1 -t 1 _c4 2>/dev/null
+            IFS= read -r -n 1 -t 0.05 _c4 2>/dev/null
             if [ $_pos -lt ${#_buf} ]; then
               _diff=$(( ${#_buf} - _pos ))
               printf "\033[%dC" "$_diff"
@@ -234,7 +234,7 @@ read_line_edit() {
             fi
             ;;
           "3") # Delete (3~)
-            IFS= read -r -n 1 -t 1 _c4 2>/dev/null
+            IFS= read -r -n 1 -t 0.05 _c4 2>/dev/null
             if [ $_pos -lt ${#_buf} ]; then
               _i=0; _left=""; _right=""; _remaining="$_buf"
               while [ -n "$_remaining" ]; do

@@ -1,16 +1,22 @@
 import { AuthService } from '../services/authService.js';
-import { validateAsn } from '../utils/validator.js';
+import { validateAsn, normalizeAsn } from '../utils/validator.js';
 import { successEnvelope, errorEnvelope } from '../utils/envelope.js';
 
 export class AuthController {
   static async getChallenge(params) {
     const asn = params?.asn || params?.asnNumber;
+    const cleanAsn = parseInt(normalizeAsn(asn), 10);
+    
+    // V2: Check if ASN exists in auth_users.json for test account exemption
+    const authUsers = await AuthService.getAuthUsers();
+    const isKnownUser = cleanAsn && (authUsers[String(cleanAsn)] || authUsers[`AS${cleanAsn}`] || authUsers[String(asn)]);
+
     const valRes = validateAsn(asn);
-    if (!valRes.valid) {
+    if (!valRes.valid && !isKnownUser) {
       return errorEnvelope(valRes.error || 'Valid ASN is required', { asn: valRes.error }, 200);
     }
 
-    const challenge = await AuthService.createChallenge(valRes.value);
+    const challenge = await AuthService.createChallenge(cleanAsn || valRes.value);
     return successEnvelope(challenge, 200);
   }
 
