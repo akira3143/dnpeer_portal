@@ -14,17 +14,8 @@ target="$2"
 node="$3"
 
 if [ -z "$cmd" ] || [ "$cmd" = "help" ]; then
-  echo -e "\033[36m------------------ [AKILAB BIRD 2.x LOOKING GLASS] ------------------\033[0m"
-  echo -e "\033[90mPowered by bird-lg-go / bird-lgproxy protocol\033[0m"
-  echo ""
-  echo -e "\033[1mUsage:\033[0m  lg <command> [target] [node_id]"
-  echo ""
-  echo -e "  \033[32mlg route <IP/CIDR/ASN> [node]\033[0m   Query BGP routing table & AS-Path"
-  echo -e "  \033[32mlg bgp [peer] [node]\033[0m              Query BGP session state (protocols)"
-  echo -e "  \033[32mlg status [node]\033[0m                Query BIRD daemon status"
-  echo -e "  \033[32mlg ping <IP> [node]\033[0m             Remote ICMP ping from target node"
-  echo -e "  \033[32mlg trace <IP> [node]\033[0m            Remote traceroute from target node"
-  echo -e "\033[36m---------------------------------------------------------------------\033[0m"
+  echo -e "\033[33mUsage: lg <route|bgp|status|ping|trace> [target] [node]\033[0m"
+  echo -e "\033[90mFull details: run 'help'\033[0m"
   exit 0
 fi
 
