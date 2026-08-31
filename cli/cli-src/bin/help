@@ -15,5 +15,6 @@ printf "  \033[32m%-24s\033[0m- %s\n" "lg bgp [node]" "BGP session state (protoc
 printf "  \033[32m%-24s\033[0m- %s\n" "lg status [node]" "BIRD daemon status"
 printf "  \033[32m%-24s\033[0m- %s\n" "lg ping <IP> [node]" "Remote ping from the node"
 printf "  \033[32m%-24s\033[0m- %s\n" "lg trace <IP> [node]" "Remote traceroute from the node"
-printf "  \033[32m%-24s\033[0m- %s\n" "startx" "Launch the Web GUI \033[90m(beta)\033[0m"
+printf "  \033[32m%-24s\033[0m- " "startx"
+printf "%b\n" "Launch the Web GUI \033[90m(beta)\033[0m"
 printf "  \033[90m%-24s\033[0m- %s\n" "dmesg / uname -a" "Kernel info (real Linux commands)"
