@@ -320,6 +320,7 @@ async function main() {
 
     await server.closeAll();
     console.log('Verification Finished Successfully!');
+    process.exit(0);
   } finally {
     testData.cleanup();
   }
