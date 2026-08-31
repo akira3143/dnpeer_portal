@@ -138,6 +138,16 @@ adjust_viewport() {
   fi
 }
 
+# Control character constants
+CTRL_O="$(printf '\017')"
+CTRL_X="$(printf '\030')"
+CTRL_C="$(printf '\003')"
+ESC="$(printf '\033')"
+ENTER="$(printf '\n')"
+CR="$(printf '\r')"
+BS1="$(printf '\177')"
+BS2="$(printf '\b')"
+
 # Enter raw mode
 stty -echo -icanon min 1 time 0 2>/dev/null || stty raw -echo 2>/dev/null
 
@@ -149,14 +159,14 @@ draw_screen
 while true; do
   _c=""
   IFS= read -r -n 1 _c
-  [ -z "$_c" ] && _c="$(printf '\n')" # handle Enter or null
+  [ -z "$_c" ] && _c="$ENTER" # handle Enter or null
   
   # Clear one-time status messages after next key
   STATUS_MSG=""
   
   case "$_c" in
     # Ctrl+X (0x18 / 24) -> Exit
-    $(printf '\030'))
+    "$CTRL_X")
       if [ "$MODIFIED" -eq 1 ]; then
         printf "\033[%d;1H\033[7mSave modified buffer? (Answering \"No\" will DISCARD changes)  Y:Yes, N:No, C:Cancel\033[0m\033[K" $((ROWS - 2))
         _ans=""
@@ -172,7 +182,7 @@ while true; do
               cleanup
               exit 0
               ;;
-            [cC]|$(printf '\003'))
+            [cC]|"$CTRL_C")
               STATUS_MSG="Cancelled"
               break
               ;;
@@ -185,18 +195,18 @@ while true; do
       ;;
       
     # Ctrl+O (0x0F / 15) -> WriteOut
-    $(printf '\017'))
+    "$CTRL_O")
       save_file
       ;;
       
     # Ctrl+C (0x03) -> Show cursor position
-    $(printf '\003'))
+    "$CTRL_C")
       eval "_cur_len=\${#L_$CUR_ROW}"
       STATUS_MSG="[ line $((CUR_ROW + 1))/$NUM_LINES, col $((CUR_COL + 1))/$_cur_len ]"
       ;;
       
     # Enter (0x0A / 0x0D) -> Split line
-    $(printf '\n')|$(printf '\r'))
+    "$ENTER"|"$CR")
       eval "_cur_text=\$L_$CUR_ROW"
       _left="${_cur_text:0:$CUR_COL}"
       _right="${_cur_text:$CUR_COL}"
@@ -217,7 +227,7 @@ while true; do
       ;;
       
     # Backspace (0x7F / 0x08)
-    $(printf '\177')|$(printf '\b'))
+    "$BS1"|"$BS2")
       eval "_cur_text=\$L_$CUR_ROW"
       if [ "$CUR_COL" -gt 0 ]; then
         _before="${_cur_text:0:$((CUR_COL - 1))}"
@@ -247,7 +257,7 @@ while true; do
       ;;
       
     # ESC sequence (Arrows, Home, End, Delete)
-    $(printf '\033'))
+    "$ESC")
       _seq=""
       _c2=""
       IFS= read -r -n 1 -t 0.05 _c2 2>/dev/null || IFS= read -r -n 1 -t 1 _c2 2>/dev/null
