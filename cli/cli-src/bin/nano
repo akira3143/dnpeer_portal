@@ -80,27 +80,29 @@ redraw_status() {
   printf "\033[%d;1H\033[7m%s\033[0m\033[K" $((ROWS - 1)) " ^O WriteOut  ^X Exit"
 }
 
-# full_draw : complete screen (title + all lines + bars) — rare ops only
+# full_draw : complete screen (title + all lines + bars) — single batched write
 full_draw() {
-  eval "_mod=\$MODIFIED"
+  _out=""
   _mod_str=""
   [ "$MODIFIED" -eq 1 ] && _mod_str=" [Modified]"
-  printf "\033[H\033[7m AkiLab Editor 1.0 File: %s%s\033[0m\033[K\n" "$FILE" "$_mod_str"
+  _out="${_out}\033[H\033[7m AkiLab Editor 1.0 File: ${FILE}${_mod_str}\033[0m\033[K\n"
   _r=0
   while [ "$_r" -lt "$EDIT_ROWS" ]; do
     _li=$((TOP_LINE + _r))
+    _srow=$((_r + 2))
     if [ "$_li" -lt "$NUM_LINES" ]; then
       eval "_t=\$L_$_li"
       _disp="${_t:$LEFT_COL:$COLS}"
-      printf "\033[%d;1H%s\033[K" $((_r + 2)) "$_disp"
+      _out="${_out}\033[${_srow};1H${_disp}\033[K\n"
     else
-      printf "\033[%d;1H~\033[K" $((_r + 2))
+      _out="${_out}\033[${_srow};1H~\033[K\n"
     fi
     _r=$((_r + 1))
   done
-  printf "\033[%d;1H\033[K" $((ROWS - 2))
-  [ -n "$STATUS_MSG" ] && printf "\033[%d;1H%s" $((ROWS - 2)) "$STATUS_MSG"
-  printf "\033[%d;1H\033[7m ^O WriteOut  ^X Exit\033[0m\033[K" $((ROWS - 1))
+  _out="${_out}\033[$((ROWS - 2));1H\033[K"
+  [ -n "$STATUS_MSG" ] && _out="${_out}\033[$((ROWS - 2));1H${STATUS_MSG}"
+  _out="${_out}\033[$((ROWS - 1));1H\033[7m ^O WriteOut  ^X Exit\033[0m\033[K"
+  printf '%b' "$_out"
 }
 
 # position_cursor : move terminal cursor to (CUR_ROW, CUR_COL)
@@ -124,16 +126,17 @@ adjust_viewport() {
   fi
 }
 
-# save_file
+# save_file — batched single write
 save_file() {
   _tmp_out="${FILE}.tmp.$$"
   _i=0
-  > "$_tmp_out"
+  _buf=""
   while [ "$_i" -lt "$NUM_LINES" ]; do
     eval "_l=\$L_$_i"
-    printf "%s\n" "$_l" >> "$_tmp_out"
+    _buf="${_buf}${_l}\n"
     _i=$((_i + 1))
   done
+  printf '%b' "$_buf" > "$_tmp_out"
   mv -f "$_tmp_out" "$FILE"
   MODIFIED=0
   STATUS_MSG="[ Wrote $NUM_LINES lines ]"
