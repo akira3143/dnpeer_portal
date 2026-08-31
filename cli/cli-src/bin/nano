@@ -157,216 +157,207 @@ stty -echo -icanon -isig -ixon -ixoff min 1 time 0 2>/dev/null || stty raw -echo
 adjust_viewport
 draw_screen
 
-# Main input loop
+## Main input loop
 while true; do
   _c=""
   IFS= read -r -n 1 _c
   _code=0
   if [ -n "$_c" ]; then
     _code=$(printf '%d' "'$_c" 2>/dev/null || echo 0)
-  else
-    _code=10
   fi
   
   # Clear one-time status messages after next key
   STATUS_MSG=""
   
-  case "$_code" in
+  if [ "$_c" = "$CTRL_X" ] || [ "$_c" = "$CTRL_Q" ] || [ "$_code" -eq 24 ] || [ "$_code" -eq 17 ]; then
     # 24 (Ctrl+X) or 17 (Ctrl+Q) -> Exit
-    24|17)
-      if [ "$MODIFIED" -eq 1 ]; then
-        printf "\033[%d;1H\033[7mSave modified buffer? (Answering \"No\" will DISCARD changes)  Y:Yes, N:No, C:Cancel\033[0m\033[K" $((ROWS - 2))
-        _ans=""
-        while true; do
-          IFS= read -r -n 1 _ans
-          _ans_code=$(printf '%d' "'$_ans" 2>/dev/null || echo 0)
-          case "$_ans" in
-            [yY])
-              save_file
-              cleanup
-              exit 0
-              ;;
-            [nN])
-              cleanup
-              exit 0
-              ;;
-            [cC])
+    if [ "$MODIFIED" -eq 1 ]; then
+      printf "\033[%d;1H\033[7mSave modified buffer? (Answering \"No\" will DISCARD changes)  Y:Yes, N:No, C:Cancel\033[0m\033[K" $((ROWS - 2))
+      _ans=""
+      while true; do
+        IFS= read -r -n 1 _ans
+        _ans_code=0
+        [ -n "$_ans" ] && _ans_code=$(printf '%d' "'$_ans" 2>/dev/null || echo 0)
+        case "$_ans" in
+          [yY])
+            save_file
+            cleanup
+            exit 0
+            ;;
+          [nN])
+            cleanup
+            exit 0
+            ;;
+          [cC])
+            STATUS_MSG="Cancelled"
+            break
+            ;;
+          *)
+            if [ "$_ans" = "$CTRL_C" ] || [ "$_ans" = "$ESC" ] || [ "$_ans_code" -eq 3 ] || [ "$_ans_code" -eq 27 ]; then
               STATUS_MSG="Cancelled"
               break
-              ;;
-            *)
-              if [ "$_ans_code" -eq 3 ] || [ "$_ans_code" -eq 27 ]; then # Ctrl+C or ESC
-                STATUS_MSG="Cancelled"
-                break
-              fi
-              ;;
-          esac
-        done
-      else
-        cleanup
-        exit 0
-      fi
-      ;;
-      
-    # 15 (Ctrl+O) or 19 (Ctrl+S) -> WriteOut
-    15|19)
-      save_file
-      ;;
-      
-    # 3 (Ctrl+C) -> Show cursor position
-    3)
-      eval "_cur_len=\${#L_$CUR_ROW}"
-      STATUS_MSG="[ line $((CUR_ROW + 1))/$NUM_LINES, col $((CUR_COL + 1))/$_cur_len ]"
-      ;;
-      
-    # 10 (LF) or 13 (CR) -> Split line
-    10|13)
-      eval "_cur_text=\$L_$CUR_ROW"
-      _left="${_cur_text:0:$CUR_COL}"
-      _right="${_cur_text:$CUR_COL}"
-      
-      # Shift lines down
-      _j=$NUM_LINES
-      while [ "$_j" -gt "$((CUR_ROW + 1))" ]; do
-        eval "L_$_j=\$L_$((_j - 1))"
-        _j=$((_j - 1))
+            fi
+            ;;
+        esac
       done
-      
-      eval "L_$CUR_ROW=\$_left"
-      eval "L_$((CUR_ROW + 1))=\$_right"
-      NUM_LINES=$((NUM_LINES + 1))
-      CUR_ROW=$((CUR_ROW + 1))
-      CUR_COL=0
-      MODIFIED=1
-      ;;
-      
+    else
+      cleanup
+      exit 0
+    fi
+
+  elif [ "$_c" = "$CTRL_O" ] || [ "$_c" = "$CTRL_S" ] || [ "$_code" -eq 15 ] || [ "$_code" -eq 19 ]; then
+    # 15 (Ctrl+O) or 19 (Ctrl+S) -> WriteOut
+    save_file
+
+  elif [ "$_c" = "$CTRL_C" ] || [ "$_code" -eq 3 ]; then
+    # 3 (Ctrl+C) -> Show cursor position
+    eval "_cur_len=\${#L_$CUR_ROW}"
+    STATUS_MSG="[ line $((CUR_ROW + 1))/$NUM_LINES, col $((CUR_COL + 1))/$_cur_len ]"
+
+  elif [ "$_c" = "$ENTER" ] || [ "$_c" = "$CR" ] || [ "$_code" -eq 10 ] || [ "$_code" -eq 13 ] || [ -z "$_c" ]; then
+    # 10 (LF) or 13 (CR) -> Split line
+    eval "_cur_text=\$L_$CUR_ROW"
+    _left="${_cur_text:0:$CUR_COL}"
+    _right="${_cur_text:$CUR_COL}"
+    
+    # Shift lines down
+    _j=$NUM_LINES
+    while [ "$_j" -gt "$((CUR_ROW + 1))" ]; do
+      eval "L_$_j=\$L_$((_j - 1))"
+      _j=$((_j - 1))
+    done
+    
+    eval "L_$CUR_ROW=\$_left"
+    eval "L_$((CUR_ROW + 1))=\$_right"
+    NUM_LINES=$((NUM_LINES + 1))
+    CUR_ROW=$((CUR_ROW + 1))
+    CUR_COL=0
+    MODIFIED=1
+
+  elif [ "$_c" = "$BS1" ] || [ "$_c" = "$BS2" ] || [ "$_code" -eq 127 ] || [ "$_code" -eq 8 ]; then
     # 127 (DEL) or 8 (BS) -> Backspace
-    127|8)
-      eval "_cur_text=\$L_$CUR_ROW"
-      if [ "$CUR_COL" -gt 0 ]; then
-        _before="${_cur_text:0:$((CUR_COL - 1))}"
-        _after="${_cur_text:$CUR_COL}"
-        eval "L_$CUR_ROW=\${_before}\${_after}"
-        CUR_COL=$((CUR_COL - 1))
-        MODIFIED=1
-      elif [ "$CUR_ROW" -gt 0 ]; then
-        # Merge with previous line
-        _prev_row=$((CUR_ROW - 1))
-        eval "_prev_text=\$L_$_prev_row"
-        _prev_len=${#_prev_text}
-        eval "L_$_prev_row=\${_prev_text}\${_cur_text}"
-        
-        # Shift lines up
-        _j=$CUR_ROW
-        while [ "$_j" -lt $((NUM_LINES - 1)) ]; do
-          eval "L_$_j=\$L_$((_j + 1))"
-          _j=$((_j + 1))
-        done
-        eval "unset L_$((NUM_LINES - 1))"
-        NUM_LINES=$((NUM_LINES - 1))
-        CUR_ROW="$_prev_row"
-        CUR_COL="$_prev_len"
-        MODIFIED=1
-      fi
-      ;;
+    eval "_cur_text=\$L_$CUR_ROW"
+    if [ "$CUR_COL" -gt 0 ]; then
+      _before="${_cur_text:0:$((CUR_COL - 1))}"
+      _after="${_cur_text:$CUR_COL}"
+      eval "L_$CUR_ROW=\"\${_before}\${_after}\""
+      CUR_COL=$((CUR_COL - 1))
+      MODIFIED=1
+    elif [ "$CUR_ROW" -gt 0 ]; then
+      # Merge with previous line
+      _prev_row=$((CUR_ROW - 1))
+      eval "_prev_text=\$L_$_prev_row"
+      _prev_len=${#_prev_text}
+      eval "L_$_prev_row=\${_prev_text}\${_cur_text}"
       
+      # Shift lines up
+      _j=$CUR_ROW
+      while [ "$_j" -lt $((NUM_LINES - 1)) ]; do
+        eval "L_$_j=\$L_$((_j + 1))"
+        _j=$((_j + 1))
+      done
+      eval "unset L_$((NUM_LINES - 1))"
+      NUM_LINES=$((NUM_LINES - 1))
+      CUR_ROW="$_prev_row"
+      CUR_COL="$_prev_len"
+      MODIFIED=1
+    fi
+
+  elif [ "$_c" = "$ESC" ] || [ "$_code" -eq 27 ]; then
     # 27 (ESC) -> Escape sequence (Arrows, Home, End, Delete)
-    27)
-      _seq=""
-      _c2=""
-      IFS= read -r -n 1 -t 0.05 _c2 2>/dev/null || IFS= read -r -n 1 -t 1 _c2 2>/dev/null
-      if [ -n "$_c2" ]; then
-        _seq="$_c2"
-        if [ "$_c2" = "[" ] || [ "$_c2" = "O" ]; then
-          _c3=""
-          IFS= read -r -n 1 -t 0.05 _c3 2>/dev/null || IFS= read -r -n 1 -t 1 _c3 2>/dev/null
-          _seq="$_seq$_c3"
-          if [ "$_c3" = "1" ] || [ "$_c3" = "3" ] || [ "$_c3" = "4" ] || [ "$_c3" = "5" ] || [ "$_c3" = "6" ]; then
-            _c4=""
-            IFS= read -r -n 1 -t 0.05 _c4 2>/dev/null || IFS= read -r -n 1 -t 1 _c4 2>/dev/null
-            _seq="$_seq$_c4"
-          fi
+    _seq=""
+    _c2=""
+    IFS= read -r -n 1 -t 0.05 _c2 2>/dev/null || IFS= read -r -n 1 -t 1 _c2 2>/dev/null
+    if [ -n "$_c2" ]; then
+      _seq="$_c2"
+      if [ "$_c2" = "[" ] || [ "$_c2" = "O" ]; then
+        _c3=""
+        IFS= read -r -n 1 -t 0.05 _c3 2>/dev/null || IFS= read -r -n 1 -t 1 _c3 2>/dev/null
+        _seq="$_seq$_c3"
+        if [ "$_c3" = "1" ] || [ "$_c3" = "3" ] || [ "$_c3" = "4" ] || [ "$_c3" = "5" ] || [ "$_c3" = "6" ]; then
+          _c4=""
+          IFS= read -r -n 1 -t 0.05 _c4 2>/dev/null || IFS= read -r -n 1 -t 1 _c4 2>/dev/null
+          _seq="$_seq$_c4"
         fi
       fi
-      
-      case "$_seq" in
-        "[A"|"OA") # Up
-          if [ "$CUR_ROW" -gt 0 ]; then
-            CUR_ROW=$((CUR_ROW - 1))
-            eval "_len=\${#L_$CUR_ROW}"
-            [ "$CUR_COL" -gt "$_len" ] && CUR_COL="$_len"
-          fi
-          ;;
-        "[B"|"OB") # Down
-          if [ "$CUR_ROW" -lt $((NUM_LINES - 1)) ]; then
-            CUR_ROW=$((CUR_ROW + 1))
-            eval "_len=\${#L_$CUR_ROW}"
-            [ "$CUR_COL" -gt "$_len" ] && CUR_COL="$_len"
-          fi
-          ;;
-        "[C"|"OC") # Right
+    fi
+    
+    case "$_seq" in
+      "[A"|"OA") # Up
+        if [ "$CUR_ROW" -gt 0 ]; then
+          CUR_ROW=$((CUR_ROW - 1))
           eval "_len=\${#L_$CUR_ROW}"
-          if [ "$CUR_COL" -lt "$_len" ]; then
-            CUR_COL=$((CUR_COL + 1))
-          elif [ "$CUR_ROW" -lt $((NUM_LINES - 1)) ]; then
-            CUR_ROW=$((CUR_ROW + 1))
-            CUR_COL=0
-          fi
-          ;;
-        "[D"|"OD") # Left
-          if [ "$CUR_COL" -gt 0 ]; then
-            CUR_COL=$((CUR_COL - 1))
-          elif [ "$CUR_ROW" -gt 0 ]; then
-            CUR_ROW=$((CUR_ROW - 1))
-            eval "_len=\${#L_$CUR_ROW}"
-            CUR_COL="$_len"
-          fi
-          ;;
-        "[H"|"[1~"|"OH") # Home
+          [ "$CUR_COL" -gt "$_len" ] && CUR_COL="$_len"
+        fi
+        ;;
+      "[B"|"OB") # Down
+        if [ "$CUR_ROW" -lt $((NUM_LINES - 1)) ]; then
+          CUR_ROW=$((CUR_ROW + 1))
+          eval "_len=\${#L_$CUR_ROW}"
+          [ "$CUR_COL" -gt "$_len" ] && CUR_COL="$_len"
+        fi
+        ;;
+      "[C"|"OC") # Right
+        eval "_len=\${#L_$CUR_ROW}"
+        if [ "$CUR_COL" -lt "$_len" ]; then
+          CUR_COL=$((CUR_COL + 1))
+        elif [ "$CUR_ROW" -lt $((NUM_LINES - 1)) ]; then
+          CUR_ROW=$((CUR_ROW + 1))
           CUR_COL=0
-          ;;
-        "[F"|"[4~"|"OF") # End
+        fi
+        ;;
+      "[D"|"OD") # Left
+        if [ "$CUR_COL" -gt 0 ]; then
+          CUR_COL=$((CUR_COL - 1))
+        elif [ "$CUR_ROW" -gt 0 ]; then
+          CUR_ROW=$((CUR_ROW - 1))
           eval "_len=\${#L_$CUR_ROW}"
           CUR_COL="$_len"
-          ;;
-        "[3~") # Delete
-          eval "_cur_text=\$L_$CUR_ROW"
-          _cur_len=${#_cur_text}
-          if [ "$CUR_COL" -lt "$_cur_len" ]; then
-            _before="${_cur_text:0:$CUR_COL}"
-            _after="${_cur_text:$((CUR_COL + 1))}"
-            eval "L_$CUR_ROW=\${_before}\${_after}"
-            MODIFIED=1
-          elif [ "$CUR_ROW" -lt $((NUM_LINES - 1)) ]; then
-            # Merge next line
-            _next_row=$((CUR_ROW + 1))
-            eval "_next_text=\$L_$_next_row"
-            eval "L_$CUR_ROW=\${_cur_text}\${_next_text}"
-            _j=$_next_row
-            while [ "$_j" -lt $((NUM_LINES - 1)) ]; do
-              eval "L_$_j=\$L_$((_j + 1))"
-              _j=$((_j + 1))
-            done
-            eval "unset L_$((NUM_LINES - 1))"
-            NUM_LINES=$((NUM_LINES - 1))
-            MODIFIED=1
-          fi
-          ;;
-      esac
-      ;;
-      
-    # Normal printable character insertion (filter out stray unhandled control codes)
-    *)
-      if [ "$_code" -ge 32 ] || [ "$_code" -gt 127 ]; then
+        fi
+        ;;
+      "[H"|"[1~"|"OH") # Home
+        CUR_COL=0
+        ;;
+      "[F"|"[4~"|"OF") # End
+        eval "_len=\${#L_$CUR_ROW}"
+        CUR_COL="$_len"
+        ;;
+      "[3~") # Delete
         eval "_cur_text=\$L_$CUR_ROW"
-        _before="${_cur_text:0:$CUR_COL}"
-        _after="${_cur_text:$CUR_COL}"
-        eval "L_$CUR_ROW=\"\${_before}\${_c}\${_after}\""
-        CUR_COL=$((CUR_COL + 1))
-        MODIFIED=1
-      fi
-      ;;
-  esac
+        _cur_len=${#_cur_text}
+        if [ "$CUR_COL" -lt "$_cur_len" ]; then
+          _before="${_cur_text:0:$CUR_COL}"
+          _after="${_cur_text:$((CUR_COL + 1))}"
+          eval "L_$CUR_ROW=\${_before}\${_after}"
+          MODIFIED=1
+        elif [ "$CUR_ROW" -lt $((NUM_LINES - 1)) ]; then
+          # Merge next line
+          _next_row=$((CUR_ROW + 1))
+          eval "_next_text=\$L_$_next_row"
+          eval "L_$CUR_ROW=\${_cur_text}\${_next_text}"
+          _j=$_next_row
+          while [ "$_j" -lt $((NUM_LINES - 1)) ]; do
+            eval "L_$_j=\$L_$((_j + 1))"
+            _j=$((_j + 1))
+          done
+          eval "unset L_$((NUM_LINES - 1))"
+          NUM_LINES=$((NUM_LINES - 1))
+          MODIFIED=1
+        fi
+        ;;
+    esac
+
+  else
+    # Normal printable character insertion
+    if [ "$_code" -ge 32 ] || [ "$_code" -gt 127 ] || [ "$_code" -eq 0 ]; then
+      eval "_cur_text=\$L_$CUR_ROW"
+      _before="${_cur_text:0:$CUR_COL}"
+      _after="${_cur_text:$CUR_COL}"
+      eval "L_$CUR_ROW=\"\${_before}\${_c}\${_after}\""
+      CUR_COL=$((CUR_COL + 1))
+      MODIFIED=1
+    fi
+  fi
   
   adjust_viewport
   draw_screen
