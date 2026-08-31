@@ -140,7 +140,9 @@ adjust_viewport() {
 
 # Control character constants
 CTRL_O="$(printf '\017')"
+CTRL_S="$(printf '\023')"
 CTRL_X="$(printf '\030')"
+CTRL_Q="$(printf '\021')"
 CTRL_C="$(printf '\003')"
 ESC="$(printf '\033')"
 ENTER="$(printf '\n')"
@@ -148,8 +150,8 @@ CR="$(printf '\r')"
 BS1="$(printf '\177')"
 BS2="$(printf '\b')"
 
-# Enter raw mode
-stty -echo -icanon min 1 time 0 2>/dev/null || stty raw -echo 2>/dev/null
+# Enter raw mode (disable signals and flow control to read raw control bytes)
+stty -echo -icanon -isig -ixon -ixoff min 1 time 0 2>/dev/null || stty raw -echo 2>/dev/null
 
 # Initial render
 adjust_viewport
@@ -165,8 +167,8 @@ while true; do
   STATUS_MSG=""
   
   case "$_c" in
-    # Ctrl+X (0x18 / 24) -> Exit
-    "$CTRL_X")
+    # Ctrl+X (0x18) or Ctrl+Q (0x11) -> Exit
+    "$CTRL_X"|"$CTRL_Q")
       if [ "$MODIFIED" -eq 1 ]; then
         printf "\033[%d;1H\033[7mSave modified buffer? (Answering \"No\" will DISCARD changes)  Y:Yes, N:No, C:Cancel\033[0m\033[K" $((ROWS - 2))
         _ans=""
@@ -194,8 +196,8 @@ while true; do
       fi
       ;;
       
-    # Ctrl+O (0x0F / 15) -> WriteOut
-    "$CTRL_O")
+    # Ctrl+O (0x0F) or Ctrl+S (0x13) -> WriteOut
+    "$CTRL_O"|"$CTRL_S")
       save_file
       ;;
       
