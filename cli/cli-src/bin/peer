@@ -188,6 +188,31 @@ do_new() {
               ;;
           esac
           ;;
+        *)
+          # bare value line (no =): content-based fallback recognition
+          bare=$(echo "$line" | tr -d ' \t')
+          [ -z "$bare" ] && continue
+          if validate_link_local "$bare"; then
+            [ -z "$parsed_lla" ] && parsed_lla="$bare"
+          elif validate_pubkey "$bare"; then
+            [ -z "$parsed_pubkey" ] && parsed_pubkey="$bare"
+          elif validate_ipv4 "$bare"; then
+            [ -z "$parsed_ipv4" ] && parsed_ipv4="$bare"
+          elif validate_ipv6_ula "$bare"; then
+            [ -z "$parsed_ula" ] && parsed_ula="$bare"
+          elif validate_endpoint "$bare"; then
+            [ -z "$parsed_ep" ] && parsed_ep="$bare"
+          elif echo "$bare" | grep -q '^[0-9][0-9]*$'; then
+            _n=$((bare + 0))
+            if [ "$_n" -ge 1280 ] && [ "$_n" -le 1500 ]; then
+              [ "$parsed_mtu" = "1420" ] && parsed_mtu="$bare"
+            else
+              unknown_keys="${unknown_keys}${unknown_keys:+, }'$bare' (ambiguous port value)"
+            fi
+          else
+            unknown_keys="${unknown_keys}${unknown_keys:+, }'$bare'"
+          fi
+          ;;
       esac
     done < "$draft_file"
 
