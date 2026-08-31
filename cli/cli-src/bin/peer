@@ -153,6 +153,7 @@ do_new() {
     parsed_peer_port="auto"
     parsed_listen_port="auto"
     parsed_mtu="1420"
+    unknown_keys=""
 
     if [ ! -f "$draft_file" ]; then
       echo -e "\033[90mCancelled.\033[0m"
@@ -180,6 +181,11 @@ do_new() {
             peerport|peer_port) [ -n "$cval" ] && parsed_peer_port="$cval" ;;
             listenport|listen_port) [ -n "$cval" ] && parsed_listen_port="$cval" ;;
             mtu) [ -n "$cval" ] && parsed_mtu="$cval" ;;
+            *)
+              if [ -n "$cval" ] || [ -n "$key" ]; then
+                unknown_keys="${unknown_keys}${unknown_keys:+, }'$key'"
+              fi
+              ;;
           esac
           ;;
       esac
@@ -279,6 +285,12 @@ do_new() {
     fi
 
     # 5. Handle Validation Outcome
+    if [ -n "$unknown_keys" ]; then
+      echo ""
+      echo -e "\033[33mwarning: unrecognized field(s) ignored: $unknown_keys\033[0m"
+      echo -e "\033[90m(Field names must match the template keys exactly.)\033[0m"
+    fi
+
     if [ "$err_count" -gt 0 ]; then
       echo ""
       echo -e "\033[31mPeering configuration has $err_count error(s):\033[0m"

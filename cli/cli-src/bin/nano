@@ -77,7 +77,7 @@ redraw_status() {
   if [ -n "$STATUS_MSG" ]; then
     printf "\033[%d;1H%s" $((ROWS - 2)) "$STATUS_MSG"
   fi
-  printf "\033[%d;1H\033[7m%s\033[0m\033[K" $((ROWS - 1)) " ^O WriteOut  ^X Exit  ^C Cancel"
+  printf "\033[%d;1H\033[7m%s\033[0m\033[K" $((ROWS - 1)) " ^O WriteOut  ^X Exit"
 }
 
 # full_draw : complete screen (title + all lines + bars) — rare ops only
@@ -100,7 +100,7 @@ full_draw() {
   done
   printf "\033[%d;1H\033[K" $((ROWS - 2))
   [ -n "$STATUS_MSG" ] && printf "\033[%d;1H%s" $((ROWS - 2)) "$STATUS_MSG"
-  printf "\033[%d;1H\033[7m ^O WriteOut  ^X Exit  ^C Cancel\033[0m\033[K" $((ROWS - 1))
+  printf "\033[%d;1H\033[7m ^O WriteOut  ^X Exit\033[0m\033[K" $((ROWS - 1))
 }
 
 # position_cursor : move terminal cursor to (CUR_ROW, CUR_COL)
@@ -263,7 +263,7 @@ while true; do
 
   "$CTRL_X"|"$CTRL_Q")
     if [ "$MODIFIED" -eq 1 ]; then
-      STATUS_MSG="Save modified buffer? (Y/N)  — answering N will DISCARD changes"
+      STATUS_MSG="Save modified buffer? (Y/N/C)  — answering N will DISCARD changes"
       redraw_status
       _ans=""
       while true; do
@@ -271,9 +271,11 @@ while true; do
         case "$_ans" in
           [yY]) save_file; cleanup 0 ;;
           [nN]) cleanup 0 ;;
-          *) STATUS_MSG="Save modified buffer? (Y/N)" ; redraw_status ;;
+          "$CTRL_C") STATUS_MSG="Cancelled" ; break ;;
+          *) STATUS_MSG="Save modified buffer? (Y/N/C)" ; redraw_status ;;
         esac
       done
+      redraw_status
     else
       cleanup 0
     fi
@@ -285,7 +287,8 @@ while true; do
     ;;
 
   "$CTRL_C")
-    cleanup 1
+    # no default binding (matches GNU nano: ^C only cancels secondary prompts)
+    :
     ;;
 
   "$ENTER"|"$CR")
