@@ -14,12 +14,17 @@ trap '' INT
 # ---------- Shell Initialization ----------
 enter_shell() {
   local asn="$1"
-  local disp clean id_resp pn an
-  disp="$asn"
+  local disp clean id_resp an mnt
+  disp="AS$asn"
   clean=$(echo "$asn" | tr -cd '0-9')
-  if [ -n "$clean" ]; then
-    id_resp=$(api_get "/api/network-meta")
-    disp="AS$clean"
+  # Resolve identity display name: MNT simplified (AKIRA-MNT -> akira)
+  id_resp=$(api_get "/api/auth/me")
+  if echo "$id_resp" | grep -q '"success":true'; then
+    an=$(json_field "$id_resp" asName)
+    if [ -n "$an" ]; then
+      mnt=$(echo "$an" | tr '[:upper:]' '[:lower:]' | sed 's/-mnt$//; s/-dn42$//')
+      [ -n "$mnt" ] && disp="$mnt"
+    fi
   fi
   echo ""
   echo -e "\033[32mSession initialized for $asn.\033[0m"
@@ -184,6 +189,17 @@ do_ssh_login() {
 # ---------- Main Login Loop ----------
 main() {
   try_autologin && return 0
+
+  clear
+  echo ""
+  echo -e "\033[90mLinux aki-lab 6.1.0-wasm32 (tty1)\033[0m"
+  echo ""
+  cat /etc/banner.txt
+  echo ""
+  echo -e " * Gateway:         \033[33mAkiLab Networks AS4242423143\033[0m"
+  echo -e " * Routing Policy:  \033[32mOpen / MP-BGP (Extended Next Hop)\033[0m"
+  echo -e " * Access Control:  \033[35mMandatory DN42 Cryptographic Verification\033[0m"
+  printf "\033[90m-------------------------------------------------------------------------------\033[0m\n"
 
   echo -e "\033[90mCopy: Ctrl+C (select) · Paste: Ctrl+V · Interrupt: Ctrl+C (no select)\033[0m"
 
