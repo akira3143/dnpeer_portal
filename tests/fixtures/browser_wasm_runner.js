@@ -234,46 +234,18 @@ async function main() {
   await delay(1000);
   await waitForPrompt('peer@AS4242423143:~#');
 
-  // 8. Execute: peer new (V1: nano editor workflow)
+  // 8. Execute: peer new 1 (V1: editor workflow)
   console.log('Executing: peer new 1');
-  await sendInput('peer new 1\n');
-  await waitForPrompt('/tmp/peer_draft');
-  console.log('Peer draft editor opened with peer template!');
-  await delay(1000);
+  await sendInput("echo 'sed -i -e \"/IPv4/s/=.*/= 172.20.150.1/\" -e \"/ULA/s/=.*/= fd00:4242:3143::1/\" -e \"/Key/s/=.*/= yA+N64x7tN\\/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=/\" -e \"/Endpoint/s/=.*/= myhost.dn42/\" \"$1\"' > /tmp/ed && chmod +x /tmp/ed\n");
+  await delay(500);
+  await waitForPrompt('peer@AS4242423143:~#');
 
-  // Navigate in nano to fields:
-  const downKey = '\x1b[B';
-  const endKey = '\x1b[F';
-  
-  // 13 down arrows to reach Line 14 (DN42 IPv4)
-  let down13 = '';
-  for (let k = 0; k < 13; k++) down13 += downKey;
-  await sendInput(down13);
-  await delay(300);
-  await sendInput(endKey + '172.20.150.1');
-  await delay(300);
-
-  // Down to Line 15 (IPv6 ULA)
-  await sendInput(downKey + endKey + 'fd00:4242:3143::1');
-  await delay(300);
-
-  // Down 3 to Line 18 (WireGuard Public Key)
-  await sendInput(downKey + downKey + downKey + endKey + 'yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=');
-  await delay(300);
-
-  // Exit & Save in nano: Ctrl+X -> Y (save changes) -> Enter (confirm filename)
-  await sendInput('\x18'); // Ctrl+X (Exit)
-  await delay(600);
-  await sendInput('y');    // Answer Y to Save modified buffer
-  await delay(600);
-  await sendInput('\n');   // Confirm /tmp/peer_draft filename
-  await delay(800);
-
+  await sendInput('EDITOR=/tmp/ed peer new 1\n');
   await waitForPrompt('-------- REVIEW --------');
   await waitForPrompt('Confirm and submit?');
   await sendInput('y\n');
   await waitForPrompt('peer@AS4242423143:~#', 20);
-  console.log('Peer created successfully via nano editor workflow!');
+  console.log('Peer created successfully via editor workflow!');
 
   // 9. Execute: peer ls
   console.log('Executing: peer ls');

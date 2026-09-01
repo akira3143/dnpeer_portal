@@ -131,9 +131,10 @@ do_new() {
   init_mtu="1420"
 
   # Editor Interaction Loop
-  while true; do
-    # 1. Automatically launch nano editor
-    if [ -x /bin/nano ]; then
+    # 1. Automatically launch editor (honors $EDITOR or defaults to nano)
+    if [ -n "$EDITOR" ]; then
+      $EDITOR "$draft_file"
+    elif [ -x /bin/nano ]; then
       /bin/nano "$draft_file"
     elif [ -x /usr/bin/nano ]; then
       /usr/bin/nano "$draft_file"
