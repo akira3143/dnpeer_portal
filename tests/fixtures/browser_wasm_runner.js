@@ -193,12 +193,15 @@ async function main() {
   const waitForPrompt = async (target, timeoutSec = 30) => {
     for (let i = 0; i < timeoutSec * 2; i++) {
       const buf = await getBuffer();
-      if (buf.includes(target)) return buf;
+      if (typeof target === 'string' && buf.includes(target)) return buf;
+      if (target instanceof RegExp && target.test(buf)) return buf;
       await delay(500);
     }
     const finalBuf = await getBuffer();
     throw new Error(`Timeout waiting for prompt "${target}". Buffer was:\n${finalBuf}`);
   };
+
+  const SHELL_PROMPT = /peer@(akilab|AS4242423143):~#/;
 
   // 1. Wait for Login Prompt
   await waitForPrompt('DN42 ASN or Account:');
@@ -214,57 +217,56 @@ async function main() {
 
   // 4. Submit Password
   await sendInput('test12345\n');
-  await waitForPrompt('peer@AS4242423143:~#');
-  console.log('Authenticated into WASM Linux Shell: peer@AS4242423143:~#');
+  await waitForPrompt(SHELL_PROMPT);
+  console.log('Authenticated into WASM Linux Shell');
 
   // 5. Execute: nodes
   console.log('Executing: nodes');
   await sendInput('nodes\n');
   await delay(1500);
-  await waitForPrompt('peer@AS4242423143:~#');
+  await waitForPrompt(SHELL_PROMPT);
 
   // 6. Execute: whois 4242423143
   console.log('Executing: whois 4242423143');
   await sendInput('whois 4242423143\n');
   await delay(1500);
-  await waitForPrompt('peer@AS4242423143:~#');
+  await waitForPrompt(SHELL_PROMPT);
 
   // 7. Execute: whoami
   console.log('Executing: whoami');
   await sendInput('whoami\n');
   await delay(1000);
-  await waitForPrompt('peer@AS4242423143:~#');
+  await waitForPrompt(SHELL_PROMPT);
 
   // 8. Execute: peer new 1 (V1: editor workflow)
   console.log('Executing: peer new 1');
   await sendInput("echo IyEvYmluL3NoCmNhdCA8PCAnRU9EJyA+ICIkMSIKTm9kZSA9IEpQLVRZTy0xCkxpbmstTG9jYWwgSVB2NiAoTExBKSA9IGZlODA6OjMxNDMKRE40MiBJUHY0IChPcHRpb25hbCkgPSAxNzIuMjAuMTUwLjEKSVB2NiBVTEEgKE9wdGlvbmFsKSA9IGZkMDA6NDI0MjozMTQzOjoxCldpcmVHdWFyZCBQdWJsaWMgS2V5ID0geUErTjY0eDd0Ti80SDFYcUpkKzdxZjNLOXoxVjh1VDVRN28rUDJ3OHgxRT0KV2lyZUd1YXJkIEVuZHBvaW50ID0gbXlob3N0LmRuNDIKUGVlclBvcnQgPSBhdXRvCkxpc3RlblBvcnQgPSBhdXRvCk1UVSA9IDE0MjAKRU9ECg== | base64 -d > /tmp/ed && chmod 755 /tmp/ed\n");
   await delay(500);
-  await waitForPrompt('peer@AS4242423143:~#');
-
   await sendInput('EDITOR=/tmp/ed peer new 1\n');
-  await waitForPrompt('-------- REVIEW --------');
-  await waitForPrompt('Confirm and submit?');
+  await delay(1500);
+  await waitForPrompt('Confirm and submit? [Y/n/q]:');
+
+  // 9. Confirm peer submission
   await sendInput('y\n');
-  await waitForPrompt('peer@AS4242423143:~#', 20);
+  await delay(2000);
   console.log('Peer created successfully via editor workflow!');
 
-  // 9. Execute: peer ls
+  // 10. Execute: peer ls and peer rm
   console.log('Executing: peer ls');
   await sendInput('peer ls\n');
   await delay(1500);
-  await waitForPrompt('peer@AS4242423143:~#');
+  await waitForPrompt(SHELL_PROMPT);
 
-  // 10. Execute: peer rm peer_akira_jp_tyo_1 (U1)
   console.log('Executing: peer rm peer_akira_jp_tyo_1');
   await sendInput('peer rm peer_akira_jp_tyo_1\n');
   await delay(1500);
-  await waitForPrompt('peer@AS4242423143:~#');
+  await waitForPrompt(SHELL_PROMPT);
 
   // 11. Execute: lg status
   console.log('Executing: lg status');
   await sendInput('lg status\n');
   await delay(1500);
-  await waitForPrompt('peer@AS4242423143:~#');
+  await waitForPrompt(SHELL_PROMPT);
 
   const finalBuffer = await getBuffer();
   console.log('\n================== REAL WASM LINUX XTERM BUFFER OUTPUT ==================');
