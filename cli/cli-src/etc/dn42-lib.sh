@@ -14,11 +14,19 @@ elif [ -f "cli-src/lib/rules.sh" ]; then
 fi
 
 dn42_token() {
-  cat /tmp/dn42_token 2>/dev/null
+  if [ -f /mnt/persist/.dn42/token ]; then
+    cat /mnt/persist/.dn42/token 2>/dev/null
+  else
+    cat /tmp/dn42_token 2>/dev/null
+  fi
 }
 
 dn42_asn() {
-  cat /tmp/dn42_asn 2>/dev/null
+  if [ -f /mnt/persist/.dn42/asn ]; then
+    cat /mnt/persist/.dn42/asn 2>/dev/null
+  else
+    cat /tmp/dn42_asn 2>/dev/null
+  fi
 }
 
 check_auth_response() {

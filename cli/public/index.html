@@ -209,15 +209,47 @@
 
       // 持久层：浏览器 OPFS 自动挂载（免授权），供 Linux 侧 rememberMe 会话持久化
       let persistFs = null;
+      let opfsDirHandle = null;
       try {
-        if (createHostDirectoryFS) {
+        if (createHostDirectoryFS && navigator.storage && navigator.storage.getDirectory) {
           persistFs = createHostDirectoryFS();
-          const opfsDir = await navigator.storage.getDirectory();
-          await persistFs.attach(opfsDir);
+          opfsDirHandle = await navigator.storage.getDirectory();
+          await persistFs.attach(opfsDirHandle);
         }
       } catch (e) {
         persistFs = null;
       }
+
+      // 双端同步：宿主暴露 OPFS Token 镜像写入函数
+      window.syncTokenToPersist = async (token) => {
+        try {
+          if (!navigator.storage || !navigator.storage.getDirectory) return;
+          const rootDir = opfsDirHandle || await navigator.storage.getDirectory();
+          if (token) {
+            const dn42Dir = await rootDir.getDirectoryHandle('.dn42', { create: true });
+            const fileHandle = await dn42Dir.getFileHandle('token', { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(token);
+            await writable.close();
+          } else {
+            try {
+              const dn42Dir = await rootDir.getDirectoryHandle('.dn42');
+              await dn42Dir.removeEntry('token').catch(() => {});
+              await dn42Dir.removeEntry('asn').catch(() => {});
+            } catch {}
+          }
+        } catch (e) {
+          console.warn('OPFS token sync error:', e);
+        }
+      };
+
+      // 宿主启动时：把 localStorage 的 token 镜像写入 OPFS persist
+      try {
+        const localToken = localStorage.getItem('dn42_auth_token');
+        if (localToken) {
+          await window.syncTokenToPersist(localToken);
+        }
+      } catch {}
 
       const stdin = new ReadableStream({
         start(controller) {
@@ -284,7 +316,29 @@
             // Linux 内视角不变(10.0.2.2:4242)，宿主侧直接打本域 API，零 CORS 问题。
             // cache:no-store —— API 响应绝不能进浏览器缓存（否则认证数据会串）
             const rewritten = urlStr.replace(/^https?:\/\/10\.0\.2\.2(?::\d+)?\//, '/');
-            return fetch(rewritten, { ...(args[1] || {}), cache: 'no-store' });
+            const resPromise = fetch(rewritten, { ...(args[1] || {}), cache: 'no-store' });
+
+            // 双端同步：网关拦截 CLI 认证响应并镜像到 localStorage
+            resPromise.then(async (res) => {
+              if (res.ok && (
+                rewritten.includes('/api/auth/login-password') ||
+                rewritten.includes('/api/auth/verify-signature') ||
+                rewritten.includes('/api/auth/verify-ssh')
+              )) {
+                try {
+                  const clone = res.clone();
+                  const data = await clone.json();
+                  if (data && data.success && data.data && data.data.token) {
+                    localStorage.setItem('dn42_auth_token', data.data.token);
+                  }
+                } catch {}
+              }
+              if (rewritten.includes('/api/auth/logout')) {
+                localStorage.removeItem('dn42_auth_token');
+              }
+            }).catch(() => {});
+
+            return resPromise;
           },
           debug: false
         });
