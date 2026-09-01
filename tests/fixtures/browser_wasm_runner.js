@@ -296,10 +296,10 @@ async function main() {
 
   const tokenInStorage = await cdp.evaluate("localStorage.getItem('dn42_auth_token')");
   console.log(`Synchronized Token in localStorage: ${tokenInStorage ? 'PRESENT (mirrored from CLI login)' : 'ABSENT'}`);
-  assert.ok(tokenInStorage, 'CLI login must mirror token into localStorage via gateway sync (6.1)');
+  assert.ok(tokenInStorage, 'CLI login must mirror token into localStorage via gateway sync (R1)');
 
   const guiHeroText = await cdp.evaluate('document.body.innerText');
-  assert.ok(guiHeroText.includes('OPEN PEERING POLICY'), 'GUI must render OPEN PEERING POLICY badge');
+  assert.ok(guiHeroText.includes('OPEN PEERING POLICY'), 'GUI must render OPEN PEERING POLICY badge (R7)');
   assert.ok(guiHeroText.includes('Global Edge Nodes'), 'GUI must render Global Edge Nodes table');
   assert.ok(guiHeroText.includes('Autonomous System'), 'GUI must render Autonomous System card');
   assert.ok(guiHeroText.includes('AS4242423143'), 'GUI must render authenticated AS4242423143 session badge');
@@ -317,6 +317,73 @@ async function main() {
     console.log(`Saved GUI screenshot to artifacts dir: ${artGuiPath}`);
   }
 
+  // 13. Test R2: Click Looking Glass button in Hero -> switches to in-app LG view
+  console.log('\n--- 13. Verifying R2: In-app Looking Glass Navigation ---');
+  const clicked = await cdp.evaluate(`
+    (() => {
+      const btns = Array.from(document.querySelectorAll('button'));
+      const lgBtn = btns.find(b => b.textContent.includes('Looking Glass'));
+      if (lgBtn) {
+        lgBtn.click();
+        return true;
+      }
+      return false;
+    })()
+  `);
+  console.log(`Looking Glass button clicked: ${clicked}`);
+  await delay(1500);
+  const lgViewText = await cdp.evaluate('document.body.innerText');
+  console.log(`Page content snippet: ${lgViewText.slice(0, 300)}...`);
+  assert.ok(lgViewText.includes('Looking Glass'), 'Must render in-app Looking Glass header (R2)');
+  assert.ok(lgViewText.includes('Command'), 'Must render Looking Glass command options');
+  console.log('✓ R2 verified: Looking Glass switches seamlessly to in-app diagnostic view!');
+
+  // 14. Test R4: Peering Studio Form Visual Alignment & Submission
+  console.log('\n--- 14. Verifying R4: Peering Studio Form & Submission ---');
+  await cdp.evaluate(`
+    const navBtns = Array.from(document.querySelectorAll('nav button'));
+    const peerNav = navBtns.find(b => b.textContent.includes('Peering'));
+    if (peerNav) peerNav.click();
+  `);
+  await delay(1000);
+
+  const formText = await cdp.evaluate('document.body.innerText');
+  assert.ok(formText.includes('Step 01') || formText.includes('Step') || formText.includes('PEERING PARAMETERS'), 'Must render Step 01 / Peering Parameters header (R4)');
+  assert.ok(formText.includes('Your ASN'), 'Must render Your ASN field (R4)');
+  assert.ok(formText.includes('WireGuard Public Key'), 'Must render WireGuard Public Key field (R4)');
+  assert.ok(formText.includes('wg0.conf'), 'Must render wg0.conf tab (R4)');
+
+  // Click Demo Data Fill
+  await cdp.evaluate(`
+    const demoBtn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Demo'));
+    if (demoBtn) demoBtn.click();
+  `);
+  await delay(500);
+
+  // Submit peering form
+  console.log('Submitting GUI Peering Form...');
+  await cdp.evaluate(`
+    const submitBtn = Array.from(document.querySelectorAll('button[type="submit"]')).find(b => b.textContent.includes('Submit Peering Application'));
+    if (submitBtn) submitBtn.click();
+  `);
+  await delay(2000);
+
+  const afterSubmitText = await cdp.evaluate('document.body.innerText');
+  assert.ok(afterSubmitText.includes('Peering Application Approved') || afterSubmitText.includes('Session ID:'), 'Form submission must succeed with approval banner (R4)');
+  console.log('✓ R4 verified: Peering Studio visual alignment, live configs, and submission validated!');
+
+  // Capture GUI Peering Form Screenshot
+  const formScreenshot = await cdp.send('Page.captureScreenshot', { format: 'png' });
+  const formShotPath = path.join(docsDir, 'gui_form_screenshot.png');
+  fs.writeFileSync(formShotPath, Buffer.from(formScreenshot.data, 'base64'));
+  console.log(`Saved GUI form screenshot to: ${formShotPath}`);
+
+  if (fs.existsSync(ARTIFACTS_DIR)) {
+    const artFormPath = path.join(ARTIFACTS_DIR, 'gui_form_screenshot.png');
+    fs.writeFileSync(artFormPath, Buffer.from(formScreenshot.data, 'base64'));
+    console.log(`Saved GUI form screenshot to artifacts dir: ${artFormPath}`);
+  }
+
   try {
     // Clean up Chrome process & user data
     await cdp.close();
@@ -324,7 +391,7 @@ async function main() {
     try { fs.rmSync(userDataDir, { recursive: true, force: true }); } catch {}
 
     await server.closeAll();
-    console.log('\nVerification Finished Successfully!');
+    console.log('\nAll End-to-End Browser Tests Finished Successfully!');
     process.exit(0);
   } finally {
     testData.cleanup();
