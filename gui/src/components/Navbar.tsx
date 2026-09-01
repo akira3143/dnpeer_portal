@@ -114,7 +114,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Layers className="w-3.5 h-3.5" />
-            <span>首页</span>
+            <span>Overview &middot; <span className="text-slate-400 font-normal text-[11px]">首页</span></span>
           </button>
 
           <button
@@ -126,7 +126,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Zap className="w-3.5 h-3.5" />
-            <span>互联申请</span>
+            <span>Peering &middot; <span className="text-slate-400 font-normal text-[11px]">申请</span></span>
           </button>
 
           <button
@@ -138,7 +138,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Activity className="w-3.5 h-3.5" />
-            <span>我的会话</span>
+            <span>Sessions &middot; <span className="text-slate-400 font-normal text-[11px]">会话</span></span>
           </button>
 
           <button
@@ -159,7 +159,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hover:text-cyan-300 hover:bg-white/[0.05] transition-all cursor-pointer"
           >
             <Mail className="w-3.5 h-3.5" />
-            <span>Contact</span>
+            <span>Contact &middot; <span className="text-slate-400 font-normal text-[11px]">联络</span></span>
           </a>
         </nav>
 
@@ -276,7 +276,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Layers className="w-4 h-4" />
-            <span>首页</span>
+            <span>Overview &middot; <span className="text-slate-400 font-normal text-xs">首页</span></span>
           </button>
           <button
             onClick={() => {
@@ -288,7 +288,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Zap className="w-4 h-4" />
-            <span>互联申请</span>
+            <span>Peering &middot; <span className="text-slate-400 font-normal text-xs">互联申请</span></span>
           </button>
           <button
             onClick={() => {
@@ -300,7 +300,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Activity className="w-4 h-4" />
-            <span>我的会话</span>
+            <span>Sessions &middot; <span className="text-slate-400 font-normal text-xs">我的会话</span></span>
           </button>
           <button
             onClick={() => {
@@ -319,7 +319,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={handleContactClick}
             className="block w-full text-left px-3 py-2 rounded-xl text-slate-300"
           >
-            Contact
+            Contact &middot; <span className="text-slate-400 font-normal text-xs">联络</span>
           </a>
         </div>
       )}

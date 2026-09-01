@@ -95,11 +95,11 @@ export const NodeGrid: React.FC<NodeGridProps> = ({ nodes, onSelectNode }) => {
               
               {/* Table Header */}
               <div className="grid grid-cols-[3fr_1.2fr_2.5fr_1fr_1.2fr] items-center px-6 py-3.5 bg-white/[0.02] border-b border-white/[0.06] text-slate-400 text-[11px] uppercase tracking-widest font-sans select-none font-medium">
-                <div className="pl-2">NODE</div>
-                <div className="text-center">STATUS</div>
-                <div className="text-left pl-2">ENDPOINT</div>
+                <div className="pl-2">NODE &middot; <span className="text-slate-600 font-normal">节点</span></div>
+                <div className="text-center">STATUS &middot; <span className="text-slate-600 font-normal">状态</span></div>
+                <div className="text-left pl-2">ENDPOINT &middot; <span className="text-slate-600 font-normal">接入端点</span></div>
                 <div className="text-center">MTU</div>
-                <div className="text-right pr-2">ACTION</div>
+                <div className="text-right pr-2">ACTION &middot; <span className="text-slate-600 font-normal">操作</span></div>
               </div>
 
               {/* Table Body Rows */}
@@ -182,7 +182,7 @@ export const NodeGrid: React.FC<NodeGridProps> = ({ nodes, onSelectNode }) => {
                           className="bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 hover:border-cyan-400 text-cyan-300 px-4 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition-all shadow-lg shadow-transparent hover:shadow-cyan-500/10"
                         >
                           <Terminal className="w-3.5 h-3.5" />
-                          <span>Request Peering</span>
+                          <span>Request Peering &middot; <span className="text-cyan-100 font-normal text-[11px]">申请互联</span></span>
                         </button>
                       </div>
                     </div>

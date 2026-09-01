@@ -61,18 +61,20 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({ isOpen, onClose })
             <KeyRound className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-white tracking-tight">
-              Change Account Password
+            <h3 className="text-lg font-bold text-white tracking-tight font-sans">
+              Change Account Password &middot; <span className="text-slate-400 font-normal text-xs">修改账户密码</span>
             </h3>
-            <p className="text-xs text-slate-400">
-              Update your quick login credentials
+            <p className="text-xs text-slate-400 font-sans">
+              Update your quick login credentials &middot; <span className="text-slate-500 font-normal text-[11px]">设置或更新网页端快捷登录密码</span>
             </p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">New Password</label>
+            <label className="text-xs font-semibold text-slate-300">
+              New Password &middot; <span className="text-slate-500 font-normal text-[11px]">新密码</span>
+            </label>
             <input
               type="password"
               placeholder="At least 6 characters"
@@ -83,7 +85,9 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({ isOpen, onClose })
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">Confirm Password</label>
+            <label className="text-xs font-semibold text-slate-300">
+              Confirm Password &middot; <span className="text-slate-500 font-normal text-[11px]">确认新密码</span>
+            </label>
             <input
               type="password"
               placeholder="Repeat new password"
@@ -107,7 +111,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({ isOpen, onClose })
               className="btn-primary w-1/2 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/20 disabled:opacity-50"
             >
               {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-              <span>Update</span>
+              <span>Update Password</span>
             </button>
           </div>
         </form>

@@ -225,11 +225,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
             <ShieldCheck className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-white tracking-tight">
-              DN42 Account Authentication
+            <h3 className="text-lg font-bold text-white tracking-tight font-sans">
+              DN42 Account Authentication &middot; <span className="text-slate-400 font-normal text-xs">账户验证</span>
             </h3>
-            <p className="text-xs text-slate-400">
-              Cryptographic SSH Verification & Fast Password Login
+            <p className="text-xs text-slate-400 font-sans">
+              Cryptographic SSH Verification & Fast Password Login &middot; <span className="text-slate-500 font-normal text-[11px]">SSH 密码学签名与密码快捷登录</span>
             </p>
           </div>
         </div>
@@ -246,7 +246,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               }`}
             >
               <KeyRound className="w-3.5 h-3.5" />
-              <span>Password Login</span>
+              <span>Password Login &middot; <span className="text-slate-400 font-normal text-[11px]">密码登录</span></span>
             </button>
             <button
               onClick={() => setAuthMode('ssh')}
@@ -257,7 +257,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               }`}
             >
               <Terminal className="w-3.5 h-3.5" />
-              <span>SSH Signature</span>
+              <span>SSH Signature &middot; <span className="text-slate-400 font-normal text-[11px]">SSH 签名</span></span>
             </button>
           </div>
         )}

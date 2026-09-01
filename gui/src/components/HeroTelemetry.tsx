@@ -62,7 +62,7 @@ export const HeroTelemetry: React.FC<HeroTelemetryProps> = ({ network, onSelectT
               className="btn-primary inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold shadow-lg shadow-cyan-500/20 cursor-pointer"
             >
               <Server className="w-4 h-4" />
-              <span>Explore Nodes</span>
+              <span>Explore Nodes &middot; <span className="text-cyan-100 font-normal text-xs">浏览节点</span></span>
               <ArrowRight className="w-4 h-4" />
             </a>
             <button
@@ -82,7 +82,9 @@ export const HeroTelemetry: React.FC<HeroTelemetryProps> = ({ network, onSelectT
           {/* Card 1: ASN */}
           <div className="glass-panel p-4 flex items-center justify-between border-t-2 border-t-cyan-400 shadow-lg">
             <div>
-              <span className="text-[11px] font-sans text-slate-400 uppercase tracking-wider font-semibold">Autonomous System</span>
+              <span className="text-[11px] font-sans text-slate-400 uppercase tracking-wider font-semibold">
+                Autonomous System &middot; <span className="text-slate-500 font-normal text-[10px]">自治系统</span>
+              </span>
               <div className="text-base font-mono font-bold text-white mt-0.5">{network.asn}</div>
             </div>
             <button
@@ -97,7 +99,9 @@ export const HeroTelemetry: React.FC<HeroTelemetryProps> = ({ network, onSelectT
           {/* Card 2: IPv4 Pool */}
           <div className="glass-panel p-4 flex items-center justify-between border-t-2 border-t-emerald-400 shadow-lg">
             <div>
-              <span className="text-[11px] font-sans text-slate-400 uppercase tracking-wider font-semibold">IPv4 Pool</span>
+              <span className="text-[11px] font-sans text-slate-400 uppercase tracking-wider font-semibold">
+                IPv4 Pool &middot; <span className="text-slate-500 font-normal text-[10px]">IPv4 地址池</span>
+              </span>
               <div className="text-base font-mono font-bold text-emerald-400 mt-0.5">{network.ipv4Pool}</div>
             </div>
             <button
@@ -112,7 +116,9 @@ export const HeroTelemetry: React.FC<HeroTelemetryProps> = ({ network, onSelectT
           {/* Card 3: IPv6 Pool */}
           <div className="glass-panel p-4 flex items-center justify-between border-t-2 border-t-purple-400 shadow-lg">
             <div>
-              <span className="text-[11px] font-sans text-slate-400 uppercase tracking-wider font-semibold">IPv6 Pool</span>
+              <span className="text-[11px] font-sans text-slate-400 uppercase tracking-wider font-semibold">
+                IPv6 Pool &middot; <span className="text-slate-500 font-normal text-[10px]">IPv6 地址池</span>
+              </span>
               <div className="text-base font-mono font-bold text-purple-400 mt-0.5">{network.ipv6Pool}</div>
             </div>
             <button

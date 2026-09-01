@@ -113,7 +113,7 @@ export const LookingGlass: React.FC<LookingGlassProps> = ({ nodes, networkMeta: 
             {/* Target Node Dropdown (4 Cols) */}
             <div className="md:col-span-4 space-y-1.5">
               <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
-                <span>PoP Node</span>
+                <span>PoP Node &middot; <span className="text-slate-500 font-normal text-[11px]">节点</span></span>
                 <span className="text-slate-500 font-mono text-[10px] uppercase">Source</span>
               </label>
               <div className="relative">
@@ -134,7 +134,9 @@ export const LookingGlass: React.FC<LookingGlassProps> = ({ nodes, networkMeta: 
 
             {/* Query Command Type (3 Cols) */}
             <div className="md:col-span-3 space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">Command</label>
+              <label className="text-xs font-semibold text-slate-300">
+                Command &middot; <span className="text-slate-500 font-normal text-[11px]">命令</span>
+              </label>
               <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-black/40 border border-white/10">
                 <button
                   type="button"
@@ -164,7 +166,7 @@ export const LookingGlass: React.FC<LookingGlassProps> = ({ nodes, networkMeta: 
             {/* Target Input (3 Cols, disabled for bgp) */}
             <div className="md:col-span-3 space-y-1.5">
               <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
-                <span>Target / Prefix</span>
+                <span>Target &middot; <span className="text-slate-500 font-normal text-[11px]">目标</span></span>
                 <span className="text-slate-500 font-mono text-[10px]">IPv4/IPv6/ASN</span>
               </label>
               <input
@@ -193,7 +195,7 @@ export const LookingGlass: React.FC<LookingGlassProps> = ({ nodes, networkMeta: 
                 ) : (
                   <>
                     <Play className="w-3.5 h-3.5" />
-                    <span>Run Query</span>
+                    <span>Run Query &middot; <span className="text-cyan-100 font-normal text-[11px]">查询</span></span>
                   </>
                 )}
               </button>
