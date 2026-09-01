@@ -173,7 +173,7 @@ do_new() {
           gsub(/[ \t]/, "", key)
           key=tolower(key)
           sub(/^[ \t]+/, "", val); sub(/[ \t]+$/, "", val)
-          gsub(/[^A-Za-z0-9.:\/+_<>-]/, "", val)
+          gsub(/[^A-Za-z0-9.:\/+_<>= -]/, "", val)
           if (key=="node") printf "parsed_node=%s\n", val
           else if (key=="link-localipv6(lla)" || key=="link-local" || key=="lla" || key=="linklocal") printf "parsed_lla=%s\n", val
           else if (key=="dn42ipv4(optional)" || key=="dn42ipv4" || key=="ipv4") printf "parsed_ipv4=%s\n", val
