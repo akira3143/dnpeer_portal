@@ -235,12 +235,10 @@ async function main() {
   await waitForPrompt('peer@AS4242423143:~#');
 
   // 8. Execute: peer new (V1: nano editor workflow)
-  console.log('Executing: peer new');
-  await sendInput('peer new\n');
-  await waitForPrompt('Select target node');
-  await sendInput('1\n');
-  await waitForPrompt('GNU nano 7.2');
-  console.log('GNU nano editor opened with peer template!');
+  console.log('Executing: peer new 1');
+  await sendInput('peer new 1\n');
+  await waitForPrompt('/tmp/peer_draft');
+  console.log('Peer draft editor opened with peer template!');
   await delay(1000);
 
   // Navigate in nano: Down 5 times to Line 5 (IPv4)
