@@ -156,6 +156,11 @@ export function createServer() {
           return sendJson(res, resp.code || 200, resp);
         }
 
+        if (pathname === '/api/auth/logout') {
+          // Stateless signal: CLI gateway mirrors localStorage cleanup on this path
+          return sendJson(res, 200, successEnvelope({ message: 'Signed out' }, 200));
+        }
+
         if (pathname === '/api/auth/status' && method === 'GET') {
           const user = extractUser(req);
           const resp = await AuthController.getStatus(user);

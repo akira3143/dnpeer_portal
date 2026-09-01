@@ -8,6 +8,13 @@
   <link rel="stylesheet" href="./vendor/xterm/xterm.css" />
   <link rel="stylesheet" href="./css/terminal.css" />
   <script>
+    // 清理历史注册的旧 SW（其 cache-first 会拦截 rootfs.dat 导致更新失效）；
+    // 服务端已直接下发 COOP/COEP 头，SW 不再需要
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations()
+        .then(function (rs) { rs.forEach(function (r) { r.unregister(); }); })
+        .catch(function () {});
+    }
     // 服务端已直接下发 COOP/COEP 头时跳过 sw 注册（避免首访 reload）；
     // 否则注册 coi-serviceworker 兜底（静态托管无隔离头场景）
     if (!window.crossOriginIsolated) {
