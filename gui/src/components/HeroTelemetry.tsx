@@ -65,25 +65,14 @@ export const HeroTelemetry: React.FC<HeroTelemetryProps> = ({ network, onSelectT
               <span>Explore Nodes</span>
               <ArrowRight className="w-4 h-4" />
             </a>
-            {network.lookingGlassUrl ? (
-              <a
-                href={network.lookingGlassUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs sm:text-sm font-medium transition-all inline-flex items-center gap-1.5"
-              >
-                <span>Looking Glass</span>
-                <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
-              </a>
-            ) : (
-              <button
-                onClick={() => onSelectTab && onSelectTab('lg')}
-                className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs sm:text-sm font-medium transition-all inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <span>Looking Glass</span>
-                <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => onSelectTab && onSelectTab('lg')}
+              className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs sm:text-sm font-medium transition-all inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>Looking Glass</span>
+              <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+            </button>
           </div>
         </div>
 

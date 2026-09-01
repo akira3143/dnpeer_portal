@@ -168,25 +168,13 @@ export const Footer: React.FC<FooterProps> = ({ network, contacts, onScrollToLoo
               <span>DN42 WHOIS</span>
               <ExternalLink className="w-3 h-3" />
             </a>
-            {network.lookingGlassUrl ? (
-              <a
-                href={network.lookingGlassUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-slate-400 hover:text-cyan-300 transition-colors flex items-center gap-1"
-              >
-                <span>Looking Glass</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            ) : (
-              <button
-                onClick={onScrollToLookingGlass}
-                className="text-slate-400 hover:text-cyan-300 transition-colors flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0"
-              >
-                <span>Looking Glass</span>
-                <ExternalLink className="w-3 h-3" />
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={onScrollToLookingGlass}
+              className="text-slate-400 hover:text-cyan-300 transition-colors flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0"
+            >
+              <span>Looking Glass</span>
+            </button>
             <a
               href="https://dn42.dev"
               target="_blank"
