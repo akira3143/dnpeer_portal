@@ -76,6 +76,7 @@ const cliFiles = [
   'init',
   'etc/dn42-lib.sh',
   'etc/profile',
+  'etc/banner.sh',
   'etc/peer_template',
   'lib/rules.sh',
   'sbin/dn42-login',
