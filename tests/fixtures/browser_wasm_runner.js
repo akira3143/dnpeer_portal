@@ -236,7 +236,7 @@ async function main() {
 
   // 8. Execute: peer new 1 (V1: editor workflow)
   console.log('Executing: peer new 1');
-  await sendInput("echo 'sed -i -e \"/IPv4/s/=.*/= 172.20.150.1/\" -e \"/ULA/s/=.*/= fd00:4242:3143::1/\" -e \"/Key/s/=.*/= yA+N64x7tN\\/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=/\" -e \"/Endpoint/s/=.*/= myhost.dn42/\" \"$1\"' > /tmp/ed && chmod +x /tmp/ed\n");
+  await sendInput("printf '#!/bin/sh\\nsed -i -e \"/IPv4/s/=.*/= 172.20.150.1/\" -e \"/ULA/s/=.*/= fd00:4242:3143::1/\" -e \"/Key/s/=.*/= yA+N64x7tN\\\\/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=/\" -e \"/Endpoint/s/=.*/= myhost.dn42/\" \"$1\"\\n' > /tmp/ed && chmod +x /tmp/ed\n");
   await delay(500);
   await waitForPrompt('peer@AS4242423143:~#');
 
