@@ -101,10 +101,16 @@ export class ApiClient {
 
   public static setToken(token: string) {
     localStorage.setItem('dn42_auth_token', token);
+    if (typeof window !== 'undefined' && typeof (window as any).syncTokenToPersist === 'function') {
+      (window as any).syncTokenToPersist(token);
+    }
   }
 
   public static clearToken() {
     localStorage.removeItem('dn42_auth_token');
+    if (typeof window !== 'undefined' && typeof (window as any).syncTokenToPersist === 'function') {
+      (window as any).syncTokenToPersist(null);
+    }
   }
 
   public static async request<T = any>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
@@ -122,6 +128,9 @@ export class ApiClient {
     try {
       const res = await fetch(endpoint, { ...options, headers });
       const data: ApiResponse<T> = await res.json();
+      if (res.status === 401 && endpoint !== '/api/auth/login-password') {
+        this.clearToken();
+      }
       return data;
     } catch (err: any) {
       return {
@@ -154,10 +163,17 @@ export class ApiClient {
     });
   }
 
-  public static async loginPassword(username: string, password: string, rememberMe: boolean = false): Promise<ApiResponse<any>> {
+  public static async loginPassword(asnOrUsername: string | number, password: string, rememberMe: boolean = false): Promise<ApiResponse<any>> {
     return this.request('/api/auth/login-password', {
       method: 'POST',
-      body: JSON.stringify({ username, password, rememberMe })
+      body: JSON.stringify({ asn: String(asnOrUsername), username: String(asnOrUsername), password, rememberMe })
+    });
+  }
+
+  public static async setPassword(password: string): Promise<ApiResponse<any>> {
+    return this.request('/api/auth/set-password', {
+      method: 'POST',
+      body: JSON.stringify({ password })
     });
   }
 
