@@ -1,7 +1,7 @@
 [
   {
     "_comment": "Example Peering Session: Active Peer on Node JP-TYO-1 with Port 23143 locked in port_ledger.example.json",
-    "id": "sess_4242423143_jp_tyo_1",
+    "id": "peer_akira_jp_tyo_1",
     "asn": 4242423143,
     "asName": "AKILAB-DN42",
     "nodeId": "JP-TYO-1",
@@ -16,6 +16,7 @@
       "ipv6Ula": "fd00:4242:3143:100::1",
       "linkLocal": "fe80::4242:3143",
       "listenPort": 23143,
+      "clientPort": "auto",
       "mtu": 1420,
       "bgpMode": "mpbgp_enh"
     },
@@ -39,7 +40,7 @@
   },
   {
     "_comment": "Example Peering Session 2: Conflict resolved peer (20001 was taken, shifted to 30001)",
-    "id": "sess_4242420001_jp_tyo_1",
+    "id": "peer_testpeer1_jp_tyo_1",
     "asn": 4242420001,
     "asName": "TEST-PEER-1",
     "nodeId": "JP-TYO-1",
@@ -53,6 +54,7 @@
       "ipv6Ula": "fd00:4242:1:100::1",
       "linkLocal": "fe80::4242:1",
       "listenPort": 30001,
+      "clientPort": "auto",
       "mtu": 1420,
       "bgpMode": "mpbgp_enh"
     },

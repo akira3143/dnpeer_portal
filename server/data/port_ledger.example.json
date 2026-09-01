@@ -5,7 +5,7 @@
       "port": 23143,
       "type": "in_use",
       "source": "peering_session",
-      "sessionId": "sess_4242423143_jp_tyo_1",
+      "sessionId": "peer_akira_jp_tyo_1",
       "asn": 4242423143,
       "lockedAt": "2026-08-28T08:00:00.000Z",
       "description": "Allocated for ASN 4242423143 (AKILAB-DN42)"
@@ -21,7 +21,7 @@
       "port": 30001,
       "type": "locked",
       "source": "peering_session",
-      "sessionId": "sess_4242420001_jp_tyo_1",
+      "sessionId": "peer_testpeer1_jp_tyo_1",
       "asn": 4242420001,
       "lockedAt": "2026-08-29T10:00:00.000Z",
       "description": "Allocated for ASN 4242420001 (conflict shifted from 20001)"
