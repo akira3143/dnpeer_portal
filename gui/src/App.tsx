@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ApiClient, type NetworkMeta } from './api/client';
+import { ApiClient, readTokenFromOPFS, type NetworkMeta } from './api/client';
 import { ToastProvider, useToast } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Navbar } from './components/Navbar';
@@ -106,13 +106,25 @@ const AppContent: React.FC = () => {
       if (metaRes.success && metaRes.data) {
         setMeta(metaRes.data);
         if (metaRes.data.nodes?.length > 0) {
-          setSelectedNodeId(metaRes.data.nodes[0].id);
+          setSelectedNodeId((prev) => prev || metaRes.data!.nodes[0].id);
         }
       }
 
-      const meRes = await ApiClient.getMe();
-      if (meRes.success && meRes.data) {
-        setUser(meRes.data);
+      // If localStorage has no token, check OPFS persist token
+      if (!ApiClient.getToken()) {
+        const opfsToken = await readTokenFromOPFS();
+        if (opfsToken) {
+          localStorage.setItem('dn42_auth_token', opfsToken);
+        }
+      }
+
+      if (ApiClient.getToken()) {
+        const meRes = await ApiClient.getMe();
+        if (meRes.success && meRes.data) {
+          setUser(meRes.data);
+        } else {
+          setUser(null);
+        }
       } else {
         setUser(null);
       }

@@ -243,13 +243,37 @@
         }
       };
 
-      // 宿主启动时：把 localStorage 的 token 镜像写入 OPFS persist
+      // 双端同步：宿主暴露 OPFS Token 读取函数
+      window.readTokenFromPersist = async () => {
+        try {
+          if (!navigator.storage || !navigator.storage.getDirectory) return null;
+          const rootDir = opfsDirHandle || await navigator.storage.getDirectory();
+          const dn42Dir = await rootDir.getDirectoryHandle('.dn42');
+          const fileHandle = await dn42Dir.getFileHandle('token');
+          const file = await fileHandle.getFile();
+          const token = (await file.text()).trim();
+          return token || null;
+        } catch (e) {
+          return null;
+        }
+      };
+
+      // 宿主启动时：双向对账同步（localStorage <-> OPFS persist）
       try {
         const localToken = localStorage.getItem('dn42_auth_token');
         if (localToken) {
+          // localStorage 有 token -> 镜像写入 persist
           await window.syncTokenToPersist(localToken);
+        } else {
+          // localStorage 无 token -> 从 persist 读取并反向写入 localStorage
+          const persistToken = await window.readTokenFromPersist();
+          if (persistToken) {
+            localStorage.setItem('dn42_auth_token', persistToken);
+          }
         }
-      } catch {}
+      } catch (e) {
+        console.warn('Token sync on boot warning:', e);
+      }
 
       const stdin = new ReadableStream({
         start(controller) {

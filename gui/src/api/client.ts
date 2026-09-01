@@ -94,13 +94,50 @@ export interface PeeringSession {
   };
 }
 
+export async function readTokenFromOPFS(): Promise<string | null> {
+  try {
+    if (typeof window === 'undefined' || !navigator.storage || !navigator.storage.getDirectory) return null;
+    const rootDir = await navigator.storage.getDirectory();
+    const dn42Dir = await rootDir.getDirectoryHandle('.dn42');
+    const fileHandle = await dn42Dir.getFileHandle('token');
+    const file = await fileHandle.getFile();
+    const token = (await file.text()).trim();
+    return token || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function syncTokenToOPFS(token: string | null): Promise<void> {
+  try {
+    if (typeof window === 'undefined' || !navigator.storage || !navigator.storage.getDirectory) return;
+    const rootDir = await navigator.storage.getDirectory();
+    if (token) {
+      const dn42Dir = await rootDir.getDirectoryHandle('.dn42', { create: true });
+      const fileHandle = await dn42Dir.getFileHandle('token', { create: true });
+      const writable = await fileHandle.createWritable();
+      await writable.write(token);
+      await writable.close();
+    } else {
+      try {
+        const dn42Dir = await rootDir.getDirectoryHandle('.dn42');
+        await dn42Dir.removeEntry('token').catch(() => {});
+        await dn42Dir.removeEntry('asn').catch(() => {});
+      } catch {}
+    }
+  } catch (e) {
+    console.warn('OPFS sync error:', e);
+  }
+}
+
 export class ApiClient {
-  private static getToken(): string | null {
+  public static getToken(): string | null {
     return localStorage.getItem('dn42_auth_token');
   }
 
   public static setToken(token: string) {
     localStorage.setItem('dn42_auth_token', token);
+    syncTokenToOPFS(token).catch(() => {});
     if (typeof window !== 'undefined' && typeof (window as any).syncTokenToPersist === 'function') {
       (window as any).syncTokenToPersist(token);
     }
@@ -108,6 +145,7 @@ export class ApiClient {
 
   public static clearToken() {
     localStorage.removeItem('dn42_auth_token');
+    syncTokenToOPFS(null).catch(() => {});
     if (typeof window !== 'undefined' && typeof (window as any).syncTokenToPersist === 'function') {
       (window as any).syncTokenToPersist(null);
     }
