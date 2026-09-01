@@ -8,6 +8,7 @@ const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dn42-test-peeringflow
 process.env.PORTAL_DATA_DIR = testDataDir;
 
 import { createServer } from '../../server/index.js';
+import { AuthService } from '../../server/services/authService.js';
 
 test('Peering Flow API Integration Tests', async (t) => {
   fs.writeFileSync(path.join(testDataDir, 'port_ledger.json'), JSON.stringify({}), 'utf8');
@@ -17,6 +18,8 @@ test('Peering Flow API Integration Tests', async (t) => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
   const baseUrl = `http://127.0.0.1:${port}`;
+
+  const validToken = AuthService.generateJwt({ asn: 4242423143, role: 'admin', asName: 'AKILAB-MNT' });
 
   t.after(async () => {
     if (server && server.closeAll) {
@@ -38,29 +41,70 @@ test('Peering Flow API Integration Tests', async (t) => {
     assert.equal(body.data.guiPath, '/gui');
   });
 
-  await t.test('POST /api/peering/submit with invalid payload returns HTTP 200 with fieldErrors', async () => {
+  await t.test('POST /api/peering/submit without token returns HTTP 401 Unauthorized (7.1)', async () => {
     const res = await fetch(`${baseUrl}/api/peering/submit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        asn: 'not_an_asn',
+        asn: '4242423143',
+        nodeId: 'JP-TYO-1',
+        publicKey: 'yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E='
+      })
+    });
+
+    assert.equal(res.status, 401);
+    const body = await res.json();
+    assert.equal(body.success, false);
+    assert.equal(body.error.message, 'Unauthorized');
+  });
+
+  await t.test('POST /api/peering/submit with mismatched ASN returns HTTP 403 Forbidden (7.1)', async () => {
+    const res = await fetch(`${baseUrl}/api/peering/submit`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${validToken}`
+      },
+      body: JSON.stringify({
+        asn: '4242421111',
+        nodeId: 'JP-TYO-1',
+        publicKey: 'yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E='
+      })
+    });
+
+    assert.equal(res.status, 403);
+    const body = await res.json();
+    assert.equal(body.success, false);
+    assert.ok(body.error.message.includes('Cannot submit peering application for another ASN'));
+  });
+
+  await t.test('POST /api/peering/submit with invalid payload returns HTTP 200 with fieldErrors', async () => {
+    const res = await fetch(`${baseUrl}/api/peering/submit`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${validToken}`
+      },
+      body: JSON.stringify({
+        asn: '4242423143',
         publicKey: 'short_key'
       })
     });
 
-    // Busybox compatibility: HTTP 200 returned
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.success, false);
     assert.ok(body.error.fieldErrors);
-    assert.ok(body.error.fieldErrors.asn);
     assert.ok(body.error.fieldErrors.publicKey);
   });
 
   await t.test('POST /api/peering/submit with valid payload creates session and returns configs', async () => {
     const res = await fetch(`${baseUrl}/api/peering/submit`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${validToken}`
+      },
       body: JSON.stringify({
         asn: '4242423143',
         nodeId: 'JP-TYO-1',

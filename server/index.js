@@ -162,11 +162,13 @@ export function createServer() {
           return sendJson(res, 200, resp);
         }
 
-        // Peering Submissions
+        // Peering Submissions (7.1: Auth Required)
         if (pathname === '/api/peering/submit' && method === 'POST') {
+          const user = extractUser(req);
+          if (!user) return sendJson(res, 401, errorEnvelope('Unauthorized', null, 401));
           const body = await parseJsonBody(req);
-          const resp = await PeeringController.submitPeering(body);
-          return sendJson(res, 200, resp);
+          const resp = await PeeringController.submitPeering(body, user);
+          return sendJson(res, resp.code || 200, resp);
         }
 
         // Peering Sessions List & Delete
