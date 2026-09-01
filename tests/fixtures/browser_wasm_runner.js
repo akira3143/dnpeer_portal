@@ -241,23 +241,27 @@ async function main() {
   console.log('Peer draft editor opened with peer template!');
   await delay(1000);
 
-  // Navigate in nano: Down 5 times to Line 5 (IPv4)
+  // Navigate in nano to fields:
   const downKey = '\x1b[B';
   const endKey = '\x1b[F';
-  await sendInput(downKey + downKey + downKey + downKey + downKey);
+  
+  // 13 down arrows to reach Line 14 (DN42 IPv4)
+  let down13 = '';
+  for (let k = 0; k < 13; k++) down13 += downKey;
+  await sendInput(down13);
   await delay(300);
   await sendInput(endKey + '172.20.150.1');
   await delay(300);
 
-  // Down to Line 6 (IPv6 ULA)
+  // Down to Line 15 (IPv6 ULA)
   await sendInput(downKey + endKey + 'fd00:4242:3143::1');
   await delay(300);
 
-  // Down to Line 7 (WG PubKey)
-  await sendInput(downKey + endKey + 'yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=');
+  // Down 3 to Line 18 (WireGuard Public Key)
+  await sendInput(downKey + downKey + downKey + endKey + 'yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=');
   await delay(300);
 
-  // Down to Line 8 (Endpoint)
+  // Down to Line 19 (WireGuard Endpoint)
   await sendInput(downKey + endKey + 'myhost.dn42');
   await delay(500);
 
