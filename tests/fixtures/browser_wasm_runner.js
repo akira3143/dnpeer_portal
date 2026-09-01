@@ -236,7 +236,7 @@ async function main() {
 
   // 8. Execute: peer new 1 (V1: editor workflow)
   console.log('Executing: peer new 1');
-  await sendInput("printf '#!/bin/sh\\nsed -i -e \"s|IPv4.*|DN42 IPv4 (Optional) = 172.20.150.1|\" -e \"s|IPv6 ULA.*|IPv6 ULA (Optional) = fd00:4242:3143::1|\" -e \"s|WireGuard Public Key.*|WireGuard Public Key = yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=|\" -e \"s|WireGuard Endpoint.*|WireGuard Endpoint = myhost.dn42|\" \"$1\"\\n' > /tmp/ed && chmod +x /tmp/ed\n");
+  await sendInput("echo IyEvYmluL3NoCmNhdCA8PCAnRU9EJyA+ICIkMSIKTm9kZSA9IEpQLVRZTy0xCkxpbmstTG9jYWwgSVB2NiAoTExBKSA9IGZlODA6OjMxNDMKRE40MiBJUHY0IChPcHRpb25hbCkgPSAxNzIuMjAuMTUwLjEKSVB2NiBVTEEgKE9wdGlvbmFsKSA9IGZkMDA6NDI0MjozMTQzOjoxCldpcmVHdWFyZCBQdWJsaWMgS2V5ID0geUErTjY0eDd0Ti80SDFYcUpkKzdxZjNLOXoxVjh1VDVRN28rUDJ3OHgxRT0KV2lyZUd1YXJkIEVuZHBvaW50ID0gbXlob3N0LmRuNDIKUGVlclBvcnQgPSBhdXRvCkxpc3RlblBvcnQgPSBhdXRvCk1UVSA9IDE0MjAKRU9ECg== | base64 -d > /tmp/ed && chmod 755 /tmp/ed\n");
   await delay(500);
   await waitForPrompt('peer@AS4242423143:~#');
 
