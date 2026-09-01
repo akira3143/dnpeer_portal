@@ -7,6 +7,7 @@
  * and captures real terminal screenshots.
  */
 
+import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -286,7 +287,7 @@ async function main() {
 
   // 12. Navigate to GUI (/gui/) and verify Bi-directional Sync + Visual Rendering
   console.log('\n--- 12. Navigating to GUI (/gui/) & Verifying Bi-directional Sync ---');
-  await cdp.send('Page.navigate', { url: `http://127.0.0.1:${port}/gui/` });
+  await cdp.send('Page.navigate', { url: `http://127.0.0.1:4242/gui/` });
   await delay(3000);
 
   const guiTitle = await cdp.evaluate('document.title');
