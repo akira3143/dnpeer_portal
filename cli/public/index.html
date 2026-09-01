@@ -330,12 +330,6 @@
           execPort: 20728,
           fetch: (...args) => {
             const urlStr = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url ? args[0].url : '');
-            if (urlStr.includes('/api/trigger-gui')) {
-              setTimeout(() => {
-                window.location.href = '/panel';
-              }, 400);
-              return new Response(null, { status: 204 });
-            }
             // 把发往虚拟网关(10.0.2.2)的请求重写为同源路径：
             // Linux 内视角不变(10.0.2.2:4242)，宿主侧直接打本域 API，零 CORS 问题。
             // cache:no-store —— API 响应绝不能进浏览器缓存（否则认证数据会串）

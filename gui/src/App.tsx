@@ -148,10 +148,6 @@ const AppContent: React.FC = () => {
 
   const handleSelectNodeFromGrid = (nodeId: string) => {
     setSelectedNodeId(nodeId);
-    if (!user) {
-      setAuthModalOpen(true);
-      return;
-    }
     setActiveTab('peer');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
