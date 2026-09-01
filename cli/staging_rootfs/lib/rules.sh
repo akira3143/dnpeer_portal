@@ -25,10 +25,13 @@ validate_asn() {
   case "$_val" in
     ''|*[!0-9]*) return 1 ;;
   esac
-  if [ ${#_val} -gt 10 ] || [ "$_val" -eq 0 ]; then
-    return 1
+  case "$_val" in
+    424242[0-9][0-9][0-9][0-9]) return 0 ;;
+  esac
+  if [ "$_val" -ge 64512 ] 2>/dev/null && [ "$_val" -le 65534 ] 2>/dev/null; then
+    return 0
   fi
-  return 0
+  return 1
 }
 
 validate_pubkey() {
@@ -69,6 +72,26 @@ validate_ipv4() {
       return 1
     fi
   done
+  if [ "$_o1" -eq 172 ] && [ "$_o2" -ge 20 ] && [ "$_o2" -le 23 ]; then
+    return 0
+  fi
+  if [ "$_o1" -eq 10 ]; then
+    return 0
+  fi
+  return 1
+}
+
+validate_endpoint() {
+  _val="$1"
+  _val="${_val%% }"
+  _val="${_val## }"
+  [ -z "$_val" ] && return 0
+  case "$_val" in
+    http://*|https://*|wg://*) return 1 ;;
+    *:*) return 1 ;;
+    *[!A-Za-z0-9.-]*) return 1 ;;
+    .*|-*|*.-|*.|*-) return 1 ;;
+  esac
   return 0
 }
 
@@ -88,10 +111,37 @@ validate_link_local() {
   _val="${_val%% }"
   _val="${_val## }"
   [ -z "$_val" ] && return 1
-  case "$_val" in
-    [fF][eE]80:*|[fF][eE]80::*) return 0 ;;
+  _addr="${_val%%/*}"
+  case "$_addr" in
+    [fF][eE]80:*|[fF][eE]80::*) ;;
     *) return 1 ;;
   esac
+  case "$_addr" in
+    *[!0-9a-fA-F:]*) return 1 ;;
+    *:::*) return 1 ;;
+  esac
+  _temp="${_addr%::*}"
+  _rest="${_addr#*::}"
+  if [ "$_temp" != "$_addr" ]; then
+    _combined="$_temp:$_rest"
+  else
+    _combined="$_addr"
+  fi
+  _combined="${_combined#:}"
+  _combined="${_combined%:}"
+  
+  _old_ifs="$IFS"
+  IFS=":"
+  set -- $_combined
+  IFS="$_old_ifs"
+  
+  for _group in "$@"; do
+    [ -z "$_group" ] && continue
+    if [ ${#_group} -gt 4 ]; then
+      return 1
+    fi
+  done
+  return 0
 }
 
 validate_port() {
@@ -102,7 +152,7 @@ validate_port() {
   case "$_val" in
     ''|*[!0-9]*) return 1 ;;
   esac
-  if [ "$_val" -ge 1024 ] && [ "$_val" -le 65535 ]; then
+  if [ "$_val" -ge 20000 ] && [ "$_val" -le 65535 ]; then
     return 0
   fi
   return 1

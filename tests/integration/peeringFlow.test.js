@@ -19,7 +19,7 @@ test('Peering Flow API Integration Tests', async (t) => {
   const port = server.address().port;
   const baseUrl = `http://127.0.0.1:${port}`;
 
-  const validToken = AuthService.generateJwt({ asn: 4242423143, role: 'admin', asName: 'AKILAB-MNT' });
+  const validToken = AuthService.signJwt({ asn: 4242423143, role: 'admin', asName: 'AKILAB-MNT' }).token;
 
   t.after(async () => {
     if (server && server.closeAll) {

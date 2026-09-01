@@ -298,7 +298,7 @@ async function main() {
   console.log(finalBuffer);
   console.log('========================================================================\n');
 
-  // Capture screenshot
+  // Capture WASM terminal screenshot
   const screenshotData = await cdp.send('Page.captureScreenshot', { format: 'png' });
   const docsDir = path.join(ROOT_DIR, 'docs');
   if (!fs.existsSync(docsDir)) fs.mkdirSync(docsDir, { recursive: true });
@@ -312,6 +312,38 @@ async function main() {
     console.log(`Saved screenshot to artifacts dir: ${artPath}`);
   }
 
+  // 12. Navigate to GUI (/gui/) and verify Bi-directional Sync + Visual Rendering
+  console.log('\n--- 12. Navigating to GUI (/gui/) & Verifying Bi-directional Sync ---');
+  await cdp.send('Page.navigate', { url: `http://127.0.0.1:${port}/gui/` });
+  await delay(3000);
+
+  const guiTitle = await cdp.evaluate('document.title');
+  console.log(`GUI Page Title: "${guiTitle}"`);
+  assert.ok(guiTitle.includes('AkiLab Networks'), 'GUI title must be AkiLab Networks');
+
+  const tokenInStorage = await cdp.evaluate("localStorage.getItem('dn42_auth_token')");
+  console.log(`Synchronized Token in localStorage: ${tokenInStorage ? 'PRESENT (mirrored from CLI login)' : 'ABSENT'}`);
+  assert.ok(tokenInStorage, 'CLI login must mirror token into localStorage via gateway sync (6.1)');
+
+  const guiHeroText = await cdp.evaluate('document.body.innerText');
+  assert.ok(guiHeroText.includes('OPEN PEERING POLICY'), 'GUI must render OPEN PEERING POLICY badge');
+  assert.ok(guiHeroText.includes('Global Edge Nodes'), 'GUI must render Global Edge Nodes table');
+  assert.ok(guiHeroText.includes('Autonomous System'), 'GUI must render Autonomous System card');
+  assert.ok(guiHeroText.includes('AS4242423143'), 'GUI must render authenticated AS4242423143 session badge');
+  console.log('✓ GUI verified: Full theme, Hero, Data Cards, Node Table, and Synced Login Badge rendered correctly!');
+
+  // Capture GUI Home Screenshot
+  const guiScreenshot = await cdp.send('Page.captureScreenshot', { format: 'png' });
+  const guiShotPath = path.join(docsDir, 'gui_production_screenshot.png');
+  fs.writeFileSync(guiShotPath, Buffer.from(guiScreenshot.data, 'base64'));
+  console.log(`Saved real GUI production screenshot to: ${guiShotPath}`);
+
+  if (fs.existsSync(ARTIFACTS_DIR)) {
+    const artGuiPath = path.join(ARTIFACTS_DIR, 'gui_production_screenshot.png');
+    fs.writeFileSync(artGuiPath, Buffer.from(guiScreenshot.data, 'base64'));
+    console.log(`Saved GUI screenshot to artifacts dir: ${artGuiPath}`);
+  }
+
   try {
     // Clean up Chrome process & user data
     await cdp.close();
@@ -319,7 +351,7 @@ async function main() {
     try { fs.rmSync(userDataDir, { recursive: true, force: true }); } catch {}
 
     await server.closeAll();
-    console.log('Verification Finished Successfully!');
+    console.log('\nVerification Finished Successfully!');
     process.exit(0);
   } finally {
     testData.cleanup();
