@@ -261,14 +261,12 @@ async function main() {
   await sendInput(downKey + downKey + downKey + endKey + 'yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=');
   await delay(300);
 
-  // Down to Line 19 (WireGuard Endpoint)
-  await sendInput(downKey + endKey + 'myhost.dn42');
+  // Save (Ctrl+O) -> Enter (\n) -> Exit (Ctrl+X)
+  await sendInput('\x0f'); // Ctrl+O (WriteOut)
   await delay(500);
-
-  // Save (Ctrl+O) and Exit (Ctrl+X)
-  await sendInput('\x0f'); // Ctrl+O (15)
-  await delay(800);
-  await sendInput('\x18'); // Ctrl+X (24)
+  await sendInput('\n');   // Confirm /tmp/peer_draft
+  await delay(500);
+  await sendInput('\x18'); // Ctrl+X (Exit)
   await delay(800);
 
   await waitForPrompt('-------- REVIEW --------');
