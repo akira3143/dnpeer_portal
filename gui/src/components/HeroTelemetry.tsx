@@ -1,6 +1,6 @@
 import React from 'react';
 import { useToast } from './Toast';
-import { Server, Copy, ArrowRight, ExternalLink, HeartHandshake } from 'lucide-react';
+import { Server, Copy, ArrowRight, HeartHandshake } from 'lucide-react';
 import type { NetworkMeta } from '../api/client';
 
 interface HeroTelemetryProps {

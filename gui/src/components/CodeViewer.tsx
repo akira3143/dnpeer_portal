@@ -3,7 +3,7 @@ import { FileCode } from 'lucide-react';
 
 interface CodeViewerProps {
   code: string;
-  language: 'wg' | 'bird';
+  language: 'wg' | 'bird' | 'markdown';
   showLineNumbers?: boolean;
 }
 
@@ -16,16 +16,30 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#039;');
 }
 
-function highlightLineToHtml(line: string, language: 'wg' | 'bird'): string {
+function highlightLineToHtml(line: string, language: 'wg' | 'bird' | 'markdown'): string {
   const trimmed = line.trim();
   const escaped = escapeHtml(line);
 
   // 1. Comments
-  if (trimmed.startsWith('#') || trimmed.startsWith('//')) {
+  if (trimmed.startsWith('#') && language !== 'markdown') {
     return `<span class="text-slate-500 italic">${escaped}</span>`;
   }
 
-  // 2. WireGuard Syntax Highlighting
+  // 2. Markdown Highlighting
+  if (language === 'markdown') {
+    if (trimmed.startsWith('#')) {
+      return `<span class="text-purple-400 font-bold">${escaped}</span>`;
+    }
+    if (trimmed.startsWith('>')) {
+      return `<span class="text-slate-400 italic">${escaped}</span>`;
+    }
+    if (trimmed.startsWith('-')) {
+      return `<span class="text-cyan-300 font-medium">${escaped}</span>`;
+    }
+    return `<span class="text-slate-200">${escaped}</span>`;
+  }
+
+  // 3. WireGuard Syntax Highlighting
   if (language === 'wg') {
     if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
       return `<span class="text-cyan-400 font-semibold tracking-wide">${escaped}</span>`;
@@ -47,7 +61,7 @@ function highlightLineToHtml(line: string, language: 'wg' | 'bird'): string {
     }
   }
 
-  // 3. BIRD Syntax Highlighting
+  // 4. BIRD Syntax Highlighting
   if (language === 'bird') {
     if (trimmed.startsWith('protocol bgp')) {
       const match = line.match(/^(\s*protocol\s+bgp\s+)(\S+)(\s+from\s+dnpeers\s*\{.*)$/);
@@ -93,7 +107,7 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({
     return code.split('\n');
   }, [code]);
 
-  const filename = language === 'wg' ? 'wg0.conf' : 'bird.conf';
+  const filename = language === 'wg' ? 'wg0.conf' : language === 'bird' ? 'bird.conf' : 'peering_request.md';
 
   return (
     <div
