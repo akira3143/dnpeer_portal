@@ -7,4 +7,12 @@ dist/
 Thumbs.db
 server/data/*.json
 !server/data/*.example.json
+server/data/node_tokens.json
+server/data/status_cache.json
 cli/public/rootfs.dat
+
+# CLI staging rootfs generated files (keep only native busybox binary)
+cli/staging_rootfs/*
+!cli/staging_rootfs/bin/
+cli/staging_rootfs/bin/*
+!cli/staging_rootfs/bin/busybox

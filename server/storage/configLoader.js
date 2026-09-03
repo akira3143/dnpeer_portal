@@ -32,7 +32,6 @@ const DEFAULT_CONFIG = {
       city: 'Tokyo',
       country: 'Japan',
       region: 'apac',
-      status: 'active',
       isp: 'AkiLab Datacenter Tokyo',
       endpointDomain: 'jp1.akilab.dn42',
       wgPublicKey: 'akilab_tokyo_wg_pubkey_replace_in_config_111111=',
@@ -51,7 +50,6 @@ const DEFAULT_CONFIG = {
       city: 'San Jose',
       country: 'United States',
       region: 'na',
-      status: 'active',
       isp: 'AkiLab Datacenter US-West',
       endpointDomain: 'us1.akilab.dn42',
       wgPublicKey: 'akilab_sjc_wg_pubkey_replace_in_config_2222222=',
@@ -80,7 +78,7 @@ let watcherInitialized = false;
 let watcherInstance = null;
 let reloadTimer = null;
 
-export function loadPortalConfig() {
+function loadPortalConfig() {
   FileStore.ensureDirectory(getDataDir());
 
   const configPath = getConfigYamlPath();

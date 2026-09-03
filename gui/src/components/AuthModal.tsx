@@ -165,8 +165,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
   // 4. Save Custom Password & Complete Login
   const handleSavePassword = async () => {
-    if (!newPassword || newPassword.length < 6) {
-      showToast('Password must be at least 6 characters', 'error');
+    if (!newPassword || newPassword.length < 8) {
+      showToast('Password must be at least 8 characters', 'error');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -461,7 +461,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               <label className="text-xs font-semibold text-slate-300">Set New Password</label>
               <input
                 type="password"
-                placeholder="At least 6 characters"
+                placeholder="At least 8 characters"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-white/10 text-white text-xs font-mono focus:border-cyan-400 focus:outline-none"

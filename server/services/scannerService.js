@@ -2,6 +2,7 @@ import { execSync } from 'node:child_process';
 import { getActiveConfig } from '../storage/configLoader.js';
 import { PortLedgerService } from './portLedgerService.js';
 import { SessionService } from './sessionService.js';
+import { StatusTracker } from './statusTracker.js';
 
 export function parseWgDump(dumpOutput) {
   const ports = [];
@@ -72,10 +73,13 @@ export class ScannerService {
       throw new Error('nodeId is required in probe report');
     }
 
-    // 1. Merge ports into ledger
+    // 1. Record live heartbeat in StatusTracker
+    StatusTracker.recordHeartbeat(nodeId);
+
+    // 2. Merge ports into ledger
     const mergedPorts = await PortLedgerService.mergeProbeReport(nodeId, { ports, systemPorts });
 
-    // 2. Update session runtime peers (latest handshake, etc.)
+    // 3. Update session runtime peers (latest handshake, etc.)
     await SessionService.updateRuntimePeers(nodeId, peers);
 
     return {

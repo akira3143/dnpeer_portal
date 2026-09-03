@@ -1,5 +1,0 @@
-#!/bin/busybox sh
-# exit —— 退出当前会话回到登录界面
-
-rm -f /tmp/dn42_token /tmp/dn42_asn
-exec /sbin/dn42-login

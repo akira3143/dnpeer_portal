@@ -71,6 +71,11 @@ const smoothBannerLines = rawBannerLines.map((line, y) => {
 
 fs.writeFileSync(path.join(staging, 'etc/banner.txt'), smoothBannerLines.join('\n'));
 
+// 3b. Setup base system files (/etc/passwd, /etc/group, /etc/hosts)
+fs.writeFileSync(path.join(staging, 'etc/passwd'), 'root:x:0:0:root:/root:/bin/sh\n', 'utf8');
+fs.writeFileSync(path.join(staging, 'etc/group'), 'root:x:0:root\n', 'utf8');
+fs.writeFileSync(path.join(staging, 'etc/hosts'), '127.0.0.1\tlocalhost\n', 'utf8');
+
 // 4. Copy CLI source scripts into staging
 const cliFiles = [
   'init',

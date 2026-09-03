@@ -1,9 +1,26 @@
 [Unit]
 Description=AkiLab DN42 Node Probe Report Service
+Documentation=https://github.com/akilab/dn42-portal
 After=network.target
 
 [Service]
 Type=oneshot
-WorkingDirectory=/opt/dn42-portal
+WorkingDirectory=/opt/dn42-probe
+
+# Priority 1: EnvironmentFile overrides (/etc/default/dn42-probe or local .env)
+EnvironmentFile=-/etc/default/dn42-probe
+EnvironmentFile=-/opt/dn42-probe/.env
 EnvironmentFile=-/opt/dn42-portal/.env
-ExecStart=/usr/bin/node scripts/probe-agent.js
+
+# Priority 2: Default environment fallback (may be overridden by EnvironmentFile)
+# PORTAL_MASTER_URL: URL of portal master instance (e.g. https://dnpeer.akilab.meme)
+# CLAIM_NODE_ID / CLAIM_TOKEN: Node ID and dedicated token passed from installer
+# NODE_ID / NODE_TOKEN: Saved identity once claimed (or configured manually)
+Environment="PORTAL_MASTER_URL="
+Environment="CLAIM_NODE_ID="
+Environment="CLAIM_TOKEN="
+Environment="NODE_ID="
+Environment="NODE_TOKEN="
+
+ExecStart=/usr/bin/node /opt/dn42-probe/probe-agent.js
+

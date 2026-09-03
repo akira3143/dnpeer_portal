@@ -48,7 +48,7 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
   const { copyToClipboard, showToast } = useToast();
 
   // 1. Target Node
-  const [selectedNodeId, setSelectedNodeId] = useState<string>(targetNodeId || nodes[0]?.id || 'JP-TYO-1');
+  const [selectedNodeId, setSelectedNodeId] = useState<string>(targetNodeId || nodes[0]?.id || '');
   // 3. WireGuard Public Key
   const [wgPublicKey, setWgPublicKey] = useState('');
   // 4. Link-Local IPv6 (LLA)
@@ -73,8 +73,10 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
   useEffect(() => {
     if (targetNodeId && nodes.some((n) => n.id === targetNodeId)) {
       setSelectedNodeId(targetNodeId);
+    } else if (nodes.length > 0 && (!selectedNodeId || !nodes.some((n) => n.id === selectedNodeId))) {
+      setSelectedNodeId(nodes[0].id);
     }
-  }, [targetNodeId, nodes]);
+  }, [targetNodeId, nodes, selectedNodeId]);
 
   useEffect(() => {
     if (user?.asn && !linkLocal) {

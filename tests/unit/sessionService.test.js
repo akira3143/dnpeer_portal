@@ -8,10 +8,12 @@ const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dn42-test-sessions-')
 process.env.PORTAL_DATA_DIR = testDataDir;
 
 import { SessionService } from '../../server/services/sessionService.js';
+import { getActiveConfig } from '../../server/storage/configLoader.js';
 
 describe('SessionService Unit Tests', () => {
   const sessionsFile = path.join(testDataDir, 'peering_sessions.json');
   const ledgerFile = path.join(testDataDir, 'port_ledger.json');
+  const testNodeId = getActiveConfig().nodes[0].id;
 
   after(() => {
     try {
@@ -32,7 +34,7 @@ describe('SessionService Unit Tests', () => {
   test('submits valid peering and returns configs and acknowledgement', async () => {
     const res = await SessionService.submitPeering({
       asn: 4242423143,
-      nodeId: 'JP-TYO-1',
+      nodeId: testNodeId,
       publicKey: 'yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=',
       linkLocal: 'fe80::4242:3143',
       ipv4: '172.20.150.100',
@@ -55,7 +57,7 @@ describe('SessionService Unit Tests', () => {
   test('deletes session and frees port in ledger', async () => {
     const submitRes = await SessionService.submitPeering({
       asn: 4242420002,
-      nodeId: 'JP-TYO-1',
+      nodeId: testNodeId,
       publicKey: 'K8xN64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=',
       linkLocal: 'fe80::2',
       listenPort: 'auto'

@@ -3,6 +3,9 @@ import { getDataDir } from '../config.js';
 import { FileStore } from '../storage/fileStore.js';
 import { RULES } from '../utils/validator.js';
 
+// Node-level allocation transaction queue to prevent race conditions during concurrent requests
+const nodeAllocationQueues = new Map();
+
 export class PortLedgerService {
   static getLedgerPath() {
     return path.join(getDataDir(), 'port_ledger.json');
@@ -32,83 +35,93 @@ export class PortLedgerService {
 
   /**
    * Atomic Port Verdict: Calculates port, resolves conflicts, and locks port in single transaction
+   * Serialized per node via async promise mutex queue to prevent race conditions
    * @param {Object} params - { nodeId, asn, requestedPort, sessionId, description }
    * @returns {Promise<{ port: number, isShifted: boolean, expectedPort: number }>}
    */
   static async allocateAndLockPort({ nodeId, asn, requestedPort = 'auto', sessionId = '', description = '' }) {
-    const cleanAsn = parseInt(String(asn).replace(/^AS/i, ''), 10);
-    const expectedBasePort = (requestedPort && requestedPort !== 'auto')
-      ? parseInt(requestedPort, 10)
-      : (RULES.port.baseOffset + (cleanAsn % RULES.port.modulo));
+    const queueKey = String(nodeId || 'global');
+    const prevQueue = nodeAllocationQueues.get(queueKey) || Promise.resolve();
 
-    const ledger = await this.getLedger();
-    if (!Array.isArray(ledger[nodeId])) {
-      ledger[nodeId] = [];
-    }
+    const transaction = async () => {
+      const cleanAsn = parseInt(String(asn).replace(/^AS/i, ''), 10);
+      const expectedBasePort = (requestedPort && requestedPort !== 'auto')
+        ? parseInt(requestedPort, 10)
+        : (RULES.port.baseOffset + (cleanAsn % RULES.port.modulo));
 
-    const occupiedSet = new Set(ledger[nodeId].map(p => p.port));
-
-    // Release any previous port held by the same sessionId on this node to allow idempotent updates
-    if (sessionId) {
-      ledger[nodeId] = ledger[nodeId].filter(p => {
-        if (p.sessionId === sessionId) {
-          occupiedSet.delete(p.port);
-          return false;
-        }
-        return true;
-      });
-    }
-
-    let finalPort = expectedBasePort;
-    let isShifted = false;
-
-    // Conflict avoidance loop
-    if (occupiedSet.has(finalPort)) {
-      isShifted = true;
-      let candidate = finalPort;
-
-      // Try +10000 shifts first (e.g. 23143 -> 33143 -> 43143 -> 53143 -> 63143)
-      while (occupiedSet.has(candidate)) {
-        if (candidate + RULES.port.conflictStep <= RULES.port.max) {
-          candidate += RULES.port.conflictStep;
-        } else {
-          // P2-2 Fix: Search the full valid range 1024..65535 when shifted beyond max
-          let found = false;
-          for (let p = RULES.port.min; p <= RULES.port.max; p++) {
-            if (!occupiedSet.has(p)) {
-              candidate = p;
-              found = true;
-              break;
-            }
-          }
-          if (!found) {
-            throw new Error(`No available ports on node ${nodeId}`);
-          }
-          break;
-        }
+      const ledger = await this.getLedger();
+      if (!Array.isArray(ledger[nodeId])) {
+        ledger[nodeId] = [];
       }
-      finalPort = candidate;
-    }
 
-    // Atomically lock the final port
-    const entry = {
-      port: finalPort,
-      type: 'locked',
-      source: 'peering_session',
-      sessionId: sessionId || `sess_${cleanAsn}_${nodeId.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
-      asn: cleanAsn,
-      lockedAt: new Date().toISOString(),
-      description: description || `Locked for ASN ${cleanAsn}`
+      const occupiedSet = new Set(ledger[nodeId].map(p => p.port));
+
+      // Release any previous port held by the same sessionId on this node to allow idempotent updates
+      if (sessionId) {
+        ledger[nodeId] = ledger[nodeId].filter(p => {
+          if (p.sessionId === sessionId) {
+            occupiedSet.delete(p.port);
+            return false;
+          }
+          return true;
+        });
+      }
+
+      let finalPort = expectedBasePort;
+      let isShifted = false;
+
+      // Conflict avoidance loop
+      if (occupiedSet.has(finalPort)) {
+        isShifted = true;
+        let candidate = finalPort;
+
+        // Try +10000 shifts first (e.g. 23143 -> 33143 -> 43143 -> 53143 -> 63143)
+        while (occupiedSet.has(candidate)) {
+          if (candidate + RULES.port.conflictStep <= RULES.port.max) {
+            candidate += RULES.port.conflictStep;
+          } else {
+            // P2-2 Fix: Search the full valid range 1024..65535 when shifted beyond max
+            let found = false;
+            for (let p = RULES.port.min; p <= RULES.port.max; p++) {
+              if (!occupiedSet.has(p)) {
+                candidate = p;
+                found = true;
+                break;
+              }
+            }
+            if (!found) {
+              throw new Error(`No available ports on node ${nodeId}`);
+            }
+            break;
+          }
+        }
+        finalPort = candidate;
+      }
+
+      // Atomically lock the final port
+      const entry = {
+        port: finalPort,
+        type: 'locked',
+        source: 'peering_session',
+        sessionId: sessionId || `sess_${cleanAsn}_${nodeId.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+        asn: cleanAsn,
+        lockedAt: new Date().toISOString(),
+        description: description || `Locked for ASN ${cleanAsn}`
+      };
+
+      ledger[nodeId].push(entry);
+      await this.saveLedger(ledger);
+
+      return {
+        port: finalPort,
+        isShifted,
+        expectedPort: expectedBasePort
+      };
     };
 
-    ledger[nodeId].push(entry);
-    await this.saveLedger(ledger);
-
-    return {
-      port: finalPort,
-      isShifted,
-      expectedPort: expectedBasePort
-    };
+    const currentQueue = prevQueue.then(transaction, transaction);
+    nodeAllocationQueues.set(queueKey, currentQueue.catch(() => {}));
+    return currentQueue;
   }
 
   /**

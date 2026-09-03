@@ -132,19 +132,26 @@ export async function syncTokenToOPFS(token: string | null): Promise<void> {
 
 export class ApiClient {
   public static getToken(): string | null {
-    return localStorage.getItem('dn42_auth_token');
+    return localStorage.getItem('dn42_auth_token') || sessionStorage.getItem('dn42_auth_token');
   }
 
-  public static setToken(token: string) {
-    localStorage.setItem('dn42_auth_token', token);
-    syncTokenToOPFS(token).catch(() => {});
-    if (typeof window !== 'undefined' && typeof (window as any).syncTokenToPersist === 'function') {
-      (window as any).syncTokenToPersist(token);
+  public static setToken(token: string, rememberMe: boolean = true) {
+    if (rememberMe) {
+      localStorage.setItem('dn42_auth_token', token);
+      sessionStorage.removeItem('dn42_auth_token');
+      syncTokenToOPFS(token).catch(() => {});
+      if (typeof window !== 'undefined' && typeof (window as any).syncTokenToPersist === 'function') {
+        (window as any).syncTokenToPersist(token);
+      }
+    } else {
+      localStorage.removeItem('dn42_auth_token');
+      sessionStorage.setItem('dn42_auth_token', token);
     }
   }
 
   public static clearToken() {
     localStorage.removeItem('dn42_auth_token');
+    sessionStorage.removeItem('dn42_auth_token');
     syncTokenToOPFS(null).catch(() => {});
     if (typeof window !== 'undefined' && typeof (window as any).syncTokenToPersist === 'function') {
       (window as any).syncTokenToPersist(null);

@@ -204,7 +204,7 @@ async function main() {
   const SHELL_PROMPT = /peer@(akilab|AS4242423143):~#/;
 
   // 1. Wait for Login Prompt
-  await waitForPrompt('DN42 ASN or Account:');
+  await waitForPrompt(/(login:|DN42 ASN or Account:)/);
   console.log('WASM Linux Boot Complete! Login prompt detected.');
 
   // 2. Submit ASN
@@ -240,7 +240,7 @@ async function main() {
 
   // 8. Execute: peer new 1 (V1: editor workflow)
   console.log('Executing: peer new 1');
-  await sendInput("echo IyEvYmluL3NoCmNhdCA8PCAnRU9EJyA+ICIkMSIKTm9kZSA9IEpQLVRZTy0xCkxpbmstTG9jYWwgSVB2NiAoTExBKSA9IGZlODA6OjMxNDMKRE40MiBJUHY0IChPcHRpb25hbCkgPSAxNzIuMjAuMTUwLjEKSVB2NiBVTEEgKE9wdGlvbmFsKSA9IGZkMDA6NDI0MjozMTQzOjoxCldpcmVHdWFyZCBQdWJsaWMgS2V5ID0geUErTjY0eDd0Ti80SDFYcUpkKzdxZjNLOXoxVjh1VDVRN28rUDJ3OHgxRT0KV2lyZUd1YXJkIEVuZHBvaW50ID0gbXlob3N0LmRuNDIKUGVlclBvcnQgPSBhdXRvCkxpc3RlblBvcnQgPSBhdXRvCk1UVSA9IDE0MjAKRU9ECg== | base64 -d > /tmp/ed && chmod 755 /tmp/ed\n");
+  await sendInput("echo '#!/bin/sh' > /tmp/ed && echo 'sed -i \"s|^WireGuard Public Key[[:space:]]*=.*|WireGuard Public Key = yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=|\" \"$1\"' >> /tmp/ed && echo 'sed -i \"s|^WireGuard Endpoint[[:space:]]*=.*|WireGuard Endpoint = myhost.dn42|\" \"$1\"' >> /tmp/ed && chmod 755 /tmp/ed\n");
   await delay(500);
   await sendInput('EDITOR=/tmp/ed peer new 1\n');
   await delay(1500);
@@ -257,8 +257,8 @@ async function main() {
   await delay(1500);
   await waitForPrompt(SHELL_PROMPT);
 
-  console.log('Executing: peer rm peer_akira_jp_tyo_1');
-  await sendInput('peer rm peer_akira_jp_tyo_1\n');
+  console.log('Executing: peer rm dynamic session');
+  await sendInput('peer rm $(peer ls | grep -o "peer_[a-z0-9_]*" | head -n 1)\n');
   await delay(1500);
   await waitForPrompt(SHELL_PROMPT);
 
@@ -288,8 +288,10 @@ async function main() {
   }
 
   // 12. Navigate to GUI (/gui/) and verify Bi-directional Sync + Visual Rendering
-  console.log('\n--- 12. Navigating to GUI (/gui/) & Verifying Bi-directional Sync ---');
-  await cdp.send('Page.navigate', { url: `http://127.0.0.1:4242/gui/` });
+  console.log('\n--- 12. Navigating to GUI and Verifying Bi-directional Sync ---');
+  const metaRes = await (await fetch('http://127.0.0.1:4242/api/network-meta')).json();
+  const guiPath = (metaRes && metaRes.data && metaRes.data.guiPath) ? metaRes.data.guiPath : '/gui';
+  await cdp.send('Page.navigate', { url: `http://127.0.0.1:4242${guiPath}/` });
   await delay(3000);
 
   const guiTitle = await cdp.evaluate('document.title');
@@ -402,13 +404,33 @@ async function main() {
 
   // Submit peering form
   console.log('Submitting GUI Peering Form...');
-  await cdp.evaluate(`
-    const submitBtn = Array.from(document.querySelectorAll('button[type="submit"]')).find(b => b.textContent.includes('Submit Peering Application'));
-    if (submitBtn) submitBtn.click();
+  const debugInfo = await cdp.evaluate(`
+    (() => {
+      const inputs = Array.from(document.querySelectorAll('input')).map(i => ({ placeholder: i.placeholder, value: i.value }));
+      const submitBtn = Array.from(document.querySelectorAll('button[type="submit"]'))[0];
+      return {
+        inputs,
+        btnDisabled: submitBtn ? submitBtn.disabled : 'no button',
+        btnText: submitBtn ? submitBtn.textContent : ''
+      };
+    })()
   `);
-  await delay(2000);
+  console.log('Form inputs debug before submit:', JSON.stringify(debugInfo, null, 2));
+
+  await cdp.evaluate(`
+    (() => {
+      const form = document.querySelector('form');
+      if (form) {
+        form.requestSubmit();
+      }
+      const submitBtn = Array.from(document.querySelectorAll('button[type="submit"]')).find(b => b.textContent.includes('Submit'));
+      if (submitBtn) submitBtn.click();
+    })()
+  `);
+  await delay(2500);
 
   const afterSubmitText = await cdp.evaluate('document.body.innerText');
+  console.log('Page content after submit:\n', afterSubmitText);
   assert.ok(afterSubmitText.includes('Peering Application Approved') || afterSubmitText.includes('Session ID:'), 'Form submission must succeed with approval banner');
   assert.ok(afterSubmitText.includes('[Interface]'), 'Right canvas must render authoritative WireGuard config from server');
   assert.ok(afterSubmitText.includes('Address = 172.20.150.1/32, fd00:4242:3143::1/128, fe80::3143/64'), 'Must render correct address line in WG config');

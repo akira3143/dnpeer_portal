@@ -1,7 +1,0 @@
-#!/bin/busybox sh
-# systemctl —— 彩蛋：预置假服务状态表（灵魂元素，勿删）
-
-echo -e "  \033[32m[●]\033[0m akilab-bgpd.service          \033[1mactive (running)\033[0m"
-echo -e "  \033[32m[●]\033[0m wireguard-gateway.service    \033[1mactive (running)\033[0m"
-echo -e "  \033[90m[○]\033[0m akilab-webgui.service        \033[90minactive (disabled)\033[0m"
-echo -e "        → Type '\033[32mstartx\033[0m' to launch"

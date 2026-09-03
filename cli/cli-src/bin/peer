@@ -174,32 +174,32 @@ do_new() {
           key=tolower(key)
           sub(/^[ \t]+/, "", val); sub(/[ \t]+$/, "", val)
           gsub(/[^A-Za-z0-9.:\/+_<>= -]/, "", val)
-          if (key=="node") printf "parsed_node=%s\n", val
-          else if (key=="link-localipv6(lla)" || key=="link-local" || key=="lla" || key=="linklocal") printf "parsed_lla=%s\n", val
-          else if (key=="dn42ipv4(optional)" || key=="dn42ipv4" || key=="ipv4") printf "parsed_ipv4=%s\n", val
-          else if (key=="ipv6ula(optional)" || key=="ipv6ula" || key=="ula") printf "parsed_ula=%s\n", val
-          else if (key=="wireguardpublickey" || key=="publickey" || key=="pubkey") printf "parsed_pubkey=%s\n", val
-          else if (key=="wireguardendpoint" || key=="endpoint") printf "parsed_ep=%s\n", val
-          else if (key=="peerport" || key=="peer_port") { if (val!="") printf "parsed_peer_port=%s\n", val }
-          else if (key=="listenport" || key=="listen_port") { if (val!="") printf "parsed_listen_port=%s\n", val }
-          else if (key=="mtu") { if (val!="") printf "parsed_mtu=%s\n", val }
+          if (key=="node") printf "parsed_node=\"%s\"\n", val
+          else if (key=="link-localipv6(lla)" || key=="link-local" || key=="lla" || key=="linklocal") printf "parsed_lla=\"%s\"\n", val
+          else if (key=="dn42ipv4(optional)" || key=="dn42ipv4" || key=="ipv4") printf "parsed_ipv4=\"%s\"\n", val
+          else if (key=="ipv6ula(optional)" || key=="ipv6ula" || key=="ula") printf "parsed_ula=\"%s\"\n", val
+          else if (key=="wireguardpublickey" || key=="publickey" || key=="pubkey") printf "parsed_pubkey=\"%s\"\n", val
+          else if (key=="wireguardendpoint" || key=="endpoint") printf "parsed_ep=\"%s\"\n", val
+          else if (key=="peerport" || key=="peer_port") { if (val!="") printf "parsed_peer_port=\"%s\"\n", val }
+          else if (key=="listenport" || key=="listen_port") { if (val!="") printf "parsed_listen_port=\"%s\"\n", val }
+          else if (key=="mtu") { if (val!="") printf "parsed_mtu=\"%s\"\n", val }
           else { if (unk=="") unk=key; else unk=unk ", " key }
         } else {
           bare=line; gsub(/[ \t]/, "", bare)
           if (bare=="") next
-          if (bare ~ /^[fF][eE]80:[0-9a-fA-F:]+$/) printf "parsed_lla=%s\n", bare
-          else if (bare ~ /^[A-Za-z0-9+\/]{43}=$/) printf "parsed_pubkey=%s\n", bare
-          else if (bare ~ /^(172\.(2[0-3]|[0-9])\.|10\.)/) printf "parsed_ipv4=%s\n", bare
-          else if (bare ~ /^[fF][dD][0-9a-fA-F:]+/) printf "parsed_ula=%s\n", bare
-          else if (bare ~ /^[A-Za-z0-9.-]+$/) printf "parsed_ep=%s\n", bare
+          if (bare ~ /^[fF][eE]80:[0-9a-fA-F:]+$/) printf "parsed_lla=\"%s\"\n", bare
+          else if (bare ~ /^[A-Za-z0-9+\/]{43}=$/) printf "parsed_pubkey=\"%s\"\n", bare
+          else if (bare ~ /^(172\.(2[0-3]|[0-9])\.|10\.)/) printf "parsed_ipv4=\"%s\"\n", bare
+          else if (bare ~ /^[fF][dD][0-9a-fA-F:]+/) printf "parsed_ula=\"%s\"\n", bare
+          else if (bare ~ /^[A-Za-z0-9.-]+$/) printf "parsed_ep=\"%s\"\n", bare
           else if (bare ~ /^[0-9]+$/) {
-            if (bare+0>=1280 && bare+0<=1500) printf "parsed_mtu=%s\n", bare
-            else { if (unk=="") unk="ambiguous port '" bare "'"; else unk=unk ", ambiguous port '" bare "'" }
+            if (bare+0>=1280 && bare+0<=1500) printf "parsed_mtu=\"%s\"\n", bare
+            else { if (unk=="") unk="ambiguous port " bare; else unk=unk ", ambiguous port " bare }
           }
-          else { if (unk=="") unk="unrecognized '" bare "'"; else unk=unk ", unrecognized '" bare "'" }
+          else { if (unk=="") unk="unrecognized " bare; else unk=unk ", unrecognized " bare }
         }
       }
-      END { if (unk!="") printf "unknown_keys=%s\n", unk }
+      END { if (unk!="") printf "unknown_keys=\"%s\"\n", unk }
     ' "$draft_file")"
 
     # 3. Content Comparison: if completely untouched baseline -> Cancelled

@@ -9,10 +9,14 @@ process.env.PORTAL_DATA_DIR = testDataDir;
 
 import { createServer } from '../../server/index.js';
 import { AuthService } from '../../server/services/authService.js';
+import { getActiveConfig } from '../../server/storage/configLoader.js';
 
 test('Peering Flow API Integration Tests', async (t) => {
   fs.writeFileSync(path.join(testDataDir, 'port_ledger.json'), JSON.stringify({}), 'utf8');
   fs.writeFileSync(path.join(testDataDir, 'peering_sessions.json'), JSON.stringify([]), 'utf8');
+
+  const testConfig = getActiveConfig();
+  const testNodeId = testConfig.nodes[0].id;
 
   const server = createServer();
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -38,7 +42,7 @@ test('Peering Flow API Integration Tests', async (t) => {
     assert.equal(body.success, true);
     assert.ok(body.data.nodes.length > 0);
     assert.equal(body.data.network.asn, 'AS4242423143');
-    assert.equal(body.data.guiPath, '/gui');
+    assert.equal(body.data.guiPath, testConfig.guiPath);
   });
 
   await t.test('POST /api/peering/submit without token returns HTTP 401 Unauthorized (7.1)', async () => {
@@ -47,7 +51,7 @@ test('Peering Flow API Integration Tests', async (t) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         asn: '4242423143',
-        nodeId: 'JP-TYO-1',
+        nodeId: testNodeId,
         publicKey: 'yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E='
       })
     });
@@ -67,7 +71,7 @@ test('Peering Flow API Integration Tests', async (t) => {
       },
       body: JSON.stringify({
         asn: '4242421111',
-        nodeId: 'JP-TYO-1',
+        nodeId: testNodeId,
         publicKey: 'yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E='
       })
     });
@@ -107,7 +111,7 @@ test('Peering Flow API Integration Tests', async (t) => {
       },
       body: JSON.stringify({
         asn: '4242423143',
-        nodeId: 'JP-TYO-1',
+        nodeId: testNodeId,
         publicKey: 'yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=',
         linkLocal: 'fe80::4242:3143',
         ipv4: '172.20.150.100',

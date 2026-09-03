@@ -14,6 +14,7 @@ import { AuthController } from './controllers/authController.js';
 import { SessionController } from './controllers/sessionController.js';
 import { ProbeController } from './controllers/probeController.js';
 import { LookingGlassController } from './controllers/lgController.js';
+import { generateInstallProbeScript } from './services/installScriptService.js';
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -209,6 +210,14 @@ export function createServer() {
           return sendJson(res, 200, resp);
         }
 
+        // Probe Registration (Auto-Claim via WireGuard Public Key)
+        if (pathname === '/api/probe/register' && method === 'POST') {
+          const authHeader = req.headers['authorization'] || '';
+          const body = await parseJsonBody(req);
+          const resp = await ProbeController.handleRegister(authHeader, body);
+          return sendJson(res, resp.code || (resp.success ? 200 : 400), resp);
+        }
+
         // Probe Reports
         if (pathname === '/api/probe/report' && method === 'POST') {
           const authHeader = req.headers['authorization'] || '';
@@ -223,6 +232,32 @@ export function createServer() {
         }
 
         return sendJson(res, 404, errorEnvelope('Endpoint Not Found', null, 404));
+      }
+
+      // -------------------------------------------------------------
+      // Unified One-Click Probe Installer & Agent Distribution
+      // -------------------------------------------------------------
+      if (pathname === '/install-probe.sh' && method === 'GET') {
+        const host = req.headers['x-forwarded-host'] || req.headers.host || `127.0.0.1:${ENV.PORT}`;
+        const proto = req.headers['x-forwarded-proto'] || (req.socket.encrypted ? 'https' : 'http');
+        const masterUrl = `${proto}://${host}`;
+        const script = generateInstallProbeScript({ masterUrl });
+        res.writeHead(200, {
+          'Content-Type': 'text/x-shellscript; charset=utf-8',
+          'Cache-Control': 'no-cache, no-store, must-revalidate'
+        });
+        return res.end(script);
+      }
+
+      if ((pathname === '/scripts/probe-agent.js' || pathname === '/probe-agent.js') && method === 'GET') {
+        const probeAgentFile = path.resolve(ROOT_DIR, 'scripts/probe-agent.js');
+        if (fs.existsSync(probeAgentFile)) {
+          res.writeHead(200, {
+            'Content-Type': 'application/javascript; charset=utf-8',
+            'Cache-Control': 'no-cache, no-store, must-revalidate'
+          });
+          return fs.createReadStream(probeAgentFile).pipe(res);
+        }
       }
 
       // -------------------------------------------------------------
@@ -241,13 +276,23 @@ export function createServer() {
       }
 
       if (pathname.startsWith(`${guiRoute}/`)) {
-        const guiDist = path.join(ROOT_DIR, 'gui/dist');
-        let relPath = pathname.slice(guiRoute.length).replace(/^\/+/, '');
+        const guiDist = path.resolve(ROOT_DIR, 'gui/dist');
+        let rawRel = pathname.slice(guiRoute.length).replace(/^\/+/, '');
+        let relPath = rawRel;
+        try {
+          relPath = decodeURIComponent(rawRel);
+        } catch {
+          return sendJson(res, 400, errorEnvelope('Bad Request: Invalid URI encoding', null, 400));
+        }
         if (!relPath) relPath = 'index.html';
 
-        let targetFile = path.join(guiDist, relPath);
+        let targetFile = path.resolve(guiDist, relPath);
+        if (!targetFile.startsWith(guiDist)) {
+          return sendJson(res, 403, errorEnvelope('Forbidden: Access Denied', null, 403));
+        }
+
         if (!fs.existsSync(targetFile) || fs.statSync(targetFile).isDirectory()) {
-          targetFile = path.join(guiDist, 'index.html');
+          targetFile = path.resolve(guiDist, 'index.html');
         }
 
         if (fs.existsSync(targetFile)) {
@@ -270,11 +315,21 @@ export function createServer() {
       }
 
       // 2. Terminal CLI (Root / and all other static resources)
-      const cliPublic = path.join(ROOT_DIR, 'cli/public');
-      let cliRel = pathname.replace(/^\/+/, '');
+      const cliPublic = path.resolve(ROOT_DIR, 'cli/public');
+      let rawCliRel = pathname.replace(/^\/+/, '');
+      let cliRel = rawCliRel;
+      try {
+        cliRel = decodeURIComponent(rawCliRel);
+      } catch {
+        return sendJson(res, 400, errorEnvelope('Bad Request: Invalid URI encoding', null, 400));
+      }
       if (!cliRel) cliRel = 'index.html';
 
-      let cliFile = path.join(cliPublic, cliRel);
+      let cliFile = path.resolve(cliPublic, cliRel);
+      if (!cliFile.startsWith(cliPublic)) {
+        return sendJson(res, 403, errorEnvelope('Forbidden: Access Denied', null, 403));
+      }
+
       if (fs.existsSync(cliFile) && !fs.statSync(cliFile).isDirectory()) {
         const ext = path.extname(cliFile);
         const mime = MIME_TYPES[ext] || 'application/octet-stream';
@@ -291,7 +346,7 @@ export function createServer() {
       }
 
       // Fallback index.html for CLI
-      const cliIndex = path.join(cliPublic, 'index.html');
+      const cliIndex = path.resolve(cliPublic, 'index.html');
       if (fs.existsSync(cliIndex)) {
         res.writeHead(200, {
           'Content-Type': 'text/html; charset=utf-8',
