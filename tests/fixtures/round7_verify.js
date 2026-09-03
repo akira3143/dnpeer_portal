@@ -75,9 +75,9 @@ async function main() {
     assert.ok(wgConf.includes('PostUp = ip addr add dev %i 172.20.150.99/32 peer 172.20.150.1/32'));
     assert.ok(wgConf.includes('PostUp = ip addr del dev %i fd00:4242:3143::99/128'));
     assert.ok(wgConf.includes('PostUp = ip addr add dev %i fd00:4242:3143::99/128 peer fd00:4242:3143::1/128'));
-    assert.ok(wgConf.includes('AllowedIPs = 10.0.0.0/8, 172.20.0.0/14, 172.31.0.0/16, fd00::/8, fe80::/64'));
+    assert.ok(wgConf.includes('AllowedIPs = 10.0.0.0/8, 172.16.0.0/12, fd00::/8, fe80::/64'));
     assert.ok(wgConf.includes('PersistentKeepalive = 25'));
-    assert.equal(wgConf.includes('ListenPort ='), false, 'ListenPort must be omitted when clientPort is auto');
+    assert.ok(wgConf.includes('ListenPort = <YOUR_LISTEN_PORT>'), 'ListenPort placeholder expected when clientPort is auto');
     console.log('[✓] U8 Verified: /64 LLA, /128 ULA, /32 IPv4, PostUp point-to-point peer bindings matching production');
 
     // --- U9 Validations ---

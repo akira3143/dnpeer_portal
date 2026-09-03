@@ -70,6 +70,14 @@
     term.open(document.getElementById("terminal"));
     termFit.fit();
     term.focus();
+    // Prefer Latin/ASCII input mode: reduces IME (Chinese input method) interference & lag
+    if (term.textarea) {
+      term.textarea.setAttribute("inputmode", "latin");
+      term.textarea.setAttribute("lang", "en");
+      term.textarea.setAttribute("autocapitalize", "off");
+      term.textarea.setAttribute("autocorrect", "off");
+      term.textarea.setAttribute("spellcheck", "false");
+    }
     window.addEventListener("resize", () => termFit.fit());
     window.term = term;
 
@@ -343,7 +351,7 @@
             const rewritten = urlStr.replace(/^https?:\/\/10\.0\.2\.2(?::\d+)?\//, '/');
             const resPromise = fetch(rewritten, { ...(args[1] || {}), cache: 'no-store' });
 
-            // 双端同步：网关拦截 CLI 认证响应并镜像到 localStorage
+            // 双端同步：网关拦截 CLI 认证响应并按 rememberMe 分流存储
             resPromise.then(async (res) => {
               if (res.ok && (
                 rewritten.includes('/api/auth/login-password') ||
@@ -351,15 +359,31 @@
                 rewritten.includes('/api/auth/verify-ssh')
               )) {
                 try {
+                  let remember = true;
+                  if (args[1] && args[1].body) {
+                    try {
+                      const reqPayload = typeof args[1].body === 'string' ? JSON.parse(args[1].body) : args[1].body;
+                      if (reqPayload && reqPayload.rememberMe === false) {
+                        remember = false;
+                      }
+                    } catch {}
+                  }
                   const clone = res.clone();
                   const data = await clone.json();
                   if (data && data.success && data.data && data.data.token) {
-                    localStorage.setItem('dn42_auth_token', data.data.token);
+                    if (remember) {
+                      localStorage.setItem('dn42_auth_token', data.data.token);
+                      sessionStorage.removeItem('dn42_auth_token');
+                    } else {
+                      localStorage.removeItem('dn42_auth_token');
+                      sessionStorage.setItem('dn42_auth_token', data.data.token);
+                    }
                   }
                 } catch {}
               }
               if (rewritten.includes('/api/auth/logout')) {
                 localStorage.removeItem('dn42_auth_token');
+                sessionStorage.removeItem('dn42_auth_token');
               }
             }).catch(() => {});
 

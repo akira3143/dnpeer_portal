@@ -57,17 +57,16 @@ export class ConfigEngine {
     }
     const postUpBlock = postUpLines.length > 0 ? postUpLines.join('\n') + '\n' : '';
 
-    // 3. Client ListenPort line (only written when clientPort is a custom integer)
+    // 3. Client ListenPort line (custom integer, or placeholder when auto)
     const clientPortNum = parseInt(clientPort, 10);
     const clientListenPortLine = (!isNaN(clientPortNum) && clientPort !== 'auto')
       ? `ListenPort = ${clientPortNum}\n`
-      : '';
+      : 'ListenPort = <YOUR_LISTEN_PORT>\n';
 
     // 4. Server WG AllowedIPs
     const serverAllowedIps = [
       '10.0.0.0/8',
-      '172.20.0.0/14',
-      '172.31.0.0/16',
+      '172.16.0.0/12',
       'fd00::/8',
       'fe80::/64'
     ];
@@ -92,9 +91,18 @@ PersistentKeepalive = 25
     if (clientLinkLocal) peerAllowedIps.push(`${clientLinkLocal.replace(/\/.*$/, '')}/128`);
     if (peerAllowedIps.length === 0) peerAllowedIps.push('fe80::/128');
 
+    let serverEndpointLine = '';
+    if (clientEndpoint) {
+      if (!isNaN(clientPortNum) && clientPort !== 'auto') {
+        serverEndpointLine = `Endpoint = ${clientEndpoint}:${clientPortNum}\n`;
+      } else {
+        serverEndpointLine = `Endpoint = ${clientEndpoint}\n`;
+      }
+    }
+
     const serverWireguardSnippet = `[Peer]
 PublicKey = ${clientPublicKey}
-${clientEndpoint ? `Endpoint = ${clientEndpoint}\n` : ''}AllowedIPs = ${peerAllowedIps.join(', ')}
+${serverEndpointLine}AllowedIPs = ${peerAllowedIps.join(', ')}
 `;
 
     return {
