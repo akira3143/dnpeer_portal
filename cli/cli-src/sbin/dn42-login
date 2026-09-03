@@ -199,7 +199,7 @@ main() {
   echo -e "\033[90mLinux aki-lab 6.1.0-wasm32 (tty1)\033[0m"
   echo ""
   cat /etc/banner.txt 2>/dev/null || sh /etc/banner.sh
-  echo ""
+  printf '\n'
   echo -e " * Gateway:         \033[33mAkiLab Networks AS4242423143\033[0m"
   echo -e " * Routing Policy:  \033[32mOpen / MP-BGP (Extended Next Hop)\033[0m"
   echo -e " * Access Control:  \033[35mMandatory DN42 Cryptographic Verification\033[0m"
