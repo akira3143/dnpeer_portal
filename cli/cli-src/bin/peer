@@ -477,6 +477,7 @@ do_edit() {
   fi
 
   rm -f /tmp/dn42_my_sessions
+  touch /tmp/dn42_my_sessions
   echo "$resp" | sed 's/},{/}\n{/g' | grep '"id"' | while IFS= read -r line; do
     _sid=${line#*\"id\":\"}; _sid=${_sid%%\"*}
     _snode=${line#*\"nodeId\":\"}; _snode=${_snode%%\"*}
