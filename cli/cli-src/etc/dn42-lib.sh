@@ -93,6 +93,19 @@ json_field() {
         out = out c
       }
       print out
+    } else {
+      # numeric value fallback: "field":123
+      target = "\"" field "\":"
+      idx = index($0, target)
+      if (idx > 0) {
+        rest = substr($0, idx + length(target))
+        out = ""
+        for (i = 1; i <= length(rest); i++) {
+          c = substr(rest, i, 1)
+          if (c ~ /[0-9]/) out = out c; else break
+        }
+        print out
+      }
     }
   }'
 }

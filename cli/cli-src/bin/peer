@@ -133,6 +133,10 @@ do_new() {
   fi
 
   clean_asn=$(cat /tmp/dn42_asn 2>/dev/null)
+  if [ -z "$clean_asn" ]; then
+    echo -e "\033[31merror: Session identity missing. Please logout and login again.\033[0m"
+    return 1
+  fi
   default_peer_port=$(calc_default_port "$clean_asn")
   [ -z "$default_peer_port" ] && default_peer_port=$((20000 + (clean_asn % 10000)))
   clean_tail=$((clean_asn % 10000))
