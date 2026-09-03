@@ -12,7 +12,8 @@ fi
 
 usage() {
   echo -e "\033[36mUsage:\033[0m"
-  echo -e "  \033[32mpeer new [node#]\033[0m   Request a new peering session via nano editor"
+  echo -e "  \033[32mpeer new [node#]\033[0m   Request a new peering session via editor"
+  echo -e "  \033[32mpeer edit [node#]\033[0m  Update/overwrite an existing peering session"
   echo -e "  \033[32mpeer ls\033[0m            List my peering sessions & status"
   echo -e "  \033[32mpeer rm <ID>\033[0m       Revoke a session and release its port"
 }
@@ -107,6 +108,24 @@ do_new() {
         echo -e "\033[31merror: Invalid selection. Enter 1-$i or q to cancel.\033[0m"
       fi
     done
+  fi
+
+  # Check if user already has an existing session on target node
+  sessions_resp=$(api_get "/api/sessions")
+  existing_sess=$(echo "$sessions_resp" | sed 's/},{/}\n{/g' | grep "\"nodeId\":\"$sel_nid\"")
+  if [ -n "$existing_sess" ]; then
+    ex_id=${existing_sess#*\"id\":\"}; ex_id=${ex_id%%\"*}
+    ex_port=${existing_sess#*\"hostPort\":}; ex_port=${ex_port%%,*}; ex_port=${ex_port%%\}*}
+    ex_status=${existing_sess#*\"status\":\"}; ex_status=${ex_status%%\"*}
+    echo ""
+    echo -e "\033[33mNotice: An active session already exists on node $sel_nid (ID: $ex_id, Port: $ex_port, Status: $ex_status).\033[0m"
+    printf "Submitting again will overwrite existing configuration. Continue? \033[33m[y/N]\033[0m: "
+    read -r ex_confirm
+    ex_confirm=$(echo "$ex_confirm" | tr 'A-Z' 'a-z' | tr -d ' \t\r\n')
+    if [ "$ex_confirm" != "y" ] && [ "$ex_confirm" != "yes" ]; then
+      echo -e "\033[90mCancelled.\033[0m"
+      return 0
+    fi
   fi
 
   clean_asn=$(cat /tmp/dn42_asn 2>/dev/null)
@@ -401,6 +420,11 @@ do_new() {
   if [ "$is_shifted" = "true" ] && [ -n "$conflict_msg" ]; then
     echo -e "\033[33m[!] $conflict_msg\033[0m"
   fi
+  is_client_shifted=$(json_bool "$resp" isClientPortShifted)
+  client_port=$(json_field "$resp" clientPort)
+  if [ "$is_client_shifted" = "true" ]; then
+    echo -e "\033[33m[!] Default ListenPort 23143 is in use on this key, auto-shifted to $client_port\033[0m"
+  fi
   echo ""
   echo -e "\033[36mReceived your peering info. We'll establish the peer with you within 24 hours!\033[0m"
   echo -e "\033[32m===============================================================================\033[0m"
@@ -440,6 +464,8 @@ do_ls() {
     printf "%-28s %-12s %-12s %-8s %s\n" "$id" "AS$asn" "$node" "$port" "$stage"
   done
   echo ""
+  echo -e "\033[90mTip: Run 'peer new' (or 'peer edit') selecting the same node to update session configuration.\033[0m"
+  echo ""
 }
 
 # ---------- peer rm ----------
@@ -464,6 +490,7 @@ do_rm() {
 
 case "$1" in
   new) do_new "$2" ;;
+  edit) do_new "$2" ;;
   ls|list) do_ls ;;
   rm|remove|delete) do_rm "$2" ;;
   *) usage ;;

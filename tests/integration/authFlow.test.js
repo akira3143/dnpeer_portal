@@ -22,8 +22,9 @@ test('Auth Flow API Integration Tests', async (t) => {
   const baseUrl = `http://127.0.0.1:${port}`;
 
   t.after(async () => {
-    if (server && server.closeAll) {
-      await server.closeAll();
+    if (server) {
+      if (server.closeAllConnections) server.closeAllConnections();
+      await new Promise(resolve => server.close(resolve));
     }
     try {
       fs.rmSync(testDataDir, { recursive: true, force: true });

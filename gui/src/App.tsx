@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ApiClient, readTokenFromOPFS, type NetworkMeta } from './api/client';
+import { ApiClient, readTokenFromOPFS, type NetworkMeta, type PeeringSession } from './api/client';
 import { ToastProvider, useToast } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Navbar } from './components/Navbar';
@@ -99,6 +99,7 @@ const AppContent: React.FC = () => {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string>('JP-TYO-1');
+  const [editingSession, setEditingSession] = useState<PeeringSession | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -216,6 +217,8 @@ const AppContent: React.FC = () => {
               user={user}
               targetNodeId={selectedNodeId}
               onOpenAuthModal={() => setAuthModalOpen(true)}
+              editingSession={editingSession}
+              onClearEditingSession={() => setEditingSession(null)}
             />
           </div>
         )}
@@ -226,6 +229,13 @@ const AppContent: React.FC = () => {
               user={user}
               onOpenAuthModal={() => setAuthModalOpen(true)}
               onRequestPeering={() => {
+                setEditingSession(null);
+                setActiveTab('peer');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              onEditSession={(sess) => {
+                setEditingSession(sess);
+                setSelectedNodeId(sess.nodeId);
                 setActiveTab('peer');
                 window.scrollTo({ top: 0, behavior: 'smooth' });
               }}

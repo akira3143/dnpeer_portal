@@ -72,17 +72,23 @@ export interface PeeringSession {
     ipv6Ula?: string;
     linkLocal: string;
     listenPort: number;
+    clientPort?: number | string;
+    clientPortShifted?: boolean;
     mtu: number;
     bgpMode: string;
   };
   assigned: {
     hostPort: number;
     isShifted: boolean;
+    clientPort?: number;
+    isClientPortShifted?: boolean;
+    expectedClientPort?: number;
     serverEndpoint: string;
     serverPublicKey: string;
     serverIpv4: string;
     serverIpv6Ula: string;
     serverLinkLocal: string;
+    serverWireguardSnippet?: string;
   };
   runtime?: {
     stage?: number;

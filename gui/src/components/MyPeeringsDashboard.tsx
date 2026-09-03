@@ -13,19 +13,22 @@ import {
   AlertTriangle,
   Server,
   Terminal,
-  Loader2
+  Loader2,
+  Edit3
 } from 'lucide-react';
 
 interface MyPeeringsDashboardProps {
   user: { asn: number; asName: string; role: string } | null;
   onOpenAuthModal: () => void;
   onRequestPeering?: () => void;
+  onEditSession?: (session: PeeringSession) => void;
 }
 
 export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
   user,
   onOpenAuthModal,
-  onRequestPeering
+  onRequestPeering,
+  onEditSession
 }) => {
   const { showToast } = useToast();
 
@@ -270,6 +273,16 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                           <span className={`w-1.5 h-1.5 rounded-full ${isAwaiting ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`} />
                           <span>{sess.status}</span>
                         </span>
+
+                        {onEditSession && (
+                          <button
+                            onClick={() => onEditSession(sess)}
+                            className="p-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 transition-colors cursor-pointer"
+                            title="Edit or Re-submit Session"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
 
                         <button
                           onClick={() => setSessionToDelete(sess)}

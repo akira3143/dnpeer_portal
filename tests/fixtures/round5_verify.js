@@ -32,8 +32,8 @@ async function main() {
   });
   const bodyAuto = await resAuto.json();
   assert.equal(bodyAuto.success, true);
-  console.log('[R1-A auto+auto] Client WG Config ListenPort present:', bodyAuto.data.configs.clientWireguard.includes('ListenPort ='));
-  assert.equal(bodyAuto.data.configs.clientWireguard.includes('ListenPort ='), false);
+  console.log('[R1-A auto+auto] Client WG Config ListenPort present:', bodyAuto.data.configs.clientWireguard.includes('ListenPort = 23143'));
+  assert.ok(bodyAuto.data.configs.clientWireguard.includes('ListenPort = 23143'));
 
   // (B) custom clientPort = 51820
   const resCustomClient = await fetch('http://127.0.0.1:4247/api/peering/submit', {

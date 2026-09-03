@@ -1,5 +1,5 @@
 #!/bin/busybox sh
-# init —— PID 1 引导中枢（WASM Linux）
+# init —— PID 1 entrypoint (WASM Linux)
 
 /bin/busybox --install -s 2>/dev/null
 
@@ -15,8 +15,8 @@ export TZ=CST-8
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin
 export HOME=/root
 
-# 持久层：浏览器 OPFS 通过 virtio-fs 挂载（tag=persist）
-# 挂载失败不影响主流程（rememberMe 自动登录静默降级）
+# Persistence: mount browser OPFS via virtio-fs (tag=persist)
+# Mount failure is non-fatal (rememberMe degrades gracefully)
 mount -t virtiofs persist /mnt/persist 2>/dev/null
 mkdir -p /mnt/persist/.dn42 2>/dev/null
 

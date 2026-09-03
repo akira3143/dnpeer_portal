@@ -57,11 +57,13 @@ export class ConfigEngine {
     }
     const postUpBlock = postUpLines.length > 0 ? postUpLines.join('\n') + '\n' : '';
 
-    // 3. Client ListenPort line (custom integer, or placeholder when auto)
-    const clientPortNum = parseInt(clientPort, 10);
-    const clientListenPortLine = (!isNaN(clientPortNum) && clientPort !== 'auto')
-      ? `ListenPort = ${clientPortNum}\n`
-      : 'ListenPort = <YOUR_LISTEN_PORT>\n';
+    // 3. Client ListenPort line (concrete assigned/custom port, defaults to 20000 + (ourAsn % 10000))
+    let clientPortNum = parseInt(clientPort, 10);
+    if (isNaN(clientPortNum) || clientPort === 'auto') {
+      const ourAsn = config.network?.asnNumber || 4242423143;
+      clientPortNum = 20000 + (ourAsn % 10000);
+    }
+    const clientListenPortLine = `ListenPort = ${clientPortNum}\n`;
 
     // 4. Server WG AllowedIPs
     const serverAllowedIps = [
@@ -93,11 +95,7 @@ PersistentKeepalive = 25
 
     let serverEndpointLine = '';
     if (clientEndpoint) {
-      if (!isNaN(clientPortNum) && clientPort !== 'auto') {
-        serverEndpointLine = `Endpoint = ${clientEndpoint}:${clientPortNum}\n`;
-      } else {
-        serverEndpointLine = `Endpoint = ${clientEndpoint}\n`;
-      }
+      serverEndpointLine = `Endpoint = ${clientEndpoint}:${clientPortNum}\n`;
     }
 
     const serverWireguardSnippet = `[Peer]
@@ -107,7 +105,7 @@ ${serverEndpointLine}AllowedIPs = ${peerAllowedIps.join(', ')}
 
     return {
       hostPort,
-      clientPort: !isNaN(clientPortNum) && clientPort !== 'auto' ? clientPortNum : 'auto',
+      clientPort: clientPortNum,
       serverEndpoint: `${node.endpointDomain || 'jp1.akilab.dn42'}:${hostPort}`,
       serverPublicKey: node.wgPublicKey || '',
       serverIpv4: node.tunnelIpv4 || '',

@@ -72,7 +72,7 @@ echo "$meta" | sed 's/},{/}\n{/g' | grep '"endpointDomain"' | while IFS= read -r
   else
     status_str="\033[90m- offline\033[0m"
   fi
-  printf "  %-3s %-8s %-24s %-28s $status_str\n" "$i" "$nid" "$nname" "$nend"
+  printf "  %-3s %-8s %-*s %-*s $status_str\n" "$i" "$nid" "$max_name" "$nname" "$max_end" "$nend"
 done
 echo ""
 echo -e "\033[90mTo peer with a node, run: peer new\033[0m"

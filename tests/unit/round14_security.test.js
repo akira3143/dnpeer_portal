@@ -65,18 +65,18 @@ describe('Round 14 Security and Contract Fixes Unit Tests', () => {
     });
     assert.ok(configWithPort.serverWireguardSnippet.includes('Endpoint = myhost.dn42:25000\n'), 'Must include :port in server snippet when clientPort is numeric');
 
-    // 2. With auto clientPort (roaming)
+    // 2. With auto clientPort (Round 18 resolves auto clientPort to default 23143)
     const configAuto = ConfigEngine.generateFullConfig({
       asn: '4242423143',
       nodeId: node.id,
-      clientPublicKey: 'yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8y1E=',
+      clientPublicKey: 'yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=',
       clientEndpoint: 'myhost.dn42',
       clientLinkLocal: 'fe80::3143',
       hostPort: 23143,
       clientPort: 'auto',
       mtu: 1420
     });
-    assert.ok(configAuto.serverWireguardSnippet.includes('Endpoint = myhost.dn42\n'), 'Must omit :port in server snippet when clientPort is auto');
+    assert.ok(configAuto.serverWireguardSnippet.includes('Endpoint = myhost.dn42:23143\n'), 'Must format server snippet with resolved default clientPort');
     assert.ok(!configAuto.serverWireguardSnippet.includes('myhost.dn42:auto'));
   });
 

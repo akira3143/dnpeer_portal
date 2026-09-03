@@ -1,4 +1,4 @@
-# /etc/profile —— ash 交互 shell 启动时经 $ENV 加载
+# /etc/profile —— Loaded on ash interactive shell startup via $ENV
 export TERM=xterm-256color
 export EDITOR=nano
 help() { /bin/help "$@"; }

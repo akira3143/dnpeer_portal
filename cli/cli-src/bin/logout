@@ -1,5 +1,5 @@
 #!/bin/busybox sh
-# logout —— 退出登录（同时清除持久化会话，防止下次自动登录）
+# logout —— Sign out (and clear persistent session storage)
 
 if [ -f /etc/dn42-lib.sh ]; then
   . /etc/dn42-lib.sh

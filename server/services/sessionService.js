@@ -99,6 +99,35 @@ export class SessionService {
       description: `Peering for AS${norm.asn}`
     });
 
+    // 4b. Verdict for Client ListenPort (clientPort)
+    // DN42 convention: 20000 + (ourAsn % 10000). For AkiLab AS4242423143 => 23143
+    const ourAsn = config.network?.asnNumber || 4242423143;
+    const baseClientPort = 20000 + (ourAsn % 10000);
+    let allocatedClientPort;
+    let clientPortShifted = false;
+
+    const customClientPortNum = parseInt(norm.clientPort, 10);
+    if (!isNaN(customClientPortNum) && norm.clientPort !== 'auto') {
+      allocatedClientPort = customClientPortNum;
+      clientPortShifted = false;
+    } else {
+      // Auto allocation: avoid collision with other sessions using the SAME wireguard public key
+      const sameKeySessions = sessions.filter(s => s.id !== sessionId && s.peering?.publicKey === norm.publicKey);
+      const occupiedPorts = new Set(
+        sameKeySessions.map(s => parseInt(s.assigned?.clientPort || s.peering?.clientPort, 10)).filter(p => !isNaN(p))
+      );
+
+      let portCandidate = baseClientPort;
+      while (occupiedPorts.has(portCandidate)) {
+        portCandidate += 10000;
+        clientPortShifted = true;
+        if (portCandidate > 65535) {
+          portCandidate = 20000 + ((portCandidate - 20000) % 45536);
+        }
+      }
+      allocatedClientPort = portCandidate;
+    }
+
     // 5. Generate Configuration Finished Products (Dual port: server hostPort & clientPort)
     const generatedConfigs = ConfigEngine.generateFullConfig({
       asn: norm.asn,
@@ -109,7 +138,7 @@ export class SessionService {
       clientIpv6Ula: norm.ipv6Ula,
       clientLinkLocal: norm.linkLocal,
       hostPort: portResult.port,
-      clientPort: norm.clientPort,
+      clientPort: allocatedClientPort,
       mtu: norm.mtu,
       bgpMode: norm.bgpMode
     });
@@ -134,7 +163,8 @@ export class SessionService {
         ipv6Ula: norm.ipv6Ula,
         linkLocal: norm.linkLocal,
         listenPort: portResult.port,
-        clientPort: norm.clientPort || 'auto',
+        clientPort: allocatedClientPort,
+        clientPortShifted,
         mtu: norm.mtu,
         bgpMode: norm.bgpMode
       },
@@ -142,11 +172,15 @@ export class SessionService {
         hostPort: portResult.port,
         isShifted: portResult.isShifted,
         expectedPort: portResult.expectedPort,
+        clientPort: allocatedClientPort,
+        isClientPortShifted: clientPortShifted,
+        expectedClientPort: baseClientPort,
         serverEndpoint: generatedConfigs.serverEndpoint,
         serverPublicKey: generatedConfigs.serverPublicKey,
         serverIpv4: generatedConfigs.serverIpv4,
         serverIpv6Ula: generatedConfigs.serverIpv6Ula,
-        serverLinkLocal: generatedConfigs.serverLinkLocal
+        serverLinkLocal: generatedConfigs.serverLinkLocal,
+        serverWireguardSnippet: generatedConfigs.serverWireguardSnippet
       },
       runtime: isNew ? {
         stage: 1,
@@ -176,6 +210,11 @@ export class SessionService {
       }
     }
 
+    let clientConflictMessage = null;
+    if (clientPortShifted) {
+      clientConflictMessage = `Default client ListenPort ${baseClientPort} was in use on this key, assigned ${allocatedClientPort} instead.`;
+    }
+
     return {
       success: true,
       data: {
@@ -185,6 +224,10 @@ export class SessionService {
         isShifted: portResult.isShifted,
         expectedPort: portResult.expectedPort,
         conflictMessage,
+        clientPort: allocatedClientPort,
+        isClientPortShifted: clientPortShifted,
+        expectedClientPort: baseClientPort,
+        clientConflictMessage,
         configs: generatedConfigs,
         clientWireguard: generatedConfigs.clientWireguard,
         acknowledgement: "Received your peering info. We'll establish the peer with you within 24 hours!"

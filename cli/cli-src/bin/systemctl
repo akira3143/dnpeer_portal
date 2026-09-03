@@ -1,5 +1,5 @@
 #!/bin/busybox sh
-# systemctl —— 彩蛋：预置假服务状态表（灵魂元素，勿删）
+# systemctl —— Easter egg: simulated service status overview
 
 echo -e "  \033[32m[●]\033[0m akilab-bgpd.service          \033[1mactive (running)\033[0m"
 echo -e "  \033[32m[●]\033[0m wireguard-gateway.service    \033[1mactive (running)\033[0m"

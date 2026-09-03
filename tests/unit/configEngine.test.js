@@ -53,7 +53,7 @@ describe('ConfigEngine Unit Tests', () => {
     assert.ok(config.serverWireguardSnippet.includes('Endpoint = peer.example.dn42:25000'));
   });
 
-  test('P2-1: writes ListenPort placeholder in client WG when clientPort is auto and omits PostUp when no IPv4/ULA', () => {
+  test('P1 & P2-1: writes concrete ListenPort in client WG when clientPort is auto and omits PostUp when no IPv4/ULA', () => {
     const config = ConfigEngine.generateFullConfig({
       asn: '4242423143',
       nodeId: node.id,
@@ -64,8 +64,8 @@ describe('ConfigEngine Unit Tests', () => {
       mtu: 1420
     });
 
-    assert.equal(config.clientPort, 'auto');
-    assert.ok(config.clientWireguard.includes('ListenPort = <YOUR_LISTEN_PORT>'), 'Client WG config must contain ListenPort placeholder when clientPort is auto');
+    assert.equal(config.clientPort, 23143);
+    assert.ok(config.clientWireguard.includes('ListenPort = 23143'), 'Client WG config must contain concrete ListenPort 23143 when clientPort is auto');
     assert.ok(!config.clientWireguard.includes('PostUp'), 'Client WG config must NOT contain PostUp when no IPv4/ULA provided');
     assert.ok(config.clientWireguard.includes(`Endpoint = ${node.endpointDomain}:23143`));
   });

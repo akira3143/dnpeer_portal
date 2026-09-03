@@ -21,7 +21,7 @@ WireGuard Endpoint        =
 # ── Ports ─────────────────────────────────────────────────────
 PeerPort                  = auto
 ListenPort                = auto
-#     (auto = assigned on submit; or custom 20000-65535)
+#     (auto = DN42 convention: PeerPort=20000+Your ASN tail; ListenPort=20000+AkiLab ASN tail (23143), conflict auto-shifted)
 #
 # ── Tunnel ────────────────────────────────────────────────────
 MTU                       = 1420

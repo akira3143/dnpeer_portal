@@ -1,5 +1,5 @@
 #!/bin/busybox sh
-# help —— 命令速查
+# help —— Quick command reference
 
 echo -e "Available commands:"
 printf "  \033[32m%-24s\033[0m- %s\n" "peer new" "Request a new peering session"

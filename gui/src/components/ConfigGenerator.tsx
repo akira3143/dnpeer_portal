@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import confetti from 'canvas-confetti';
-import type { NetworkMeta } from '../api/client';
+import type { NetworkMeta, PeeringSession } from '../api/client';
 import { ApiClient } from '../api/client';
 import { useToast } from './Toast';
 import { CodeViewer } from './CodeViewer';
@@ -36,6 +36,8 @@ interface ConfigGeneratorProps {
   user: { asn: number; asName: string; role: string } | null;
   targetNodeId?: string;
   onOpenAuthModal: () => void;
+  editingSession?: PeeringSession | null;
+  onClearEditingSession?: () => void;
 }
 
 export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
@@ -43,7 +45,9 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
   network: _network,
   user,
   targetNodeId,
-  onOpenAuthModal
+  onOpenAuthModal,
+  editingSession,
+  onClearEditingSession
 }) => {
   const { copyToClipboard, showToast } = useToast();
 
@@ -79,10 +83,29 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
   }, [targetNodeId, nodes, selectedNodeId]);
 
   useEffect(() => {
-    if (user?.asn && !linkLocal) {
+    if (user?.asn && !linkLocal && !editingSession) {
       setLinkLocal(formatDefaultLinkLocal(user.asn));
     }
-  }, [user]);
+  }, [user, editingSession]);
+
+  useEffect(() => {
+    if (editingSession) {
+      if (editingSession.nodeId && nodes.some((n) => n.id === editingSession.nodeId)) {
+        setSelectedNodeId(editingSession.nodeId);
+      }
+      setWgPublicKey(editingSession.peering?.publicKey || '');
+      setLinkLocal(editingSession.peering?.linkLocal || (user?.asn ? formatDefaultLinkLocal(user.asn) : ''));
+      setIpv6Ula(editingSession.peering?.ipv6Ula || '');
+      setIpv4(editingSession.peering?.ipv4 || '');
+      setEndpoint(editingSession.peering?.endpoint || '');
+      setPeerPort(String(editingSession.peering?.listenPort || 'auto'));
+      setListenPort(String(editingSession.peering?.clientPort || 'auto'));
+      setMtu(editingSession.peering?.mtu || 1420);
+      setSubmitResult(null);
+      setFieldErrors({});
+      setGeneralError('');
+    }
+  }, [editingSession, nodes, user]);
 
   const selectedNode = useMemo(() => {
     return nodes.find((n) => n.id === selectedNodeId) || nodes[0] || {} as any;
@@ -126,7 +149,10 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
     }
     setFieldErrors({});
     setGeneralError('');
-    showToast('Form cleared', 'info');
+    if (editingSession) {
+      onClearEditingSession?.();
+    }
+    showToast(editingSession ? 'Edit mode cancelled' : 'Form cleared', 'info');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -164,7 +190,10 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
 
       if (res.success && res.data) {
         setSubmitResult(res.data);
-        showToast('🎉 Peering application submitted successfully!', 'success');
+        showToast(editingSession ? '🎉 Peering session updated successfully!' : '🎉 Peering application submitted successfully!', 'success');
+        if (editingSession) {
+          onClearEditingSession?.();
+        }
         try {
           confetti({
             particleCount: 80,
@@ -242,6 +271,27 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
   return (
     <section id="generator" className="w-full py-2 scroll-mt-20">
       <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6">
+
+        {/* Active Session Edit Banner */}
+        {editingSession && (
+          <div className="mb-4 p-3.5 rounded-xl bg-cyan-950/60 border border-cyan-500/40 flex items-center justify-between gap-4 text-cyan-200 animate-in fade-in duration-200">
+            <div className="flex items-center gap-2.5 text-xs font-mono">
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping shrink-0" />
+              <span>
+                <strong className="text-white font-sans">Editing Peering Session:</strong>{' '}
+                <span className="text-cyan-300 font-bold">{editingSession.id}</span> on node{' '}
+                <span className="text-white font-bold">{editingSession.nodeId}</span> (Host Port: {editingSession.assigned?.hostPort || 'auto'}). Submitting will update and overwrite this session.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleClearForm}
+              className="px-2.5 py-1 rounded-lg text-xs font-sans font-medium bg-white/10 hover:bg-white/20 text-slate-200 border border-white/15 transition-colors cursor-pointer shrink-0"
+            >
+              Cancel Edit &middot; 取消编辑
+            </button>
+          </div>
+        )}
 
         {/* Magazine Editorial Step Typography */}
         <div className="flex flex-col lg:flex-row items-center gap-6 lg:gap-8 mb-3.5 px-1 select-none">
@@ -659,6 +709,11 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
                       <span>Submitting Peering Request...</span>
+                    </>
+                  ) : editingSession ? (
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>Update Peering Session &middot; <span className="text-cyan-100 font-normal text-xs">更新互联配置</span></span>
                     </>
                   ) : (
                     <>
