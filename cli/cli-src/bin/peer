@@ -13,12 +13,40 @@ fi
 usage() {
   echo -e "\033[36mUsage:\033[0m"
   echo -e "  \033[32mpeer new [node#]\033[0m   Request a new peering session via editor"
-  echo -e "  \033[32mpeer edit [node#]\033[0m  Update/overwrite an existing peering session"
+  echo -e "  \033[32mpeer edit [n]\033[0m      Edit an existing session (list by number, prefill loaded)"
   echo -e "  \033[32mpeer ls\033[0m            List my peering sessions & status"
   echo -e "  \033[32mpeer rm <ID>\033[0m       Revoke a session and release its port"
 }
 
 # ---------- peer new (V1: nano editor + template) ----------
+# ---------- ensure node matrix cache ----------
+ensure_nodes() {
+  [ -s /tmp/dn42_nodes ] && return 0
+  local meta
+  if [ -s /tmp/dn42_meta ]; then
+    meta=$(cat /tmp/dn42_meta)
+  else
+    echo -e "\033[90mQuerying AkiLab node matrix...\033[0m"
+    meta=$(api_get "/api/network-meta")
+    echo "$meta" > /tmp/dn42_meta
+  fi
+  if ! echo "$meta" | grep -q '"success":true'; then
+    echo -e "\033[31merror: Cannot fetch node list, try again later.\033[0m"
+    return 1
+  fi
+
+  echo "$meta" | sed 's/},{/}\n{/g' | grep '"endpointDomain"' > /tmp/dn42_nodes_raw
+  rm -f /tmp/dn42_nodes
+  while IFS= read -r line; do
+    nid=${line#*\"id\":\"}; nid=${nid%%\"*}
+    nname=${line#*\"name\":\"}; nname=${nname%%\"*}
+    nend=${line#*\"endpointDomain\":\"}; nend=${nend%%\"*}
+    echo "$nid|$nname|$nend" >> /tmp/dn42_nodes
+  done < /tmp/dn42_nodes_raw
+  rm -f /tmp/dn42_nodes_raw
+  return 0
+}
+
 do_new() {
   require_login || return 1
 
@@ -29,31 +57,7 @@ do_new() {
   [ ! -f "$template_file" ] && template_file="${0%/*}/../etc/peer_template"
   [ ! -f "$template_file" ] && template_file="cli-src/etc/peer_template"
 
-  echo -e "\033[90mQuerying AkiLab node matrix...\033[0m"
-  if [ ! -s /tmp/dn42_nodes ]; then
-    if [ -s /tmp/dn42_meta ]; then
-      meta=$(cat /tmp/dn42_meta)
-    else
-      echo -e "\033[90mQuerying AkiLab node matrix...\033[0m"
-      meta=$(api_get "/api/network-meta")
-      echo "$meta" > /tmp/dn42_meta
-    fi
-    if ! echo "$meta" | grep -q '"success":true'; then
-      echo -e "\033[31merror: Cannot fetch node list, try again later.\033[0m"
-      return 1
-    fi
-
-    # Extract nodes array into /tmp/dn42_nodes (cached for the session)
-    echo "$meta" | sed 's/},{/}\n{/g' | grep '"endpointDomain"' > /tmp/dn42_nodes_raw
-    rm -f /tmp/dn42_nodes
-    while IFS= read -r line; do
-      nid=${line#*\"id\":\"}; nid=${nid%%\"*}
-      nname=${line#*\"name\":\"}; nname=${nname%%\"*}
-      nend=${line#*\"endpointDomain\":\"}; nend=${nend%%\"*}
-      echo "$nid|$nname|$nend" >> /tmp/dn42_nodes
-    done < /tmp/dn42_nodes_raw
-    rm -f /tmp/dn42_nodes_raw
-  fi
+  ensure_nodes || return 1
 
   node_idx=0
   while IFS= read -r _; do node_idx=$((node_idx + 1)); done < /tmp/dn42_nodes
@@ -134,20 +138,37 @@ do_new() {
   clean_tail=$((clean_asn % 10000))
   default_lla="fe80::$clean_tail"
 
-  # Initialize draft from template (single sed pass)
+  run_edit_flow "$sel_nid" "$sel_nname"
+}
+
+# ---------- Shared editor flow (prefill via pfill_* globals) ----------
+run_edit_flow() {
+  sel_nid="$1"; sel_nname="$2"
+
+  draft_file="/tmp/peer_draft"
+  template_file="/etc/peer_template"
+  [ ! -f "$template_file" ] && template_file="${0%/*}/../etc/peer_template"
+  [ ! -f "$template_file" ] && template_file="cli-src/etc/peer_template"
+
+  # Template substitution with prefill values (defaults when empty)
+  [ -z "$pfill_lla" ] && pfill_lla="$default_lla"
+  [ -z "$pfill_peer_port" ] && pfill_peer_port="auto"
+  [ -z "$pfill_listen_port" ] && pfill_listen_port="auto"
+  [ -z "$pfill_mtu" ] && pfill_mtu="1420"
+
   cp -f "$template_file" "$draft_file"
-  sed -i -e "s/__NODE__/$sel_nid/g" -e "s/__LLA__/$default_lla/g" -e "s/__ASN__/$clean_asn/g" -e "s/__DEFAULT_PORT__/$default_peer_port/g" "$draft_file"
+  sed -i -e "s|__NODE__|$sel_nid|g" -e "s|__LLA__|$pfill_lla|g" -e "s|__IPV4__|$pfill_ipv4|g" -e "s|__ULA__|$pfill_ula|g" -e "s|__PUBKEY__|$pfill_pubkey|g" -e "s|__ENDPOINT__|$pfill_ep|g" -e "s|__PEER_PORT__|$pfill_peer_port|g" -e "s|__LISTEN_PORT__|$pfill_listen_port|g" -e "s|__MTU__|$pfill_mtu|g" -e "s|__ASN__|$clean_asn|g" -e "s|__DEFAULT_PORT__|$default_peer_port|g" "$draft_file"
 
   # Initial baseline values for untouched comparison
   init_node="$sel_nid"
-  init_lla="$default_lla"
-  init_ipv4=""
-  init_ula=""
-  init_pubkey=""
-  init_endpoint=""
-  init_peer_port="auto"
-  init_listen_port="auto"
-  init_mtu="1420"
+  init_lla="$pfill_lla"
+  init_ipv4="$pfill_ipv4"
+  init_ula="$pfill_ula"
+  init_pubkey="$pfill_pubkey"
+  init_endpoint="$pfill_ep"
+  init_peer_port="$pfill_peer_port"
+  init_listen_port="$pfill_listen_port"
+  init_mtu="$pfill_mtu"
 
   # Editor Interaction Loop
   while true; do
@@ -438,6 +459,111 @@ do_new() {
   echo ""
 }
 
+# ---------- peer edit ----------
+do_edit() {
+  require_login || return 1
+  local resp line choice sel_line sel_id sel_nid rest target_idx="$1"
+  local i sess_count full_line peer_block
+
+  echo -e "\033[90mFetching your peering sessions...\033[0m"
+  resp=$(api_get "/api/sessions")
+  if ! echo "$resp" | grep -q '"success":true'; then
+    echo -e "\033[31merror: $(json_field "$resp" message)\033[0m"
+    return 1
+  fi
+
+  rm -f /tmp/dn42_my_sessions
+  echo "$resp" | sed 's/},{/}\n{/g' | grep '"id"' | while IFS= read -r line; do
+    _sid=${line#*\"id\":\"}; _sid=${_sid%%\"*}
+    _snode=${line#*\"nodeId\":\"}; _snode=${_snode%%\"*}
+    _sstat=${line#*\"status\":\"}; _sstat=${_sstat%%\"*}
+    _sport=${line#*\"hostPort\":}; _sport=${_sport%%,*}; _sport=${_sport%%\}*}
+    echo "$_sid|$_snode|$_sstat|$_sport" >> /tmp/dn42_my_sessions
+  done
+
+  sess_count=0
+  while IFS= read -r _; do sess_count=$((sess_count + 1)); done < /tmp/dn42_my_sessions
+  if [ "$sess_count" -eq 0 ]; then
+    echo -e "\033[90mNo peering sessions yet. Run 'peer new' to create one.\033[0m"
+    return 0
+  fi
+
+  sel_line=""
+  if [ -n "$target_idx" ]; then
+    if echo "$target_idx" | grep -q '^[0-9][0-9]*$' && [ "$target_idx" -ge 1 ] && [ "$target_idx" -le "$sess_count" ]; then
+      sel_line=$(sed -n "${target_idx}p" /tmp/dn42_my_sessions)
+    else
+      echo -e "\033[31merror: Invalid session number. Use 1-$sess_count.\033[0m"
+      return 1
+    fi
+  else
+    echo ""
+    echo -e "\033[36m------ MY PEERING SESSIONS -----\033[0m"
+    echo ""
+    i=0
+    while IFS='|' read -r _sid _snode _sstat _sport; do
+      i=$((i + 1))
+      echo -e "  \033[32m[$i]\033[0m $_snode - $_sstat - port $_sport"
+    done < /tmp/dn42_my_sessions
+    echo ""
+    while true; do
+      printf "Select session to edit \033[33m[1-%s]\033[0m: " "$i"
+      read -r choice
+      choice=$(echo "$choice" | tr -d ' \t\r\n')
+      { [ "$choice" = "q" ] || [ "$choice" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 0; }
+      if echo "$choice" | grep -q '^[0-9][0-9]*$' && [ "$choice" -ge 1 ] && [ "$choice" -le "$i" ]; then
+        sel_line=$(sed -n "${choice}p" /tmp/dn42_my_sessions)
+        break
+      else
+        echo -e "\033[31merror: Invalid selection. Enter 1-$i or q to cancel.\033[0m"
+      fi
+    done
+  fi
+
+  sel_id=${sel_line%%|*}
+  rest=${sel_line#*|}; sel_nid=${rest%%|*}
+
+  # Extract this session's peering block for prefill
+  full_line=$(echo "$resp" | sed 's/},{/}\n{/g' | grep "\"id\":\"$sel_id\"")
+  peer_block=$(echo "$full_line" | sed 's/.*"peering":{//; s/},"assigned".*//')
+
+  pfill_pubkey=$(echo "$peer_block" | sed -n 's/.*"publicKey":"\([^"]*\)".*/\1/p')
+  pfill_ep=$(echo "$peer_block" | sed -n 's/.*"endpoint":"\([^"]*\)".*/\1/p')
+  pfill_ipv4=$(echo "$peer_block" | sed -n 's/.*"ipv4":"\([^"]*\)".*/\1/p')
+  pfill_ula=$(echo "$peer_block" | sed -n 's/.*"ipv6Ula":"\([^"]*\)".*/\1/p')
+  pfill_lla=$(echo "$peer_block" | sed -n 's/.*"linkLocal":"\([^"]*\)".*/\1/p')
+  pfill_peer_port=$(echo "$peer_block" | sed -n 's/.*"listenPort":"\([^"]*\)".*/\1/p')
+  [ -z "$pfill_peer_port" ] && pfill_peer_port=$(echo "$peer_block" | sed -n 's/.*"listenPort":\([0-9]*\).*/\1/p')
+  [ -z "$pfill_peer_port" ] && pfill_peer_port="auto"
+  pfill_listen_port=$(echo "$peer_block" | sed -n 's/.*"clientPort":"\([^"]*\)".*/\1/p')
+  [ -z "$pfill_listen_port" ] && pfill_listen_port=$(echo "$peer_block" | sed -n 's/.*"clientPort":\([0-9]*\).*/\1/p')
+  [ -z "$pfill_listen_port" ] && pfill_listen_port="auto"
+  pfill_mtu=$(echo "$peer_block" | sed -n 's/.*"mtu":\([0-9]*\).*/\1/p')
+  [ -z "$pfill_mtu" ] && pfill_mtu="1420"
+
+  clean_asn=$(cat /tmp/dn42_asn 2>/dev/null)
+  default_peer_port=$(calc_default_port "$clean_asn")
+  [ -z "$default_peer_port" ] && default_peer_port=$((20000 + (clean_asn % 10000)))
+  clean_tail=$((clean_asn % 10000))
+  default_lla="fe80::$clean_tail"
+
+  ensure_nodes || return 1
+
+  # Resolve node display name
+  sel_nname=""
+  while IFS='|' read -r _nid _nname _nend; do
+    if [ "$_nid" = "$sel_nid" ]; then
+      sel_nname="$_nname"
+      break
+    fi
+  done < /tmp/dn42_nodes
+
+  echo ""
+  echo -e "\033[90mEditing session on $sel_nid - prefill loaded. Make your changes, then Ctrl+S save, Ctrl+X exit.\033[0m"
+
+  run_edit_flow "$sel_nid" "$sel_nname"
+}
+
 # ---------- peer ls ----------
 do_ls() {
   require_login || return 1
@@ -464,7 +590,7 @@ do_ls() {
     printf "%-28s %-12s %-12s %-8s %s\n" "$id" "AS$asn" "$node" "$port" "$stage"
   done
   echo ""
-  echo -e "\033[90mTip: Run 'peer new' (or 'peer edit') selecting the same node to update session configuration.\033[0m"
+  echo -e "\033[90mTip: Run 'peer edit' to update an existing session; 'peer new' for a new one.\033[0m"
   echo ""
 }
 
@@ -490,7 +616,7 @@ do_rm() {
 
 case "$1" in
   new) do_new "$2" ;;
-  edit) do_new "$2" ;;
+  edit) do_edit "$2" ;;
   ls|list) do_ls ;;
   rm|remove|delete) do_rm "$2" ;;
   *) usage ;;

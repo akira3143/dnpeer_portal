@@ -11,17 +11,17 @@ Node                      = __NODE__
 #
 # ── Your addresses ────────────────────────────────────────────
 Link-Local IPv6 (LLA)     = __LLA__
-DN42 IPv4 (Optional)      =
-IPv6 ULA (Optional)       =
+DN42 IPv4 (Optional)      = __IPV4__
+IPv6 ULA (Optional)       = __ULA__
 #
 # ── Keys & endpoint ───────────────────────────────────────────
-WireGuard Public Key      =
-WireGuard Endpoint        =
+WireGuard Public Key      = __PUBKEY__
+WireGuard Endpoint        = __ENDPOINT__
 #
 # ── Ports ─────────────────────────────────────────────────────
-PeerPort                  = auto
-ListenPort                = auto
-#     (auto = DN42 convention: PeerPort=20000+Your ASN tail; ListenPort=20000+AkiLab ASN tail (23143), conflict auto-shifted)
+PeerPort                  = __PEER_PORT__
+ListenPort                = __LISTEN_PORT__
+#     (auto = convention port; PeerPort = 20000 + your ASN tail, ListenPort = 23143; auto-shift on conflict)
 #
 # ── Tunnel ────────────────────────────────────────────────────
-MTU                       = 1420
+MTU                       = __MTU__
