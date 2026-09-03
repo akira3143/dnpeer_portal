@@ -1,0 +1,123 @@
+# ==============================================================================
+# 🌐 AkiLab DN42 Peering Portal - Configuration File (portal.config.yaml)
+# ==============================================================================
+# This file is the ONLY configuration file administrators need to maintain manually.
+# Hot-reloaded automatically within 200ms upon save (zero downtime, no restart required).
+
+guiPath: "/akilab"
+
+network:
+  asn: "AS4242423143"
+  asnNumber: 4242423143
+  networkName: "AkiLab Networks"
+  shortName: "akilab"
+  tagline: "Low Performance DN42 Experimental Autonomous System"
+  description: "AkiLab 是由 AKIRA 维护的个人非盈利 DN42 实验网络（AS4242423143），由几台廉价服务器东拼西凑而成。纯粹用于学习与日常折腾（并保留因欠费或维护随时跑路的权利 🤪）。非常欢迎各位同好建立 BGP Peer 互联，一起愉快炸网与交流探索！"
+  maintainer: "AKIRA-MNT"
+  ipv4Pool: "172.20.188.0/24"
+  ipv6Pool: "fd5c:300e:8ae7::/48"
+  routingPolicy: "Open for all DN42 participants / MP-BGP (ENH) / Strict ROA Validation"
+  bgpMode: "MP-BGP + Extended Next Hop (ENH)"
+  portFormulaDisplay: "20000 + (ASN % 10000) [Auto-increments +10000 on conflict]"
+  lookingGlassUrl: ""
+  dn42WhoisUrl: "https://explorer.burble.com/#/AS4242423143"
+  lastUpdated: "2026-08-29"
+
+nodes:
+  - id: "JP-7"
+    code: "JP-7"
+    name: "Japan Tokyo 07 (Japan Core Hub)"
+    flag: "🇯🇵"
+    city: "Tokyo"
+    country: "Japan"
+    region: "apac"
+    isp: "AkiLab Datacenter Tokyo"
+    endpointDomain: "jp7-dn42.akilab.meme"
+    wgPublicKey: "ma9vpr25iBDKthbd8tUFuCxbyzfJ2YHJ+K8bgdzOqzk="
+    tunnelIpv4: "172.20.188.7"
+    tunnelIpv6ULA: "fd5c:300e:8ae7::7"
+    tunnelIpv6LLA: "fe80::3143"
+    mtu: 1420
+    features:
+      - "★ Core Hub"
+      - "MP-BGP"
+      - "ENH"
+    lgProxyUrl: "http://127.0.0.1:5000"
+
+  - id: "JP-2"
+    code: "JP-2"
+    name: "Japan Tokyo 02 (Japan Node JP-2)"
+    flag: "🇯🇵"
+    city: "Tokyo"
+    country: "Japan"
+    region: "apac"
+    isp: "AkiLab Datacenter Tokyo"
+    endpointDomain: "jp2-dn42.akilab.meme"
+    wgPublicKey: "ay/2GTy1T4gcmqqvbeU2scM4uJ6FBXfp9TdF0yT540I="
+    tunnelIpv4: "172.20.188.2"
+    tunnelIpv6ULA: "fd5c:300e:8ae7::2"
+    tunnelIpv6LLA: "fe80::3143"
+    mtu: 1420
+    features:
+      - "MP-BGP"
+      - "ENH"
+      - "Trans-Pacific"
+    lgProxyUrl: ""
+
+
+  - id: "HK-1"
+    code: "HK-1"
+    name: "Hong Kong 01 (HK Hub)"
+    flag: "🇭🇰"
+    city: "Hong Kong"
+    country: "Hong Kong SAR"
+    region: "apac"
+    isp: "AkiLab Datacenter HK"
+    endpointDomain: "hk1-dn42.akilab.meme"
+    wgPublicKey: "XV/dM5hZf/ulCo0GmYhYfngdESUdobvjxYtbv7v3chM="
+    tunnelIpv4: "172.20.188.3"
+    tunnelIpv6ULA: "fd5c:300e:8ae7::3"
+    tunnelIpv6LLA: "fe80::3143"
+    mtu: 1420
+    features:
+      - "MP-BGP"
+      - "ENH"
+      - "Trans-Pacific"
+    lgProxyUrl: ""
+
+  - id: "US-LA1"
+    code: "US-LA1"
+    name: "Los Angeles 01 (US West)"
+    flag: "🇺🇸"
+    city: "Los Angeles"
+    country: "United States"
+    region: "na"
+    isp: "AkiLab Datacenter US-West"
+    endpointDomain: "akiusla1-dn42.akilab.meme"
+    wgPublicKey: "CBbv9qUv/u7j/keioB3yx7NaL5yxlI+0ej+SsXVuJ1o="
+    tunnelIpv4: "172.20.188.1"
+    tunnelIpv6ULA: "fd5c:300e:8ae7::1"
+    tunnelIpv6LLA: "fe80::3143"
+    mtu: 1420
+    features:
+      - "MP-BGP"
+      - "ENH"
+      - "Trans-Pacific"
+    lgProxyUrl: ""
+
+
+contacts:
+  - platform: "Telegram"
+    handle: "@akilab_contact_bot"
+    link: "https://t.me/akilab_contact_bot"
+    type: "telegram"
+    preferred: true
+
+  - platform: "DN42 WHOIS"
+    handle: "AKIRA-DN42"
+    link: "https://explorer.burble.com/#/AKIRA-DN42"
+    type: "whois"
+    response_time: "异步查询"
+
+admins:
+  - 4242423143
