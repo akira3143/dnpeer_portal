@@ -85,6 +85,10 @@ do_password_login() {
     printf "\033[33mPassword for %s\033[0m: " "$clean"
     read_line_edit pwd -s
 
+    if [ "$pwd" = "q" ] || [ "$pwd" = "quit" ]; then
+      echo -e "\033[90mCancelled.\033[0m"
+      return 3
+    fi
     if [ "$pwd" = "ssh" ] || [ "$pwd" = "SSH" ]; then
       return 2
     fi
@@ -206,7 +210,7 @@ main() {
   local asn_in clean remember rem_in ret
   while true; do
     echo ""
-    printf "\033[33mDN42 ASN or Account\033[0m: "
+    printf "\033[33mlogin\033[0m: "
     read_line_edit asn_in
     flush_after_input
 
@@ -231,6 +235,8 @@ main() {
       enter_shell "$clean"
       return 0
     fi
+    # ret 3 = cancelled (Ctrl+C at password), back to login prompt
+    [ $ret -eq 3 ] && continue
 
     do_ssh_login "$clean" "$remember"
     if [ $? -eq 0 ]; then

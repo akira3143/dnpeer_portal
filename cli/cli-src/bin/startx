@@ -19,8 +19,8 @@ case "$gui_path" in
   *) gui_path="$gui_path/" ;;
 esac
 
-# 1. Single-line progress bar animation (2s duration, 30 chars width)
-total_steps=15
+# 1. Single-line progress bar animation (1.1s duration, 30 chars width)
+total_steps=11
 width=30
 
 for step in $(seq 1 $total_steps); do

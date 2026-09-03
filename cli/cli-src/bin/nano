@@ -48,8 +48,9 @@ fi
 CUR_ROW=0; CUR_COL=0; TOP_LINE=0; LEFT_COL=0; MODIFIED=0
 STATUS_MSG="[ Read $NUM_LINES lines ]"
 
-CTRL_O="$(printf '\017')"
 CTRL_S="$(printf '\023')"
+# NOTE: Ctrl+O (0x0f) is consumed by the kernel hvc console as the SysRq key,
+# so save is bound to Ctrl+S instead.
 CTRL_X="$(printf '\030')"
 CTRL_Q="$(printf '\021')"
 CTRL_C="$(printf '\003')"
@@ -76,7 +77,7 @@ redraw_status() {
   if [ -n "$STATUS_MSG" ]; then
     printf "\033[%d;1H%s" $((ROWS - 2)) "$STATUS_MSG"
   fi
-  printf "\033[%d;1H\033[7m%s\033[0m\033[K" $((ROWS - 1)) " ^O WriteOut  ^X Exit"
+  printf "\033[%d;1H\033[7m%s\033[0m\033[K" $((ROWS - 1)) " ^S WriteOut  ^X Exit"
 }
 
 # full_draw : complete screen (title + all lines + bars) — single batched write
@@ -100,7 +101,7 @@ full_draw() {
   done
   _out="${_out}\033[$((ROWS - 2));1H\033[K"
   [ -n "$STATUS_MSG" ] && _out="${_out}\033[$((ROWS - 2));1H${STATUS_MSG}"
-  _out="${_out}\033[$((ROWS - 1));1H\033[7m ^O WriteOut  ^X Exit\033[0m\033[K"
+  _out="${_out}\033[$((ROWS - 1));1H\033[7m ^S WriteOut  ^X Exit\033[0m\033[K"
   printf '%b' "$_out"
 }
 
@@ -129,13 +130,15 @@ adjust_viewport() {
 save_file() {
   _tmp_out="${FILE}.tmp.$$"
   _i=0
+  _nl="
+"
   _buf=""
   while [ "$_i" -lt "$NUM_LINES" ]; do
     eval "_l=\$L_$_i"
-    _buf="${_buf}${_l}\n"
+    _buf="${_buf}${_l}${_nl}"
     _i=$((_i + 1))
   done
-  printf '%b' "$_buf" > "$_tmp_out"
+  printf '%s' "$_buf" > "$_tmp_out"
   mv -f "$_tmp_out" "$FILE"
   MODIFIED=0
   STATUS_MSG="[ Wrote $NUM_LINES lines ]"
@@ -283,7 +286,7 @@ while true; do
     fi
     ;;
 
-  "$CTRL_O"|"$CTRL_S")
+  "$CTRL_S")
     save_file
     redraw_status
     ;;

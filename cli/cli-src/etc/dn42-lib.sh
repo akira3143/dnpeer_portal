@@ -138,14 +138,14 @@ read_line_edit() {
       read -r _buf
     fi
     if [ -n "$_target_var" ]; then
-      eval "$_target_var=\"\$_buf\""
+      export "$_target_var=$_buf"
     fi
     REPLY="$_buf"
     return 0
   fi
 
   _old_stty=$(stty -g 2>/dev/null)
-  stty -icanon -echo min 1 time 0 2>/dev/null || stty raw -echo 2>/dev/null
+  stty -icanon -echo -isig min 1 time 0 2>/dev/null || stty raw -echo 2>/dev/null
 
   while true; do
     _c=""
@@ -303,7 +303,7 @@ read_line_edit() {
   fi
 
   if [ -n "$_target_var" ]; then
-    eval "$_target_var=\"\$_buf\""
+    export "$_target_var=$_buf"
   fi
   REPLY="$_buf"
 }
