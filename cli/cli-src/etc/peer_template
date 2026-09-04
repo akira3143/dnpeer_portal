@@ -21,7 +21,7 @@ WireGuard Endpoint        = __ENDPOINT__
 # ── Ports ─────────────────────────────────────────────────────
 PeerPort                  = __PEER_PORT__
 ListenPort                = __LISTEN_PORT__
-#     (auto = convention port; PeerPort = 20000 + your ASN tail, ListenPort = 23143; auto-shift on conflict)
+#     (auto = 23143, the DN42 convention ListenPort; auto-shifted if in use)
 #
 # ── Tunnel ────────────────────────────────────────────────────
 MTU                       = __MTU__
