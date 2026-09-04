@@ -23,25 +23,42 @@ test('AuthService Unit Tests', async (t) => {
   execFileSync('ssh-keygen', ['-t', 'ed25519', '-f', testKeyPath, '-N', '']);
   const testPubKey = fs.readFileSync(testKeyPath + '.pub', 'utf8').trim();
 
-  // Save registry cache with this test key
-  const testRegistry = {
-    'AS4242423143': {
-      asn: 4242423143,
-      asName: 'AKILAB-MNT',
-      authKeys: [testPubKey]
-    },
-    'AS4141410001': {
-      asn: 4141410001,
-      asName: 'TEST-AS1',
-      authKeys: [testPubKey]
-    },
-    'AS4141410002': {
-      asn: 4141410002,
-      asName: 'TEST-AS2-NOKEYS',
-      authKeys: [] // No keys registered
-    }
-  };
-  fs.writeFileSync(AuthService.getRegistryPath(), JSON.stringify(testRegistry, null, 2), 'utf8');
+  // Setup mock registry repository structure in testDataDir/registry
+  const mockRegistryDir = path.join(testDataDir, 'registry');
+  fs.mkdirSync(path.join(mockRegistryDir, '.git'), { recursive: true });
+  fs.mkdirSync(path.join(mockRegistryDir, 'data', 'aut-num'), { recursive: true });
+  fs.mkdirSync(path.join(mockRegistryDir, 'data', 'auth'), { recursive: true });
+
+  fs.writeFileSync(path.join(mockRegistryDir, 'data', 'aut-num', 'AS4242423143'), `
+aut-num:    AS4242423143
+as-name:    AKILAB-MNT
+mnt-by:     AKILAB-MNT
+admin-c:    AKIRA-DN42
+`);
+  fs.writeFileSync(path.join(mockRegistryDir, 'data', 'auth', 'AKILAB-MNT'), `
+mntner:     AKILAB-MNT
+auth:       ${testPubKey}
+`);
+
+  fs.writeFileSync(path.join(mockRegistryDir, 'data', 'aut-num', 'AS4141410001'), `
+aut-num:    AS4141410001
+as-name:    TEST-AS1
+mnt-by:     TEST-AS1-MNT
+`);
+  fs.writeFileSync(path.join(mockRegistryDir, 'data', 'auth', 'TEST-AS1-MNT'), `
+mntner:     TEST-AS1-MNT
+auth:       ${testPubKey}
+`);
+
+  fs.writeFileSync(path.join(mockRegistryDir, 'data', 'aut-num', 'AS4141410002'), `
+aut-num:    AS4141410002
+as-name:    TEST-AS2-NOKEYS
+mnt-by:     TEST-AS2-MNT
+`);
+  fs.writeFileSync(path.join(mockRegistryDir, 'data', 'auth', 'TEST-AS2-MNT'), `
+mntner:     TEST-AS2-MNT
+descr:      No keys registered
+`);
 
   t.after(() => {
     try {

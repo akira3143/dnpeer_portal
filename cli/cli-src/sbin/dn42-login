@@ -210,7 +210,7 @@ main() {
   local asn_in clean remember rem_in ret
   while true; do
     echo ""
-    printf "\033[33mlogin\033[0m: "
+    printf "\033[33mlogin (Your DN42 ASN)\033[0m: "
     read_line_edit asn_in
     flush_after_input
 

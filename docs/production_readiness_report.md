@@ -76,10 +76,11 @@ pie title 系统生产就绪度分布
     No SSH public keys registered in DN42 registry for AS424242xxxx
     ```
     造成首次使用者全面被拒，必须管理员人工预先在 `auth_users.json` 中塞入密码才能登录。
-- **排查依据**：
-  - 目前代码库中仅有读取与查询逻辑，**尚未包含自动克隆或拉取官方 `git clone https://git.dn42.dev/dn42/registry` 的脚本**。
-- **解决方案**：
-  - 暂定。
+- **解决方案（第二十轮已落地）**：
+  - `registry_cache.json` 已正式退役；
+  - 采用本地 Git 仓库（`server/data/registry`）实时解析；未命中实时触发 `git pull`（带 2s 重试容错）；
+  - 进程内挂载 30 分钟后台定时预热拉取。生产初始化只需克隆一次：
+    `git clone --depth 1 https://git.dn42.dev/dn42/registry /opt/dn42-portal/server/data/registry`
 
 
 ---

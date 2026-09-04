@@ -9,6 +9,8 @@ server/data/*.json
 !server/data/*.example.json
 server/data/node_tokens.json
 server/data/status_cache.json
+server/data/registry_cache.json
+server/data/registry/
 cli/public/rootfs.dat
 
 # CLI staging rootfs generated files (keep only native busybox binary)

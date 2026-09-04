@@ -73,7 +73,12 @@ export class SessionService {
 
     let sessionId = '';
     if (isNew) {
-      const registryInfo = await AuthService.getAsnRegistryInfo(norm.asn);
+      let registryInfo = null;
+      try {
+        registryInfo = await AuthService.getAsnRegistryInfo(norm.asn);
+      } catch {
+        // Fallback to AS tag if registry is offline/uninitialized
+      }
       let mntTag = '';
       if (registryInfo?.maintainer) {
         mntTag = registryInfo.maintainer.replace(/-(?:MNT|DN42)$/i, '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -144,7 +149,12 @@ export class SessionService {
     });
 
     // 6. Fetch Registry AS Name if available
-    const registryInfo = await AuthService.getAsnRegistryInfo(norm.asn);
+    let registryInfo = null;
+    try {
+      registryInfo = await AuthService.getAsnRegistryInfo(norm.asn);
+    } catch {
+      // Fallback if registry is offline/uninitialized
+    }
 
     const now = new Date().toISOString();
     const newSession = {

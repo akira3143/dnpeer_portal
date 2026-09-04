@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { ENV, getDataDir } from '../config.js';
 import { getActiveConfig } from '../storage/configLoader.js';
 import { FileStore } from '../storage/fileStore.js';
+import { RegistryService } from './registryService.js';
 
 // In-memory active challenges map: challengeText -> challengeData
 const activeChallenges = new Map();
@@ -45,6 +46,7 @@ export function verifyPassword(password, salt, storedHash) {
 }
 
 export class AuthService {
+  // Deprecated: registry_cache.json is retired in Round 20
   static getRegistryPath() {
     return path.join(getDataDir(), 'registry_cache.json');
   }
@@ -53,8 +55,9 @@ export class AuthService {
     return path.join(getDataDir(), 'auth_users.json');
   }
 
+  // Deprecated: JSON cache retired, kept for backward signature compatibility
   static async getRegistryData() {
-    return FileStore.readJson(this.getRegistryPath(), {});
+    return {};
   }
 
   static async getAuthUsers() {
@@ -65,17 +68,11 @@ export class AuthService {
     return FileStore.writeJson(this.getAuthUsersPath(), users);
   }
 
+  /**
+   * Authoritative lookup via RegistryService (git repo live parsing + on-demand sync)
+   */
   static async getAsnRegistryInfo(asn) {
-    const cleanAsn = parseInt(String(asn).replace(/^AS/i, ''), 10);
-    const registry = await this.getRegistryData();
-    const key = `AS${cleanAsn}`;
-    if (registry[key]) {
-      return registry[key];
-    }
-    if (registry[cleanAsn]) {
-      return registry[cleanAsn];
-    }
-    return null;
+    return RegistryService.getAsnInfo(asn);
   }
 
   static signJwt(payload, rememberMe = false) {
@@ -227,8 +224,17 @@ export class AuthService {
       return { success: false, error: 'Signature is required' };
     }
 
-    // 1. Authoritative lookup in DN42 Registry Cache
-    const registryInfo = await this.getAsnRegistryInfo(cleanAsn);
+    // 1. Authoritative lookup in DN42 Registry Git Repository
+    let registryInfo;
+    try {
+      registryInfo = await this.getAsnRegistryInfo(cleanAsn);
+    } catch (err) {
+      return {
+        success: false,
+        error: err.message || 'Registry sync failed, please retry later'
+      };
+    }
+
     if (!registryInfo || !Array.isArray(registryInfo.authKeys) || registryInfo.authKeys.length === 0) {
       return {
         success: false,

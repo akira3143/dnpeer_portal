@@ -1,3 +1,7 @@
+# Production Initialization Requirement:
+# 1. Clone DN42 registry: git clone --depth 1 https://git.dn42.dev/dn42/registry /opt/dn42-portal/server/data/registry
+# 2. In-process timer will automatically warm and sync repository via git pull every 30 minutes.
+
 [Unit]
 Description=AkiLab DN42 Peering Portal 2.0 (Authoritative Backend & Frontend Gateway)
 After=network.target network-online.target

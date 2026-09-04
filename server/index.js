@@ -6,6 +6,7 @@ import { URL, pathToFileURL } from 'node:url';
 import { ENV, ROOT_DIR } from './config.js';
 import { getActiveConfig, initConfigWatcher, stopConfigWatcher } from './storage/configLoader.js';
 import { AuthService } from './services/authService.js';
+import { RegistryService } from './services/registryService.js';
 import { sendJson, successEnvelope, errorEnvelope } from './utils/envelope.js';
 
 import { MetaController } from './controllers/metaController.js';
@@ -67,6 +68,7 @@ function extractUser(req) {
 
 export function createServer() {
   initConfigWatcher();
+  RegistryService.startPeriodicSync();
 
   const server = http.createServer(async (req, res) => {
     const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -101,25 +103,33 @@ export function createServer() {
         // DN42 Lookup
         if (pathname === '/api/dn42-lookup' && method === 'GET') {
           const cleanAsn = (parsedUrl.searchParams.get('asn') || '').replace(/^AS/i, '');
-          const info = await AuthService.getAsnRegistryInfo(cleanAsn);
-          if (!info) {
+          try {
+            const info = await AuthService.getAsnRegistryInfo(cleanAsn);
+            if (!info) {
+              return sendJson(res, 200, {
+                success: true,
+                valid: false,
+                error: `ASN AS${cleanAsn} not found in DN42 registry`
+              });
+            }
             return sendJson(res, 200, {
               success: true,
+              valid: true,
+              identity: {
+                asName: info.asName || `AS${cleanAsn}`,
+                descr: info.descr || 'DN42 Autonomous System',
+                maintainer: info.maintainer || '',
+                adminContact: info.adminContact || '',
+                personName: info.personName || ''
+              }
+            });
+          } catch (err) {
+            return sendJson(res, 200, {
+              success: false,
               valid: false,
-              error: `ASN AS${cleanAsn} not found in registry cache`
+              error: err.message || 'Registry sync failed, please retry later'
             });
           }
-          return sendJson(res, 200, {
-            success: true,
-            valid: true,
-            identity: {
-              asName: info.asName || `AS${cleanAsn}`,
-              descr: info.descr || 'DN42 Autonomous System',
-              maintainer: info.maintainer || '',
-              adminContact: info.adminContact || '',
-              personName: info.personName || ''
-            }
-          });
         }
 
         // Auth
@@ -368,6 +378,7 @@ export function createServer() {
   // Resource cleanup helper to ensure 100% clean termination in tests
   server.closeAll = function() {
     stopConfigWatcher();
+    RegistryService.stopPeriodicSync();
     return new Promise(resolve => {
       server.close(resolve);
     });
