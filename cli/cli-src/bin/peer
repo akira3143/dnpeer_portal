@@ -13,7 +13,7 @@ fi
 usage() {
   echo -e "\033[36mUsage:\033[0m"
   echo -e "  \033[32mpeer new [node#]\033[0m   Request a new peering session via editor"
-  echo -e "  \033[32mpeer edit [n]\033[0m      Edit an existing session (list by number, prefill loaded)"
+  echo -e "  \033[32mpeer edit [n|node]\033[0m Edit an existing session (by number, node ID, or session ID)"
   echo -e "  \033[32mpeer ls\033[0m            List my peering sessions & status"
   echo -e "  \033[32mpeer rm <ID>\033[0m       Revoke a session and release its port"
 }
@@ -142,12 +142,12 @@ do_new() {
   clean_tail=$((clean_asn % 10000))
   default_lla="fe80::$clean_tail"
 
-  run_edit_flow "$sel_nid" "$sel_nname"
+  run_edit_flow "$sel_nid" "$sel_nname" "new"
 }
 
 # ---------- Shared editor flow (prefill via pfill_* globals) ----------
 run_edit_flow() {
-  sel_nid="$1"; sel_nname="$2"
+  sel_nid="$1"; sel_nname="$2"; action_mode="${3:-new}"
 
   draft_file="/tmp/peer_draft"
   template_file="/etc/peer_template"
@@ -271,11 +271,13 @@ run_edit_flow() {
       err_msg_list="${err_msg_list}  • Node: Target PoP Node is required.\n"
     else
       node_found=0
+      _parsed_lower=$(echo "$parsed_node" | tr '[:upper:]' '[:lower:]')
       while IFS='|' read -r _nid _nname _nend; do
-        if [ "$_nid" = "$parsed_node" ]; then
+        if [ "$(echo "$_nid" | tr '[:upper:]' '[:lower:]')" = "$_parsed_lower" ]; then
           node_found=1
           sel_nid="$_nid"
           sel_nname="$_nname"
+          parsed_node="$_nid"
           break
         fi
       done < /tmp/dn42_nodes
@@ -376,8 +378,8 @@ run_edit_flow() {
     fi
 
     # 6. Review Summary Table
-    [ "$parsed_peer_port" = "auto" ] && host_port_desc="assigned on submit..." || host_port_desc="$parsed_peer_port"
-    [ "$parsed_listen_port" = "auto" ] && client_port_desc="assigned on submit..." || client_port_desc="$parsed_listen_port"
+    [ "$parsed_peer_port" = "auto" ] && host_port_desc="assigned on submit..." || host_port_desc="$parsed_peer_port (fixed)"
+    [ "$parsed_listen_port" = "auto" ] && client_port_desc="assigned on submit..." || client_port_desc="$parsed_listen_port (fixed)"
 
     echo ""
     printf "\033[36m%s\033[0m\n" "-------- REVIEW --------"
@@ -390,6 +392,10 @@ run_edit_flow() {
     echo -e "  Peer ListenPort  $host_port_desc"
     echo -e "  Your ListenPort  $client_port_desc"
     echo -e "  MTU              $parsed_mtu"
+    if [ "$parsed_peer_port" != "auto" ] || [ "$parsed_listen_port" != "auto" ]; then
+      echo ""
+      echo -e "\033[90mTip: Fixed port retains current value. Set to 'auto' in editor to re-enable auto conflict avoidance.\033[0m"
+    fi
     echo ""
 
     while true; do
@@ -451,7 +457,11 @@ run_edit_flow() {
     echo -e "\033[33m[!] Default ListenPort 23143 is in use on this key, auto-shifted to $client_port\033[0m"
   fi
   echo ""
-  echo -e "\033[36mReceived your peering info. We'll establish the peer with you within 24 hours!\033[0m"
+  if [ "$action_mode" = "update" ]; then
+    echo -e "\033[36mPeering session updated successfully! Changes are applied.\033[0m"
+  else
+    echo -e "\033[36mReceived your peering info. We'll establish the peer with you within 24 hours!\033[0m"
+  fi
   echo -e "\033[32m===============================================================================\033[0m"
 
   # Print Finished Configuration Products
@@ -498,7 +508,19 @@ do_edit() {
     if echo "$target_idx" | grep -q '^[0-9][0-9]*$' && [ "$target_idx" -ge 1 ] && [ "$target_idx" -le "$sess_count" ]; then
       sel_line=$(sed -n "${target_idx}p" /tmp/dn42_my_sessions)
     else
-      echo -e "\033[31merror: Invalid session number. Use 1-$sess_count.\033[0m"
+      # Match by node ID (case-insensitive) or session ID
+      _tgt_lower=$(echo "$target_idx" | tr '[:upper:]' '[:lower:]')
+      while IFS='|' read -r _sid _snode _sstat _sport; do
+        if [ "$(echo "$_snode" | tr '[:upper:]' '[:lower:]')" = "$_tgt_lower" ] || \
+           [ "$(echo "$_sid" | tr '[:upper:]' '[:lower:]')" = "$_tgt_lower" ]; then
+          sel_line="$_sid|$_snode|$_sstat|$_sport"
+          break
+        fi
+      done < /tmp/dn42_my_sessions
+    fi
+
+    if [ -z "$sel_line" ]; then
+      echo -e "\033[31merror: Session '$target_idx' not found. Use 1-$sess_count, node ID (e.g. JP-7), or session ID.\033[0m"
       return 1
     fi
   else
@@ -546,7 +568,12 @@ do_edit() {
   pfill_mtu=$(echo "$peer_block" | sed -n 's/.*"mtu":\([0-9]*\).*/\1/p')
   [ -z "$pfill_mtu" ] && pfill_mtu="1420"
 
-  clean_asn=$(cat /tmp/dn42_asn 2>/dev/null)
+  clean_asn=$(dn42_asn 2>/dev/null)
+  [ -z "$clean_asn" ] && clean_asn=$(cat /tmp/dn42_asn 2>/dev/null)
+  if [ -z "$clean_asn" ]; then
+    echo -e "\033[31merror: Session identity missing. Please logout and login again.\033[0m"
+    return 1
+  fi
   default_peer_port=$(calc_default_port "$clean_asn")
   [ -z "$default_peer_port" ] && default_peer_port=$((20000 + (clean_asn % 10000)))
   clean_tail=$((clean_asn % 10000))
@@ -566,7 +593,7 @@ do_edit() {
   echo ""
   echo -e "\033[90mEditing session on $sel_nid - prefill loaded. Make your changes, then Ctrl+S save, Ctrl+X exit.\033[0m"
 
-  run_edit_flow "$sel_nid" "$sel_nname"
+  run_edit_flow "$sel_nid" "$sel_nname" "update"
 }
 
 # ---------- peer ls ----------

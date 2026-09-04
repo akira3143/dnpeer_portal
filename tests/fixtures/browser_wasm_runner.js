@@ -117,8 +117,16 @@ async function findChromeExecutable() {
 
 async function main() {
   console.log('--- 1. Starting Backend Server on 127.0.0.1:4242 ---');
-  const server = createServer();
-  await new Promise((resolve) => server.listen(4242, '127.0.0.1', resolve));
+  let server = null;
+  try {
+    const checkRes = await fetch('http://127.0.0.1:4242/api/network-meta');
+    if (checkRes.ok) {
+      console.log('Backend server already running on 127.0.0.1:4242, reusing existing instance.');
+    }
+  } catch {
+    server = createServer();
+    await new Promise((resolve) => server.listen(4242, '127.0.0.1', resolve));
+  }
 
   const chromePath = await findChromeExecutable();
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chrome-wasm-test-'));
@@ -454,7 +462,9 @@ async function main() {
     chromeProc.kill();
     try { fs.rmSync(userDataDir, { recursive: true, force: true }); } catch {}
 
-    await server.closeAll();
+    if (server) {
+      await server.closeAll();
+    }
     console.log('\nAll End-to-End Browser Tests Finished Successfully!');
     process.exit(0);
   } finally {

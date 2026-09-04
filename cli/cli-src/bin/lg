@@ -21,7 +21,12 @@ fi
 
 if [ "$cmd" = "bgp" ] || [ "$cmd" = "protocols" ]; then cmd="protocols"; fi
 if [ "$cmd" = "trace" ] || [ "$cmd" = "traceroute" ]; then cmd="traceroute"; fi
-[ -z "$node" ] && node="JP-TYO-1"
+if [ -z "$node" ]; then
+  if [ -s /tmp/dn42_nodes ]; then
+    node=$(head -n 1 /tmp/dn42_nodes | cut -d'|' -f1)
+  fi
+  [ -z "$node" ] && node="JP-7"
+fi
 
 echo -e "\033[90mExecuting Looking Glass query on \033[36m$node\033[90m: \033[32m$cmd $target\033[0m..."
 
