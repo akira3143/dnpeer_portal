@@ -73,7 +73,7 @@ static4    Static   ---        up     08:00:00.000
     // Start temporary mock lgproxy server
     const server = http.createServer((req, res) => {
       const url = new URL(req.url, 'http://127.0.0.1');
-      if (url.pathname === '/api/bird' && url.searchParams.get('cmd') === 'protocols all') {
+      if (url.pathname === '/api/bird' && url.searchParams.get('cmd') === 'show protocols all') {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
         res.end(`
 test_peer  BGP      ---        up     12:00:00  Established
