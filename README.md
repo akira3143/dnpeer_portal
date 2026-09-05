@@ -37,6 +37,14 @@ systemctl restart dn42-portal    # 重启
 journalctl -u dn42-portal -f     # 日志
 ```
 
+更新（升级到最新版本）：
+```bash
+# 重跑安装脚本即可：第 2 步检测到已存在 → 自动 git pull + 依赖同步
+sudo bash /opt/dn42-portal/deploy/install.sh
+# 更新完重启
+sudo systemctl restart dn42-portal
+```
+
 ### 探针节点（Edge Node: JP-2 / HK-1 / US-LA1）
 
 探针安装命令由**主控动态生成**（含节点专属 Token），无需单独脚本：
