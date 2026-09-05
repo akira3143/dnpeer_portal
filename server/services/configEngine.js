@@ -96,6 +96,8 @@ PersistentKeepalive = 25
     let serverEndpointLine = '';
     if (clientEndpoint) {
       serverEndpointLine = `Endpoint = ${clientEndpoint}:${clientPortNum}\n`;
+    } else {
+      serverEndpointLine = '# Endpoint: not provided by peer (roaming) - fill in when they expose one\n';
     }
 
     const serverAddresses = [];
