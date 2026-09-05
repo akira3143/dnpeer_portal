@@ -34,6 +34,21 @@ validate_asn() {
   return 1
 }
 
+is_valid_asn_format() {
+  _val="$(normalize_asn "$1")"
+  case "$_val" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  [ "$_val" = "0" ] && return 1
+  [ "${#_val}" -gt 10 ] && return 1
+  if [ "${#_val}" -eq 10 ]; then
+    if [ "$_val" \> "4294967295" ]; then
+      return 1
+    fi
+  fi
+  return 0
+}
+
 validate_pubkey() {
   _val="$1"
   _val="${_val%% }"

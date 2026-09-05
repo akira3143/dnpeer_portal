@@ -108,6 +108,13 @@ export function formatDefaultLinkLocal(asn) {
   return `fe80::${suffix}`;
 }
 
+export function isValidAsnFormat(val) {
+  const clean = normalizeAsn(val);
+  if (!clean || !/^[0-9]+$/.test(clean)) return false;
+  const num = parseInt(clean, 10);
+  return Number.isSafeInteger(num) && num >= 1 && num <= 4294967295;
+}
+
 export function validateAsn(val) {
   const clean = normalizeAsn(val);
   if (!clean) return { valid: false, error: 'ASN is required' };

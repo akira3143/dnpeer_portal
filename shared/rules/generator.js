@@ -55,6 +55,13 @@ export function formatDefaultLinkLocal(asn) {
   return \`fe80::\${suffix}\`;
 }
 
+export function isValidAsnFormat(val) {
+  const clean = normalizeAsn(val);
+  if (!clean || !/^[0-9]+$/.test(clean)) return false;
+  const num = parseInt(clean, 10);
+  return Number.isSafeInteger(num) && num >= 1 && num <= 4294967295;
+}
+
 export function validateAsn(val) {
   const clean = normalizeAsn(val);
   if (!clean) return { valid: false, error: 'ASN is required' };
@@ -206,6 +213,21 @@ validate_asn() {
     return 0
   fi
   return 1
+}
+
+is_valid_asn_format() {
+  _val="$(normalize_asn "$1")"
+  case "$_val" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  [ "$_val" = "0" ] && return 1
+  [ "\${#_val}" -gt 10 ] && return 1
+  if [ "\${#_val}" -eq 10 ]; then
+    if [ "$_val" \\> "4294967295" ]; then
+      return 1
+    fi
+  fi
+  return 0
 }
 
 validate_pubkey() {
@@ -394,6 +416,13 @@ export function formatDefaultLinkLocal(asn) {
   return \`fe80::\${suffix}\`;
 }
 
+export function isValidAsnFormat(val) {
+  const clean = normalizeAsn(val);
+  if (!clean || !/^[0-9]+$/.test(clean)) return false;
+  const num = parseInt(clean, 10);
+  return Number.isSafeInteger(num) && num >= 1 && num <= 4294967295;
+}
+
 export function validateAsn(val) {
   const clean = normalizeAsn(val);
   if (!clean) return { valid: false, error: 'ASN is required' };
@@ -507,12 +536,13 @@ export function validatePeeringSubmission(payload = {}) {
   const fieldErrors = {};
   const normalized = {};
 
-  // ASN
-  const asnRes = validateAsn(payload.asn);
-  if (!asnRes.valid) {
-    fieldErrors.asn = asnRes.error;
+  // ASN — format check only; DN42 allows both private range and real public ASNs
+  // (authoritative membership verification happens at login via the DN42 registry)
+  const asnClean = normalizeAsn(payload.asn);
+  if (!isValidAsnFormat(asnClean)) {
+    fieldErrors.asn = 'ASN must be a valid number (1-4294967295)';
   } else {
-    normalized.asn = asnRes.value;
+    normalized.asn = parseInt(asnClean, 10);
   }
 
   // Node ID (basic presence check)

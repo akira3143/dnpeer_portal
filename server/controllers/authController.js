@@ -1,22 +1,32 @@
 import { AuthService } from '../services/authService.js';
-import { validateAsn, normalizeAsn } from '../utils/validator.js';
+import { RegistryService } from '../services/registryService.js';
+import { validateAsn, normalizeAsn, isValidAsnFormat } from '../utils/validator.js';
 import { successEnvelope, errorEnvelope } from '../utils/envelope.js';
 
 export class AuthController {
   static async getChallenge(params) {
     const asn = params?.asn || params?.asnNumber;
-    const cleanAsn = parseInt(normalizeAsn(asn), 10);
-    
-    // V2: Check if ASN exists in auth_users.json for test account exemption
-    const authUsers = await AuthService.getAuthUsers();
-    const isKnownUser = cleanAsn && (authUsers[String(cleanAsn)] || authUsers[`AS${cleanAsn}`] || authUsers[String(asn)]);
 
-    const valRes = validateAsn(asn);
-    if (!valRes.valid && !isKnownUser) {
-      return errorEnvelope(valRes.error || 'Valid ASN is required', { asn: valRes.error }, 200);
+    if (!isValidAsnFormat(asn)) {
+      return errorEnvelope('Invalid ASN format. Please enter a valid ASN number (1-4294967295)', { asn: 'Invalid ASN format' }, 200);
     }
 
-    const challenge = await AuthService.createChallenge(cleanAsn || valRes.value);
+    const cleanAsn = parseInt(normalizeAsn(asn), 10);
+
+    // Authoritative verification via DN42 Registry when repository is initialized
+    if (RegistryService.isRepoInitialized()) {
+      try {
+        const regInfo = await RegistryService.getAsnInfo(cleanAsn);
+        if (!regInfo) {
+          return errorEnvelope(`AS${cleanAsn} is not registered in the DN42 registry`, { asn: 'ASN not found in DN42 registry' }, 200);
+        }
+      } catch (err) {
+        console.warn(`[AuthController] Registry lookup error for AS${cleanAsn}:`, err.message);
+        return errorEnvelope(err.message || 'Registry sync failed, please retry later', null, 200);
+      }
+    }
+
+    const challenge = await AuthService.createChallenge(cleanAsn);
     return successEnvelope(challenge, 200);
   }
 
@@ -67,8 +77,28 @@ export class AuthController {
       );
     }
 
+    if (!isValidAsnFormat(username)) {
+      return errorEnvelope('Invalid ASN format. Please enter a valid ASN number (1-4294967295)', { username: 'Invalid ASN format' }, 200);
+    }
+
+    const cleanAsn = parseInt(normalizeAsn(username), 10);
+    const authUsers = await AuthService.getAuthUsers();
+    const isKnownUser = (cleanAsn && (authUsers[String(cleanAsn)] || authUsers[`AS${cleanAsn}`])) || authUsers[String(username)];
+
+    // If registry repo is initialized and user is not in local authUsers, verify ASN existence in DN42 registry
+    if (RegistryService.isRepoInitialized() && !isKnownUser) {
+      try {
+        const regInfo = await RegistryService.getAsnInfo(cleanAsn);
+        if (!regInfo) {
+          return errorEnvelope(`AS${cleanAsn} is not registered in the DN42 registry`, { username: 'ASN not found in DN42 registry' }, 200);
+        }
+      } catch (err) {
+        console.warn(`[AuthController] Registry lookup error for AS${cleanAsn}:`, err.message);
+      }
+    }
+
     const result = await AuthService.loginWithPassword({
-      username,
+      username: cleanAsn || username,
       password,
       rememberMe
     });

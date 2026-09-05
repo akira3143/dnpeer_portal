@@ -81,4 +81,37 @@ test('Auth Flow API Integration Tests', async (t) => {
     assert.equal(sessBody.success, true);
     assert.ok(Array.isArray(sessBody.data));
   });
+
+  await t.test('POST /api/auth/login-password rejects invalid non-ASN username', async () => {
+    const loginRes = await fetch(`${baseUrl}/api/auth/login-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: 'startx',
+        password: 'anyPassword123'
+      })
+    });
+
+    assert.equal(loginRes.status, 200);
+    const body = await loginRes.json();
+    assert.equal(body.success, false);
+    assert.match(body.error.message, /Invalid ASN format/);
+  });
+
+  await t.test('POST /api/auth/login-password accepts public ASN format', async () => {
+    const loginRes = await fetch(`${baseUrl}/api/auth/login-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: '209403',
+        password: 'wrongPassword'
+      })
+    });
+
+    assert.equal(loginRes.status, 200);
+    const body = await loginRes.json();
+    assert.equal(body.success, false);
+    // Should fail with credentials error, NOT format error
+    assert.match(body.error.message, /Invalid credentials|Invalid username or password/);
+  });
 });

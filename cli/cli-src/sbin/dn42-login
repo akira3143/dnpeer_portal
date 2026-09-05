@@ -9,6 +9,39 @@ elif [ -f "cli-src/etc/dn42-lib.sh" ]; then
   . "cli-src/etc/dn42-lib.sh"
 fi
 
+if ! command -v is_valid_asn_format >/dev/null 2>&1; then
+  if [ -f /lib/rules.sh ]; then
+    . /lib/rules.sh
+  elif [ -f "${0%/*}/../lib/rules.sh" ]; then
+    . "${0%/*}/../lib/rules.sh"
+  elif [ -f "cli-src/lib/rules.sh" ]; then
+    . "cli-src/lib/rules.sh"
+  fi
+fi
+
+if ! command -v is_valid_asn_format >/dev/null 2>&1; then
+  normalize_asn() {
+    _asn="${1#[aA][sS]}"
+    _asn="${_asn%% }"
+    _asn="${_asn## }"
+    echo "$_asn"
+  }
+  is_valid_asn_format() {
+    _val="$(normalize_asn "$1")"
+    case "$_val" in
+      ''|*[!0-9]*) return 1 ;;
+    esac
+    [ "$_val" = "0" ] && return 1
+    [ "${#_val}" -gt 10 ] && return 1
+    if [ "${#_val}" -eq 10 ]; then
+      if [ "$_val" \> "4294967295" ]; then
+        return 1
+      fi
+    fi
+    return 0
+  }
+fi
+
 trap '' INT
 
 # ---------- Shell Initialization ----------
@@ -215,10 +248,13 @@ main() {
     flush_after_input
 
     [ -z "$asn_in" ] && continue
-    clean=$(echo "$asn_in" | tr -cd '0-9')
-    if [ -z "$clean" ]; then
-      clean="$asn_in"
+
+    if ! is_valid_asn_format "$asn_in"; then
+      echo -e "\033[31merror: Invalid ASN format. ASN must be a valid number (e.g. 4242423143, AS4242423143, or public ASN).\033[0m"
+      continue
     fi
+
+    clean=$(normalize_asn "$asn_in")
 
     printf "\033[33mRemember login for 30 days? [Y/n]\033[0m: "
     read_line_edit rem_in
