@@ -76,6 +76,64 @@ export function parseSsOutput(ssOutput, existingPorts = []) {
   return systemPorts;
 }
 
+export function parseBgpProtocols(bgpOutput) {
+  const sessions = [];
+  if (!bgpOutput || typeof bgpOutput !== 'string') return sessions;
+
+  for (const line of bgpOutput.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    // Strip BIRD machine-readable numeric code prefix like "1002-" or "2002-" or "0000 "
+    const cleaned = trimmed.replace(/^[0-9]{4}[- ]/, '').trim();
+    const parts = cleaned.split(/\s+/);
+    if (parts.length < 4) continue;
+
+    const name = parts[0];
+    const proto = parts[1];
+    if (proto.toUpperCase() !== 'BGP') continue;
+
+    const table = parts[2];
+    const state = parts[3];
+    const since = parts[4] || '';
+    const info = parts.slice(5).join(' ');
+
+    let bgpState = 'Idle';
+    if (parts.length >= 6) {
+      bgpState = parts[5].replace(/[^A-Za-z0-9_-]/g, '');
+    } else {
+      if (state.toLowerCase() === 'up') bgpState = 'Established';
+      else if (state.toLowerCase() === 'start') bgpState = 'Connect';
+      else bgpState = 'Idle';
+    }
+
+    // Extract ASN from protocol name
+    let asn = null;
+    let cleanAsn = null;
+    const mFull = name.match(/424242\d{4}/) || name.match(/(?:as|asn|peer|p|dn42|_|^)(\d{5,10})(?:_|$|[a-z])/i);
+    const mTail = name.match(/(?:as|asn|peer|p|dn42|_|^)(\d{4})(?:_|$|[a-z])/i) || name.match(/(\d{4,10})/);
+
+    const m = mFull || mTail;
+    if (m) {
+      asn = parseInt(m[1] || m[0], 10);
+      cleanAsn = (asn < 10000 && asn > 0) ? (4242420000 + asn) : asn;
+    }
+
+    sessions.push({
+      name,
+      proto: 'BGP',
+      table,
+      state,
+      since,
+      bgpState,
+      info: info || bgpState,
+      asn,
+      cleanAsn
+    });
+  }
+
+  return sessions;
+}
+
 function runCmd(cmd, options = {}) {
   try {
     return execSync(cmd, { encoding: 'utf8', timeout: 5000, ...options }).trim();
@@ -250,11 +308,24 @@ export async function collectAndReport(options = {}) {
   const ssOutput = options.mockSsOutput !== undefined ? options.mockSsOutput : runCmd('ss -tulnp');
   const systemPorts = parseSsOutput(ssOutput, ports);
 
+  // 3. Collect BGP Session States: birdc show protocols
+  let bgpOutput = options.mockBgpOutput !== undefined ? options.mockBgpOutput : process.env.MOCK_BGP_OUTPUT;
+  if (bgpOutput === undefined) {
+    let rawBgp = runCmd('birdc -r show protocols') || runCmd('birdc show protocols');
+    try {
+      const rawBgp6 = runCmd('birdc6 -r show protocols') || runCmd('birdc6 show protocols');
+      if (rawBgp6) rawBgp += '\n' + rawBgp6;
+    } catch {}
+    bgpOutput = rawBgp;
+  }
+  const bgpSessions = parseBgpProtocols(bgpOutput);
+
   const payload = {
     nodeId,
     ports,
     systemPorts,
-    peers
+    peers,
+    bgpSessions
   };
 
   const targetUrl = `${masterUrl.replace(/\/+$/, '')}/api/probe/report`;
@@ -272,7 +343,7 @@ export async function collectAndReport(options = {}) {
 
     const body = await res.json();
     if (res.ok && body.success) {
-      console.log(`[Probe-Agent] Report successful. Ports: ${ports.length + systemPorts.length}, Peers: ${peers.length}`);
+      console.log(`[Probe-Agent] Report successful. Ports: ${ports.length + systemPorts.length}, Peers: ${peers.length}, BGP: ${bgpSessions.length}`);
       return { success: true, data: body.data };
     } else {
       console.error(`[Probe-Agent] Report failed:`, body);

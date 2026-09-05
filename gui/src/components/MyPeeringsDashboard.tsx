@@ -81,6 +81,39 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
     }
   };
 
+  const getStatusBadge = (sess: PeeringSession) => {
+    const bgpState = sess.runtime?.bgpState;
+    const status = sess.status?.toLowerCase() || '';
+    const normBgp = bgpState?.toLowerCase() || '';
+
+    if (status === 'active' || normBgp === 'established') {
+      return {
+        label: bgpState === 'Established' ? 'BGP: Established' : (sess.runtime?.stageText || 'Operational'),
+        badgeClass: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20',
+        dotClass: 'bg-emerald-400'
+      };
+    }
+    if (status === 'connect' || normBgp === 'connect' || normBgp === 'active') {
+      return {
+        label: bgpState ? `BGP: ${bgpState}` : 'BGP: Connect',
+        badgeClass: 'bg-amber-500/10 text-amber-400 border border-amber-500/20',
+        dotClass: 'bg-amber-400 animate-pulse'
+      };
+    }
+    if (status === 'idle' || normBgp === 'idle') {
+      return {
+        label: 'BGP: Idle',
+        badgeClass: 'bg-sky-500/10 text-sky-400 border border-sky-500/20',
+        dotClass: 'bg-sky-400'
+      };
+    }
+    return {
+      label: sess.runtime?.stageText || sess.status || 'Pending',
+      badgeClass: 'bg-slate-500/10 text-slate-400 border border-slate-500/20',
+      dotClass: 'bg-slate-400 animate-pulse'
+    };
+  };
+
   const filteredSessions = useMemo(() => {
     return sessions.filter((s) => {
       const q = searchQuery.toLowerCase();
@@ -94,10 +127,10 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
       if (!matchSearch) return false;
 
       if (statusFilter === 'active') {
-        return s.status.toLowerCase().includes('operational') || s.status.toLowerCase().includes('established') || s.status.toLowerCase().includes('active');
+        return s.status === 'active' || s.runtime?.bgpState === 'Established';
       }
       if (statusFilter === 'pending') {
-        return s.status.toLowerCase().includes('awaiting') || s.status.toLowerCase().includes('pending') || s.status.toLowerCase().includes('config');
+        return s.status !== 'active' && s.runtime?.bgpState !== 'Established';
       }
       return true;
     });
@@ -243,8 +276,8 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredSessions.map((sess) => {
-              const isAwaiting = sess.status.toLowerCase().includes('awaiting') || sess.status.toLowerCase().includes('pending');
               const hostPort = sess.assigned?.hostPort || sess.peering?.listenPort || 'auto';
+              const badge = getStatusBadge(sess);
 
               return (
                 <div
@@ -265,13 +298,9 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono font-medium ${
-                          isAwaiting
-                            ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                            : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                        }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${isAwaiting ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`} />
-                          <span>{sess.status}</span>
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono font-medium ${badge.badgeClass}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${badge.dotClass}`} />
+                          <span>{badge.label}</span>
                         </span>
 
                         {onEditSession && (
@@ -293,6 +322,13 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                         </button>
                       </div>
                     </div>
+
+                    {/* Diagnostic Info if BGP error / socket message */}
+                    {sess.runtime?.bgpInfo && sess.runtime.bgpInfo !== sess.runtime.bgpState && (
+                      <div className="text-[10px] text-amber-400/80 font-mono bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20 truncate" title={sess.runtime.bgpInfo}>
+                        Info: {sess.runtime.bgpInfo}
+                      </div>
+                    )}
 
                     {/* Parameters Grid */}
                     <div className="grid grid-cols-2 gap-2 text-[11px] font-mono p-3 rounded-xl bg-black/50 border border-white/5">
@@ -326,7 +362,15 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                   {/* Bottom Meta */}
                   <div className="text-[10px] text-slate-500 font-mono flex items-center justify-between border-t border-white/5 pt-2">
                     <span>Created: {new Date(sess.createdAt).toLocaleDateString()}</span>
-                    <span>MP-BGP ENH</span>
+                    <span className="flex items-center gap-2">
+                      {sess.runtime?.latestHandshake && sess.runtime.latestHandshake > 0 ? (
+                        <span className="text-emerald-400 font-medium">WG Up</span>
+                      ) : (
+                        <span className="text-slate-500">WG Idle</span>
+                      )}
+                      <span>&middot;</span>
+                      <span>MP-BGP ENH</span>
+                    </span>
                   </div>
                 </div>
               );

@@ -9,23 +9,100 @@ elif [ -f "cli-src/etc/dn42-lib.sh" ]; then
   . "cli-src/etc/dn42-lib.sh"
 fi
 
-cmd="$1"
-target="$2"
-node="$3"
-
-if [ -z "$cmd" ] || [ "$cmd" = "help" ]; then
-  echo -e "\033[33mUsage: lg <route|bgp|status|ping|trace> [target] [node]\033[0m"
+if [ $# -eq 0 ] || [ "$1" = "help" ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+  echo -e "\033[33mUsage: lg <route|bgp|protocols|status|ping|trace> [target] [-n node | node]\033[0m"
   echo -e "\033[90mFull details: run 'help'\033[0m"
   exit 0
 fi
 
-if [ "$cmd" = "bgp" ] || [ "$cmd" = "protocols" ]; then cmd="protocols"; fi
-if [ "$cmd" = "trace" ] || [ "$cmd" = "traceroute" ]; then cmd="traceroute"; fi
+cmd="$1"
+shift
+
+# Support "lg show protocols" / "lg show status" / "lg show route"
+if [ "$cmd" = "show" ] && [ $# -gt 0 ]; then
+  cmd="$1"
+  shift
+fi
+
+node=""
+target=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -n|--node)
+      node="$2"
+      shift 2
+      ;;
+    *)
+      if [ -z "$target" ]; then
+        target="$1"
+      else
+        if [ $# -eq 1 ] && [ -z "$node" ]; then
+          case "$target" in
+            for)
+              target="$target $1"
+              ;;
+            *)
+              if grep -q "^$1|" /tmp/dn42_nodes 2>/dev/null || [ "$1" = "JP-7" ] || [ "$1" = "JP-2" ] || [ "$1" = "US-1" ] || [ "$1" = "DE-1" ] || [ "$1" = "SGP-1" ]; then
+                node="$1"
+              else
+                target="$target $1"
+              fi
+              ;;
+          esac
+        else
+          target="$target $1"
+        fi
+      fi
+      shift
+      ;;
+  esac
+done
+
+if [ "$cmd" = "status" ]; then
+  if [ -n "$target" ] && [ -z "$node" ]; then
+    node="$target"
+    target=""
+  fi
+fi
+
+if [ "$cmd" = "bgp" ] || [ "$cmd" = "protocols" ]; then
+  cmd="protocols"
+  if [ -n "$target" ] && [ -z "$node" ] && [ "$target" != "all" ]; then
+    if grep -q "^$target|" /tmp/dn42_nodes 2>/dev/null || [ "$target" = "JP-7" ] || [ "$target" = "JP-2" ] || [ "$target" = "US-1" ] || [ "$target" = "DE-1" ] || [ "$target" = "SGP-1" ]; then
+      node="$target"
+      target=""
+    fi
+  fi
+fi
+
+if [ "$cmd" = "trace" ] || [ "$cmd" = "traceroute" ]; then
+  cmd="traceroute"
+fi
+
 if [ -z "$node" ]; then
   if [ -s /tmp/dn42_nodes ]; then
     node=$(head -n 1 /tmp/dn42_nodes | cut -d'|' -f1)
   fi
   [ -z "$node" ] && node="JP-7"
+fi
+
+# Offline mock output support for tests
+if [ -n "$MOCK_BIRDC_OUTPUT" ]; then
+  if [ "$cmd" = "protocols" ] || [ "$cmd" = "status" ] || [ "$cmd" = "route" ]; then
+    printf '%b\n' "$MOCK_BIRDC_OUTPUT" | colorize_bird_output
+  else
+    printf '%b\n' "$MOCK_BIRDC_OUTPUT"
+  fi
+  exit 0
+fi
+if [ -f /tmp/mock_birdc_output ]; then
+  if [ "$cmd" = "protocols" ] || [ "$cmd" = "status" ] || [ "$cmd" = "route" ]; then
+    cat /tmp/mock_birdc_output | colorize_bird_output
+  else
+    cat /tmp/mock_birdc_output
+  fi
+  exit 0
 fi
 
 echo -e "\033[90mExecuting Looking Glass query on \033[36m$node\033[90m: \033[32m$cmd $target\033[0m..."
@@ -48,5 +125,11 @@ fi
 
 echo ""
 out=$(json_field "$resp" output)
-echo "$out" | sed 's/\\n/\n/g; s/\\r//g; s/\\"/"/g; s/\\\\/\\/g; s/\\t/\t/g'
+formatted_out=$(printf '%b\n' "$out" | sed 's/\\n/\n/g; s/\\r//g; s/\\"/"/g; s/\\\\/\\/g; s/\\t/\t/g')
+
+if [ "$cmd" = "protocols" ] || [ "$cmd" = "status" ] || [ "$cmd" = "route" ]; then
+  echo "$formatted_out" | colorize_bird_output
+else
+  echo "$formatted_out"
+fi
 echo ""

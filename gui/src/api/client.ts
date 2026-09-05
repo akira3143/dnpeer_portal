@@ -97,6 +97,8 @@ export interface PeeringSession {
     rxBytes?: number;
     txBytes?: number;
     bgpState?: string;
+    bgpInfo?: string;
+    endpoint?: string;
   };
 }
 

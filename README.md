@@ -1,4 +1,4 @@
-﻿# DN42 Peering Portal 2.0
+# DN42 Peering Portal 2.0
 
 > High-Performance Single Source of Truth Dual-Frontend DN42 Peering Portal  
 > Dual Frontend: In-Browser WebAssembly Linux Terminal CLI (`/`) + Modern Responsive Web GUI (`/gui`)
@@ -7,55 +7,53 @@
 
 ## 🚀 部署与运行手册 (Deployment Runbook)
 
-> [!IMPORTANT]
-> **全新 Clone 首次启动须知**
-> 本项目遵循「代码单源真理」防呆原则：
-> - CLI 脚本唯一开发源位于 `cli/cli-src/`；
-> - `cli/staging_rootfs/` 为构建目录（由 Git 忽略生成物，仅追踪原生 `bin/busybox`）；
-> - **全新克隆仓库后，首次启动服务前必须先执行构建命令**以生成 `rootfs.dat` 与前端静态资源。
+> [!TIP]
+> **免构建直接运行 (Zero-Build Clone-and-Run)**  
+> 本项目所有前端与 CLI 预构建产物（`gui/dist/`、`cli/public/rootfs.dat` 以及完整 WebAssembly 运行环境 `cli/public/vendor/`）**均已纳入版本控制**。  
+> 生产服务器拉取仓库后，**无需在服务器端运行任何 `npm run build`**，彻底避免轻量 VPS 因现场编译耗尽 CPU/内存。直接安装生产依赖即可上线。
 
-### 1. 安装依赖
+### 1. 生产环境极速启动 (Production Quickstart)
 
 ```bash
-# 安装服务端与构建依赖
-npm install
+# 1. 克隆仓库
+git clone https://github.com/your-org/dn42-portal.git
+cd dn42-portal
 
-# 安装 GUI 前端依赖
-npm --prefix gui install
+# 2. 仅安装生产运行依赖（无需编译工具链）
+npm ci --omit=dev
+
+# 3. 配置环境与密钥
+cp .env.example .env
+vim .env
+vim portal.config.yaml
+
+# 4. 启动服务 (默认端口 4242)
+npm start
 ```
 
-### 2. 构建产物
+---
+
+## 💻 开发者规范与二次构建 (Developer & Build Protocol)
+
+> [!IMPORTANT]
+> **本地开发一致性约束 (Single Source & Pre-build Constraint)**  
+> - CLI 脚本唯一开发源位于 `cli/cli-src/`；
+> - Web GUI 源码位于 `gui/src/`；
+> - 任何修改了 `cli/cli-src/` 或 `gui/src/` 的代码变更，**必须在提交前在本地执行完整构建**（`npm run build`），并将更新后的构建产物（`cli/public/rootfs.dat`、`gui/dist/`）**同源码一并提交入 Git**，严禁提交未经构建的源码差异。
+
+### 二次构建步骤（定制开发时使用）
 
 ```bash
+# 安装完整开发依赖（包含 GUI 构建工具链）
+npm install
+npm --prefix gui install
+
 # 全量构建：单源规则生成 + Web GUI 编译 + CLI rootfs 打包
 npm run build
 
-# 或仅构建 CLI 镜像
-npm run build:cli
-
-# 或仅构建 Web GUI
-npm run build:gui
-```
-
-### 3. 配置环境
-
-```bash
-# 复制环境变量模板
-cp .env.example .env
-
-# 编辑配置与私钥
-vim .env
-vim portal.config.yaml
-```
-
-### 4. 启动服务
-
-```bash
-# 生产模式启动 (默认端口 4242)
-npm start
-
-# 开发模式热重载
-npm run dev
+# 或仅构建指定子模块
+npm run build:cli   # 编译 CLI rootfs.dat 与 rules.sh
+npm run build:gui   # 编译 Web GUI (Vite -> gui/dist/)
 ```
 
 ---

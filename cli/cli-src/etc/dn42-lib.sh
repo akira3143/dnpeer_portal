@@ -321,3 +321,99 @@ read_line_edit() {
   fi
   REPLY="$_buf"
 }
+
+# colorize_bird_output —— High-fidelity BIRD 2.x protocol/status syntax highlighter
+colorize_bird_output() {
+  awk '
+  BEGIN {
+    c_reset = "\033[0m"
+    c_dim = "\033[90m"
+    c_header = "\033[1;37m"
+    c_name = "\033[38;5;111m"
+    c_proto = "\033[38;5;147m"
+    c_table = "\033[90m"
+    c_white = "\033[37m"
+    c_yellow = "\033[33m"
+    c_orange = "\033[38;5;208m"
+    c_cyan = "\033[36m"
+    c_est = "\033[38;5;153m"
+    c_conn = "\033[38;5;222m"
+    c_act = "\033[38;5;215m"
+    c_idle = "\033[38;5;246m"
+    c_err = "\033[1;31mError\033[0m"
+  }
+  {
+    line = $0
+    sub(/\r$/, "", line)
+    if (line ~ /^[[:space:]]*$/) next
+
+    # Ready banner line or numeric reply codes
+    if (line ~ /^(0001\s+)?BIRD\s+/i) {
+      sub(/^[0-9]{4}[- ]/, "", line)
+      printf "%s%s%s\n", c_dim, line, c_reset
+      next
+    }
+    if (line ~ /^[0-9]{4}[[:space:]]*$/) next
+
+    # Header line
+    if (line ~ /^[0-9]{4}-?[[:space:]]*[Nn]ame[[:space:]]+[Pp]roto/ || line ~ /^[[:space:]]*[Nn]ame[[:space:]]+[Pp]roto/) {
+      sub(/^[0-9]{4}[- ]/, "", line)
+      printf "%s%-16s %-10s %-10s %-6s %-14s %s%s\n", c_header, "Name", "Proto", "Table", "State", "Since", "Info", c_reset
+      next
+    }
+
+    # Protocol entry row
+    sub(/^[0-9]{4}[- ]/, "", line)
+    n = split(line, f, /[ \t]+/)
+    if (n >= 4 && (f[2] ~ /^(BGP|BFD|Device|Direct|Static|OSPF|Kernel|Pipe|ROA|BABEL|RIP)$/i)) {
+      p_name = sprintf("%s%-16s%s", c_name, f[1], c_reset)
+      p_proto = sprintf("%s%-10s%s", c_proto, f[2], c_reset)
+      p_table = sprintf("%s%-10s%s", c_table, f[3], c_reset)
+
+      st = tolower(f[4])
+      if (st == "up") p_state = sprintf("%s%-6s%s", c_white, f[4], c_reset)
+      else if (st == "start") p_state = sprintf("%s%-6s%s", c_yellow, f[4], c_reset)
+      else p_state = sprintf("%s%-6s%s", c_dim, f[4], c_reset)
+
+      since_val = (n >= 5) ? f[5] : ""
+      if (since_val ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/) {
+        p_since = sprintf("%s%-14s%s", c_orange, since_val, c_reset)
+      } else if (since_val ~ /^[0-9]{2}:[0-9]{2}:[0-9]{2}/) {
+        p_since = sprintf("%s%-14s%s", c_cyan, since_val, c_reset)
+      } else {
+        p_since = sprintf("%s%-14s%s", c_white, since_val, c_reset)
+      }
+
+      info_val = ""
+      if (n >= 6) {
+        for (i = 6; i <= n; i++) {
+          info_val = (i == 6) ? f[i] : (info_val " " f[i])
+        }
+      }
+
+      p_info = info_val
+      if (info_val != "") {
+        gsub(/Error/, c_err, info_val)
+        if (f[6] == "Established") {
+          p_info = sprintf("%sEstablished%s %s", c_est, c_reset, substr(info_val, 13))
+        } else if (f[6] == "Connect") {
+          p_info = sprintf("%sConnect%s %s", c_conn, c_reset, substr(info_val, 9))
+        } else if (f[6] == "Active") {
+          p_info = sprintf("%sActive%s %s", c_act, c_reset, substr(info_val, 8))
+        } else if (f[6] == "Idle") {
+          p_info = sprintf("%sIdle%s %s", c_idle, c_reset, substr(info_val, 6))
+        } else {
+          p_info = sprintf("%s%s%s", c_white, info_val, c_reset)
+        }
+      }
+
+      printf "%s %s %s %s %s %s\n", p_name, p_proto, p_table, p_state, p_since, p_info
+    } else {
+      # Other details lines (e.g. show protocols all or show route)
+      gsub(/Error/, c_err, line)
+      print line
+    }
+  }
+  '
+}
+

@@ -95,6 +95,7 @@ const cliFiles = [
   'bin/passwd',
   'bin/whois',
   'bin/lg',
+  'bin/birdc',
   'bin/help',
   'bin/systemctl'
 ];

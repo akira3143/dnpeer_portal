@@ -1,0 +1,132 @@
+#!/bin/busybox sh
+# birdc —— BIRD Internet Routing Daemon Client (CLI alias to lg)
+
+# Locate lg binary
+LG_BIN="lg"
+if [ -x "/bin/lg" ]; then
+  LG_BIN="/bin/lg"
+elif [ -x "${0%/*}/lg" ]; then
+  LG_BIN="${0%/*}/lg"
+fi
+
+# Parse flags and arguments
+target_node=""
+raw_args=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -n|--node)
+      target_node="$2"; shift 2 ;;
+    -s)
+      # Socket path flag accepted for birdc CLI compatibility
+      shift 2 ;;
+    -r)
+      shift ;;
+    -v|--version)
+      echo "BIRD 2.15.1 (AkiLab DN42 Looking Glass Client)"
+      exit 0 ;;
+    -h|--help)
+      echo "Usage: birdc [-n <node>] <command>"
+      echo "Commands:"
+      echo "  show protocols [all|<name>]   Show routing daemon protocols"
+      echo "  show status                   Show BIRD status"
+      echo "  show route [for <prefix>]     Show routing table"
+      exit 0 ;;
+    *)
+      if [ -z "$raw_args" ]; then
+        raw_args="$1"
+      else
+        raw_args="$raw_args $1"
+      fi
+      shift ;;
+  esac
+done
+
+# Default node resolution
+if [ -z "$target_node" ]; then
+  if [ -s /tmp/dn42_nodes ]; then
+    target_node=$(head -n 1 /tmp/dn42_nodes | cut -d'|' -f1)
+  fi
+  [ -z "$target_node" ] && target_node="JP-7"
+fi
+
+# 1. Interactive CLI loop if invoked with zero arguments
+if [ -z "$raw_args" ]; then
+  echo -e "\033[90mBIRD 2.15.1 ready (Connected to $target_node via lgproxy).\033[0m"
+  while true; do
+    printf "bird> "
+    read -r line || break
+    line=$(echo "$line" | sed 's/^[ \t]*//; s/[ \t]*$//')
+    [ -z "$line" ] && continue
+
+    case "$line" in
+      exit|quit|q)
+        break ;;
+      help|\?)
+        echo "Available commands:"
+        echo "  show protocols [all|<name>]"
+        echo "  show status"
+        echo "  show route"
+        echo "  exit / quit"
+        ;;
+      show\ protocols*)
+        _sub=$(echo "$line" | sed 's/^show[ \t]*protocols[ \t]*//')
+        if [ -n "$_sub" ]; then
+          "$LG_BIN" protocols "$_sub" -n "$target_node"
+        else
+          "$LG_BIN" protocols -n "$target_node"
+        fi
+        ;;
+      show\ status*)
+        "$LG_BIN" status -n "$target_node"
+        ;;
+      show\ route*)
+        _sub=$(echo "$line" | sed 's/^show[ \t]*route[ \t]*//')
+        if [ -n "$_sub" ]; then
+          "$LG_BIN" route "$_sub" -n "$target_node"
+        else
+          "$LG_BIN" route -n "$target_node"
+        fi
+        ;;
+      *)
+        echo -e "\033[31m0001 syntax error, unexpected command\033[0m"
+        ;;
+    esac
+  done
+  exit 0
+fi
+
+# 2. Non-interactive command invocation
+case "$raw_args" in
+  show\ protocols*)
+    sub_target=$(echo "$raw_args" | sed 's/^show[ \t]*protocols[ \t]*//')
+    if [ -n "$sub_target" ]; then
+      exec "$LG_BIN" protocols "$sub_target" -n "$target_node"
+    else
+      exec "$LG_BIN" protocols -n "$target_node"
+    fi
+    ;;
+  show\ status*)
+    exec "$LG_BIN" status -n "$target_node"
+    ;;
+  show\ route*)
+    sub_target=$(echo "$raw_args" | sed 's/^show[ \t]*route[ \t]*//')
+    if [ -n "$sub_target" ]; then
+      exec "$LG_BIN" route "$sub_target" -n "$target_node"
+    else
+      exec "$LG_BIN" route -n "$target_node"
+    fi
+    ;;
+  protocols|bgp)
+    exec "$LG_BIN" protocols -n "$target_node"
+    ;;
+  status)
+    exec "$LG_BIN" status -n "$target_node"
+    ;;
+  route)
+    exec "$LG_BIN" route -n "$target_node"
+    ;;
+  *)
+    exec "$LG_BIN" $raw_args -n "$target_node"
+    ;;
+esac

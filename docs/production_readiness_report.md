@@ -227,3 +227,31 @@ pie title 系统生产就绪度分布
     └── probe-agent (systemd path/timer，自动认领并上报)
 ```
 
+### 标准部署执行指令（极简免构建克隆即跑，服务器 CPU 0% 压力）
+
+> 本项目所有 WASM 运行环境（`cli/public/vendor/`）、CLI rootfs（`rootfs.dat`）与 Web GUI 构建产物（`gui/dist/`）均已纳入 Git 追踪，服务器拉取后**无需执行 `npm run build`**。
+
+```bash
+# 1. 克隆代码并进入工作目录
+cd /opt/dn42-portal
+
+# 2. 浅克隆官方 DN42 Registry（生产环境唯一初始化依赖）
+git clone --depth 1 https://git.dn42.dev/dn42/registry /opt/dn42-portal/server/data/registry
+
+# 3. 仅安装服务端生产依赖（仅约 1MB，耗时 2 秒，服务器 0 编译计算压力）
+npm install --omit=dev
+
+# 4. 配置生产环境配置文件
+cp deploy/Caddyfile /etc/caddy/Caddyfile
+cp deploy/dn42-portal.service /etc/systemd/system/dn42-portal.service
+
+# 5. 启动并守护服务
+systemctl daemon-reload
+systemctl enable --now dn42-portal
+systemctl restart caddy
+
+# 6. 检查运行健康状态
+systemctl status dn42-portal
+journalctl -u dn42-portal -f -n 50
+```
+

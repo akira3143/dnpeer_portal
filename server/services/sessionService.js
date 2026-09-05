@@ -271,12 +271,23 @@ export class SessionService {
   }
 
   /**
-   * Update runtime state from probe merge
+   * Update runtime state from probe merge (WireGuard metrics via pubkey, BGP state via Node + ASN)
    */
-  static async updateRuntimePeers(nodeId, reportedPeers = []) {
+  static async updateRuntimePeers(nodeId, reportedData = [], optionalBgpSessions = []) {
     const sessions = await this.getSessions();
     let updated = false;
 
+    let reportedPeers = [];
+    let bgpSessions = [];
+    if (Array.isArray(reportedData)) {
+      reportedPeers = reportedData;
+      bgpSessions = Array.isArray(optionalBgpSessions) ? optionalBgpSessions : [];
+    } else if (reportedData && typeof reportedData === 'object') {
+      reportedPeers = Array.isArray(reportedData.peers) ? reportedData.peers : [];
+      bgpSessions = Array.isArray(reportedData.bgpSessions) ? reportedData.bgpSessions : [];
+    }
+
+    // 1. WireGuard Telemetry Correlation (Pubkey driven) - reference info only, NEVER determines status
     for (const peer of reportedPeers) {
       const session = sessions.find(s => s.nodeId === nodeId && s.peering?.publicKey === peer.publicKey);
       if (session) {
@@ -285,13 +296,72 @@ export class SessionService {
         session.runtime.endpoint = peer.endpoint || session.runtime.endpoint || '';
         session.runtime.rxBytes = peer.rxBytes || 0;
         session.runtime.txBytes = peer.txBytes || 0;
-
-        if (session.runtime.latestHandshake > 0) {
-          session.runtime.stage = 3; // WireGuard handshake active
-          session.runtime.stageText = 'WireGuard Handshake Active';
-          session.status = 'active';
-        }
         updated = true;
+      }
+    }
+
+    // 2. BGP Connectivity Correlation (Node + ASN driven) - Single source of truth for session status
+    if (bgpSessions && bgpSessions.length > 0) {
+      const nodeSessions = sessions.filter(s => s.nodeId === nodeId);
+      for (const session of nodeSessions) {
+        if (!session.runtime) session.runtime = {};
+        const sessionAsn = session.asn;
+
+        const bgp = bgpSessions.find(b => {
+          if (b.asn && sessionAsn) {
+            if (b.asn === sessionAsn) return true;
+            if (b.cleanAsn === sessionAsn) return true;
+            if (sessionAsn % 10000 === b.asn) return true;
+            if (sessionAsn % 100000 === b.asn) return true;
+          }
+          if (b.name && sessionAsn) {
+            const strAsn = String(sessionAsn);
+            const strTail = String(sessionAsn % 10000);
+            if (b.name.includes(strAsn) || b.name.includes(strTail)) return true;
+          }
+          return false;
+        });
+
+        if (bgp) {
+          // BGP state transparent pass-through
+          session.runtime.bgpState = bgp.bgpState;
+          session.runtime.bgpInfo = bgp.info;
+          session.runtime.bgpProtocolName = bgp.name;
+          const normState = (bgp.bgpState || '').toLowerCase();
+
+          if (normState === 'established') {
+            session.status = 'active';
+            session.runtime.stage = 3;
+            session.runtime.stageText = 'BGP Established';
+          } else if (normState === 'connect') {
+            session.status = 'connect';
+            session.runtime.stage = 2;
+            session.runtime.stageText = 'BGP Connect';
+          } else if (normState === 'active') {
+            session.status = 'connect';
+            session.runtime.stage = 2;
+            session.runtime.stageText = 'BGP Active';
+          } else if (normState === 'idle') {
+            session.status = 'idle';
+            session.runtime.stage = 1;
+            session.runtime.stageText = (session.runtime.latestHandshake > 0)
+              ? 'BGP Idle (WG Handshake OK)'
+              : 'BGP Idle';
+          } else {
+            session.status = normState || 'pending';
+            session.runtime.stage = 2;
+            session.runtime.stageText = `BGP ${bgp.bgpState}`;
+          }
+          updated = true;
+        } else {
+          // Node reported BGP sessions, but this ASN does not exist in birdc protocols
+          session.runtime.bgpState = 'Pending';
+          session.runtime.stageText = 'Awaiting BGP Config';
+          if (session.status === 'active') {
+            session.status = 'pending';
+          }
+          updated = true;
+        }
       }
     }
 

@@ -61,12 +61,14 @@ test('ScannerService and WireGuard Dump Parser Unit Tests', async (t) => {
   await t.test('performMasterSync handles empty environment gracefully', async () => {
     const res = await ScannerService.performMasterSync({
       mockWgOutput: '',
-      mockSsOutput: ''
+      mockSsOutput: '',
+      mockBgpOutput: ''
     });
 
     assert.equal(res.success, true);
     assert.equal(res.portsCount, 0);
     assert.equal(res.peersUpdated, 0);
+    assert.equal(res.bgpUpdated, 0);
     assert.ok(res.message.includes('No local WireGuard interfaces'));
   });
 
@@ -76,17 +78,20 @@ test('ScannerService and WireGuard Dump Parser Unit Tests', async (t) => {
       'wg_jp1\tPEER_KEY_TEST_42423143=====================\t(none)\t1.2.3.4:22466\t172.20.150.2/32\t1724900000\t1024\t2048\t25'
     ].join('\n');
     const mockSs = 'udp UNCONN 0 0 0.0.0.0:21000 0.0.0.0:* users:(("bgp-probe",pid=999,fd=4))';
+    const mockBgp = 'dn42_as4242423143 BGP master up 2026-08-25 Established\n';
 
     const res = await ScannerService.performMasterSync({
       nodeId: 'JP-TYO-1',
       mockWgOutput: mockWgDump,
-      mockSsOutput: mockSs
+      mockSsOutput: mockSs,
+      mockBgpOutput: mockBgp
     });
 
     assert.equal(res.success, true);
     assert.equal(res.nodeId, 'JP-TYO-1');
     assert.equal(res.portsCount, 2);
     assert.equal(res.peersUpdated, 1);
+    assert.equal(res.bgpUpdated, 1);
 
     // Verify ledger state
     const nodePorts = await PortLedgerService.getNodePorts('JP-TYO-1');

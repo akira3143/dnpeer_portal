@@ -3,6 +3,9 @@ import { getActiveConfig } from '../storage/configLoader.js';
 import { PortLedgerService } from './portLedgerService.js';
 import { SessionService } from './sessionService.js';
 import { StatusTracker } from './statusTracker.js';
+import { parseBgpProtocols } from '../../scripts/probe-agent.js';
+
+export { parseBgpProtocols };
 
 export function parseWgDump(dumpOutput) {
   const ports = [];
@@ -68,7 +71,7 @@ export class ScannerService {
   /**
    * Process report submitted by node probe-agent
    */
-  static async handleProbeReport({ nodeId, ports = [], systemPorts = [], peers = [] }) {
+  static async handleProbeReport({ nodeId, ports = [], systemPorts = [], peers = [], bgpSessions = [] }) {
     if (!nodeId) {
       throw new Error('nodeId is required in probe report');
     }
@@ -79,13 +82,14 @@ export class ScannerService {
     // 2. Merge ports into ledger
     const mergedPorts = await PortLedgerService.mergeProbeReport(nodeId, { ports, systemPorts });
 
-    // 3. Update session runtime peers (latest handshake, etc.)
-    await SessionService.updateRuntimePeers(nodeId, peers);
+    // 3. Update session runtime peers and BGP states
+    await SessionService.updateRuntimePeers(nodeId, { peers, bgpSessions });
 
     return {
       nodeId,
       portsCount: mergedPorts.length,
-      peersUpdated: peers.length
+      peersUpdated: peers.length,
+      bgpUpdated: bgpSessions.length
     };
   }
 
@@ -115,15 +119,35 @@ export class ScannerService {
       }
     }
 
+    let bgpOutput = options.mockBgpOutput;
+    if (bgpOutput === undefined) {
+      try {
+        let rawBgp = execSync('birdc -r show protocols', { encoding: 'utf8', timeout: 5000 }).trim();
+        try {
+          const rawBgp6 = execSync('birdc6 -r show protocols', { encoding: 'utf8', timeout: 5000 }).trim();
+          if (rawBgp6) rawBgp += '\n' + rawBgp6;
+        } catch {}
+        bgpOutput = rawBgp;
+      } catch {
+        try {
+          bgpOutput = execSync('birdc show protocols', { encoding: 'utf8', timeout: 5000 }).trim();
+        } catch {
+          bgpOutput = '';
+        }
+      }
+    }
+
     const { ports, peers } = parseWgDump(wgOutput);
     const systemPorts = parseSsOutput(ssOutput, ports);
+    const bgpSessions = parseBgpProtocols(bgpOutput || '');
 
-    if (ports.length === 0 && systemPorts.length === 0 && peers.length === 0) {
+    if (ports.length === 0 && systemPorts.length === 0 && peers.length === 0 && bgpSessions.length === 0) {
       return {
         success: true,
         nodeId: masterNodeId,
         portsCount: 0,
         peersUpdated: 0,
+        bgpUpdated: 0,
         message: `No local WireGuard interfaces or listening services found on master host (${masterNodeId})`,
         timestamp: new Date().toISOString()
       };
@@ -131,14 +155,15 @@ export class ScannerService {
 
     // Merge ports and update sessions
     const mergedPorts = await PortLedgerService.mergeProbeReport(masterNodeId, { ports, systemPorts });
-    await SessionService.updateRuntimePeers(masterNodeId, peers);
+    await SessionService.updateRuntimePeers(masterNodeId, { peers, bgpSessions });
 
     return {
       success: true,
       nodeId: masterNodeId,
       portsCount: mergedPorts.length,
       peersUpdated: peers.length,
-      message: `Master synchronization completed: ${ports.length} WG ports, ${systemPorts.length} system ports, ${peers.length} peers updated`,
+      bgpUpdated: bgpSessions.length,
+      message: `Master synchronization completed: ${ports.length} WG ports, ${systemPorts.length} system ports, ${peers.length} peers, ${bgpSessions.length} BGP sessions updated`,
       timestamp: new Date().toISOString()
     };
   }

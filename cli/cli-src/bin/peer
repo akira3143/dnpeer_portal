@@ -619,7 +619,20 @@ do_ls() {
     status=${line#*\"status\":\"}; status=${status%%\"*}
     stage=${line#*\"stageText\":\"}; [ "$stage" = "$line" ] && stage="$status"; stage=${stage%%\"*}
 
-    printf "%-28s %-12s %-12s %-8s %s\n" "$id" "AS$asn" "$node" "$port" "$stage"
+    # Colorize status based on transparent BGP state
+    color="\033[0m"
+    case "$stage" in
+      *Established*|*active*)
+        color="\033[1;32m" ;;
+      *Connect*|*Active*)
+        color="\033[1;33m" ;;
+      *Idle*)
+        color="\033[1;36m" ;;
+      *)
+        color="\033[90m" ;;
+    esac
+
+    printf "%-28s %-12s %-12s %-8s %b%s\033[0m\n" "$id" "AS$asn" "$node" "$port" "$color" "$stage"
   done
   echo ""
   echo -e "\033[90mTip: Run 'peer edit' to update an existing session; 'peer new' for a new one.\033[0m"

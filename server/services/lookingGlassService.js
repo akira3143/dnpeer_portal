@@ -18,6 +18,33 @@ export class LookingGlassService {
       };
     }
 
+    let cleanCmd = String(command || 'summary').trim();
+    let cleanTarget = String(target || '').trim();
+
+    // Support "show protocols [target]", "show status", "show route [target]"
+    if (cleanCmd.toLowerCase().startsWith('show ')) {
+      const parts = cleanCmd.split(/\s+/);
+      cleanCmd = (parts[1] || 'summary').toLowerCase();
+      if (parts.length > 2 && !cleanTarget) {
+        cleanTarget = parts.slice(2).join(' ');
+      }
+    } else {
+      cleanCmd = cleanCmd.toLowerCase();
+    }
+
+    if (cleanCmd === 'bgp') cleanCmd = 'protocols';
+    if (cleanCmd === 'trace') cleanCmd = 'traceroute';
+
+    if (process.env.MOCK_LG_OUTPUT) {
+      return {
+        success: true,
+        nodeId: node.id,
+        command: cleanCmd,
+        target: cleanTarget,
+        output: process.env.MOCK_LG_OUTPUT
+      };
+    }
+
     if (!node.lgProxyUrl) {
       return {
         success: false,
@@ -27,8 +54,8 @@ export class LookingGlassService {
 
     try {
       const url = new URL('/api/bird', node.lgProxyUrl);
-      url.searchParams.set('cmd', command);
-      if (target) url.searchParams.set('target', target);
+      url.searchParams.set('cmd', cleanCmd);
+      if (cleanTarget) url.searchParams.set('target', cleanTarget);
 
       const response = await fetch(url.toString(), {
         headers: { 'Accept': 'application/json' },
@@ -40,7 +67,8 @@ export class LookingGlassService {
         return {
           success: true,
           nodeId: node.id,
-          command,
+          command: cleanCmd,
+          target: cleanTarget,
           output: data.output || data.result || JSON.stringify(data)
         };
       }
