@@ -16,3 +16,6 @@ cli/staging_rootfs/*
 !cli/staging_rootfs/bin/
 cli/staging_rootfs/bin/*
 !cli/staging_rootfs/bin/busybox
+
+# Local data backups
+server/data/*.bak*
