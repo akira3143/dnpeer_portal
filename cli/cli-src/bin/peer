@@ -599,7 +599,7 @@ do_edit() {
 # ---------- peer ls ----------
 do_ls() {
   require_login || return 1
-  local resp line id asn node status port stage
+  local resp line id asn node status port stage source disp_id disp_asn disp_port color
   echo -e "\033[90mFetching peering sessions...\033[0m"
   resp=$(api_get "/api/sessions")
   if ! echo "$resp" | grep -q '"success":true'; then
@@ -608,8 +608,8 @@ do_ls() {
   fi
 
   echo ""
-  printf "%-28s %-12s %-12s %-8s %s\n" "SESSION ID" "ASN" "NODE" "PORT" "STATUS"
-  printf "\033[90m-------------------------------------------------------------------------------\033[0m\n"
+  printf "%-32s %-12s %-12s %-8s %s\n" "SESSION ID" "ASN" "NODE" "PORT" "STATUS"
+  printf "\033[90m------------------------------------------------------------------------------------\033[0m\n"
 
   echo "$resp" | sed 's/},{/}\n{/g' | grep '"id"' | while IFS= read -r line; do
     id=${line#*\"id\":\"}; id=${id%%\"*}
@@ -618,6 +618,25 @@ do_ls() {
     port=${line#*\"hostPort\":}; port=${port%%,*}; port=${port%%\}*}
     status=${line#*\"status\":\"}; status=${status%%\"*}
     stage=${line#*\"stageText\":\"}; [ "$stage" = "$line" ] && stage="$status"; stage=${stage%%\"*}
+    source=${line#*\"source\":\"}; [ "$source" = "$line" ] && source=""; source=${source%%\"*}
+
+    # Format discovered sessions
+    disp_id="$id"
+    if [ "$source" = "discovered" ]; then
+      disp_id="[auto] $id"
+    fi
+
+    if [ -z "$asn" ] || [ "$asn" = "null" ] || [ "$asn" = "$line" ]; then
+      disp_asn="unknown"
+    else
+      disp_asn="AS$asn"
+    fi
+
+    if [ -z "$port" ] || [ "$port" = "null" ] || [ "$port" = "0" ] || [ "$port" = "$line" ]; then
+      disp_port="N/A"
+    else
+      disp_port="$port"
+    fi
 
     # Colorize status based on transparent BGP state
     color="\033[0m"
@@ -632,7 +651,7 @@ do_ls() {
         color="\033[90m" ;;
     esac
 
-    printf "%-28s %-12s %-12s %-8s %b%s\033[0m\n" "$id" "AS$asn" "$node" "$port" "$color" "$stage"
+    printf "%-32s %-12s %-12s %-8s %b%s\033[0m\n" "$disp_id" "$disp_asn" "$node" "$disp_port" "$color" "$stage"
   done
   echo ""
   echo -e "\033[90mTip: Run 'peer edit' to update an existing session; 'peer new' for a new one.\033[0m"

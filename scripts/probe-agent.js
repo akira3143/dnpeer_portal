@@ -37,6 +37,7 @@ export function parseWgDump(dumpOutput) {
       const iface = parts[0];
       const pubkey = parts[1];
       const endpoint = parts[3] === '(none)' ? '' : parts[3];
+      const allowedIps = (parts[4] && parts[4] !== '(none)') ? parts[4] : '';
       const latestHandshake = parseInt(parts[5], 10) || 0;
       const rxBytes = parseInt(parts[6], 10) || 0;
       const txBytes = parseInt(parts[7], 10) || 0;
@@ -45,6 +46,7 @@ export function parseWgDump(dumpOutput) {
           interface: iface,
           publicKey: pubkey,
           endpoint,
+          allowedIps,
           latestHandshake,
           rxBytes,
           txBytes
@@ -53,6 +55,56 @@ export function parseWgDump(dumpOutput) {
     }
   }
   return { ports, peers };
+}
+
+/**
+ * Parse WireGuard .conf files in wgDir to extract AllowedIPs and Endpoint for each peer.
+ * Fail-safe: returns empty object on any read/parse error.
+ */
+export function parseWireguardConfigs(wgDir = '/etc/wireguard') {
+  const configPeers = {};
+  if (!fs.existsSync(wgDir)) return configPeers;
+
+  try {
+    const files = fs.readdirSync(wgDir);
+    for (const file of files) {
+      if (!file.endsWith('.conf')) continue;
+      const fullPath = path.join(wgDir, file);
+      try {
+        const content = fs.readFileSync(fullPath, 'utf8');
+        let currentPeer = null;
+        for (const line of content.split('\n')) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#')) continue;
+          if (/^\[peer\]/i.test(trimmed)) {
+            currentPeer = {};
+            continue;
+          }
+          if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+            currentPeer = null;
+            continue;
+          }
+          if (currentPeer) {
+            const eqIdx = trimmed.indexOf('=');
+            if (eqIdx !== -1) {
+              const key = trimmed.slice(0, eqIdx).trim().toLowerCase();
+              const val = trimmed.slice(eqIdx + 1).trim();
+              if (key === 'publickey') {
+                currentPeer.publicKey = val;
+                configPeers[val] = currentPeer;
+              } else if (key === 'allowedips') {
+                currentPeer.allowedIps = val;
+              } else if (key === 'endpoint') {
+                currentPeer.endpoint = val;
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+  } catch {}
+
+  return configPeers;
 }
 
 export function parseSsOutput(ssOutput, existingPorts = []) {
@@ -312,6 +364,18 @@ export async function collectAndReport(options = {}) {
   // 1. Collect WireGuard Listen Ports and Peers: wg show all dump
   const wgDumpOutput = options.mockWgDump !== undefined ? options.mockWgDump : runCmd('wg show all dump');
   const { ports, peers } = parseWgDump(wgDumpOutput);
+
+  // 1b. Parse /etc/wireguard/*.conf to supplement AllowedIPs & Endpoint
+  const targetWgDir = wgDir || process.env.WG_DIR || '/etc/wireguard';
+  const configPeers = options.mockConfigPeers !== undefined ? options.mockConfigPeers : parseWireguardConfigs(targetWgDir);
+  for (const peer of peers) {
+    if (!peer.allowedIps && configPeers[peer.publicKey]?.allowedIps) {
+      peer.allowedIps = configPeers[peer.publicKey].allowedIps;
+    }
+    if (!peer.endpoint && configPeers[peer.publicKey]?.endpoint) {
+      peer.endpoint = configPeers[peer.publicKey].endpoint;
+    }
+  }
 
   // 2. Collect Non-WG System Ports: ss -tulnp
   const ssOutput = options.mockSsOutput !== undefined ? options.mockSsOutput : runCmd('ss -tulnp');

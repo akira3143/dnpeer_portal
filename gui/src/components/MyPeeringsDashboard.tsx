@@ -291,9 +291,19 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                         <div className="text-base font-bold text-white font-sans flex items-center gap-2">
                           <CountryFlag code={sess.nodeId} className="w-5 h-3.5 object-cover rounded-[2px]" />
                           <span>{sess.nodeId}</span>
+                          {sess.source === 'discovered' && (
+                            <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                              auto
+                            </span>
+                          )}
                         </div>
-                        <div className="text-[11px] font-mono text-cyan-400/80 mt-0.5">
-                          {sess.id}
+                        <div className="text-[11px] font-mono text-cyan-400/80 mt-0.5 flex items-center gap-2">
+                          <span>{sess.id}</span>
+                          {sess.asn ? (
+                            <span className="text-slate-400 font-sans text-[10px]">· AS{sess.asn}</span>
+                          ) : (
+                            <span className="text-amber-400/80 font-sans text-[10px]">· unknown ASN</span>
+                          )}
                         </div>
                       </div>
 

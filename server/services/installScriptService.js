@@ -108,11 +108,11 @@ EOF
 
 cat << 'EOF' > /etc/systemd/system/dn42-probe.timer
 [Unit]
-Description=Periodic fallback probe reporter (every 5 minutes)
+Description=Periodic fallback probe reporter (every 1 minute)
 
 [Timer]
 OnBootSec=1min
-OnUnitActiveSec=5min
+OnUnitActiveSec=1min
 Unit=dn42-probe.service
 
 [Install]
@@ -121,11 +121,12 @@ EOF
 
 cat << 'EOF' > /etc/systemd/system/dn42-probe.path
 [Unit]
-Description=Watch /etc/wireguard for changes and trigger probe agent
+Description=Watch /etc/wireguard and /etc/bird for changes and trigger probe agent
 After=network.target
 
 [Path]
 PathModified=/etc/wireguard
+PathModified=/etc/bird
 Unit=dn42-probe.service
 
 [Install]
@@ -143,7 +144,7 @@ systemctl start dn42-probe.service || true
 echo ""
 echo "==============================================================================="
 echo "Deployment complete!"
-echo "  Probe agent will monitor /etc/wireguard and report heartbeats every 5 mins."
+echo "  Probe agent will monitor /etc/wireguard and /etc/bird and report heartbeats every 1 min."
 echo "  Check status with: systemctl status dn42-probe.service"
 echo "==============================================================================="
 `;

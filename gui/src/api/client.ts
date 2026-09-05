@@ -59,8 +59,9 @@ export interface NetworkMeta {
 
 export interface PeeringSession {
   id: string;
-  asn: number;
-  asName: string;
+  source?: 'portal' | 'discovered' | string;
+  asn?: number | null;
+  asName?: string;
   mnt?: string;
   nodeId: string;
   status: string;

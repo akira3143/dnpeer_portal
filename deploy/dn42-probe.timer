@@ -1,9 +1,9 @@
 [Unit]
-Description=Periodic fallback probe reporter (every 5 minutes)
+Description=Periodic fallback probe reporter (every 1 minute)
 
 [Timer]
 OnBootSec=1min
-OnUnitActiveSec=5min
+OnUnitActiveSec=1min
 Unit=dn42-probe.service
 
 [Install]

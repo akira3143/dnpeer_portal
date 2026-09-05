@@ -3,9 +3,9 @@ import { getActiveConfig } from '../storage/configLoader.js';
 import { PortLedgerService } from './portLedgerService.js';
 import { SessionService } from './sessionService.js';
 import { StatusTracker } from './statusTracker.js';
-import { parseBgpProtocols } from '../../scripts/probe-agent.js';
+import { parseBgpProtocols, parseWireguardConfigs } from '../../scripts/probe-agent.js';
 
-export { parseBgpProtocols };
+export { parseBgpProtocols, parseWireguardConfigs };
 
 export function parseWgDump(dumpOutput) {
   const ports = [];
@@ -28,6 +28,7 @@ export function parseWgDump(dumpOutput) {
       const iface = parts[0];
       const pubkey = parts[1];
       const endpoint = parts[3] === '(none)' ? '' : parts[3];
+      const allowedIps = (parts[4] && parts[4] !== '(none)') ? parts[4] : '';
       const latestHandshake = parseInt(parts[5], 10) || 0;
       const rxBytes = parseInt(parts[6], 10) || 0;
       const txBytes = parseInt(parts[7], 10) || 0;
@@ -36,6 +37,7 @@ export function parseWgDump(dumpOutput) {
           interface: iface,
           publicKey: pubkey,
           endpoint,
+          allowedIps,
           latestHandshake,
           rxBytes,
           txBytes
@@ -140,6 +142,16 @@ export class ScannerService {
     const { ports, peers } = parseWgDump(wgOutput);
     const systemPorts = parseSsOutput(ssOutput, ports);
     const bgpSessions = parseBgpProtocols(bgpOutput || '');
+
+    const configPeers = options.mockConfigPeers !== undefined ? options.mockConfigPeers : parseWireguardConfigs();
+    for (const peer of peers) {
+      if (!peer.allowedIps && configPeers[peer.publicKey]?.allowedIps) {
+        peer.allowedIps = configPeers[peer.publicKey].allowedIps;
+      }
+      if (!peer.endpoint && configPeers[peer.publicKey]?.endpoint) {
+        peer.endpoint = configPeers[peer.publicKey].endpoint;
+      }
+    }
 
     if (ports.length === 0 && systemPorts.length === 0 && peers.length === 0 && bgpSessions.length === 0) {
       return {

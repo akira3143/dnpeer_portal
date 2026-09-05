@@ -1,9 +1,10 @@
 [Unit]
-Description=Watch /etc/wireguard for changes and trigger probe agent
+Description=Watch /etc/wireguard and /etc/bird for changes and trigger probe agent
 After=network.target
 
 [Path]
 PathModified=/etc/wireguard
+PathModified=/etc/bird
 Unit=dn42-probe.service
 
 [Install]

@@ -14,6 +14,27 @@ import { NotificationService } from './notificationService.js';
 // overwrite each other with stale table snapshots.
 const sessionCommitQueues = new Map();
 
+/**
+ * Extract IPv4, IPv6 ULA, and Link-Local addresses from WireGuard AllowedIPs string
+ */
+export function parseAllowedIps(allowedIpsStr = '') {
+  const result = { ipv4: '', ipv6Ula: '', linkLocal: '' };
+  if (!allowedIpsStr || typeof allowedIpsStr !== 'string') return result;
+
+  const parts = allowedIpsStr.split(/[,;\s]+/).map(p => p.trim()).filter(Boolean);
+  for (const part of parts) {
+    const cleanIp = part.replace(/\/\d+$/, '');
+    if (/^(?:172\.(?:2[0-9]|3[0-1])|10\.)/.test(cleanIp) || /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(cleanIp)) {
+      if (!result.ipv4) result.ipv4 = cleanIp;
+    } else if (/^fe80:/i.test(cleanIp)) {
+      if (!result.linkLocal) result.linkLocal = cleanIp;
+    } else if (/^fd[0-9a-fA-F:]+/i.test(cleanIp)) {
+      if (!result.ipv6Ula) result.ipv6Ula = cleanIp;
+    }
+  }
+  return result;
+}
+
 export class SessionService {
   static withSessionCommitLock(fn) {
     const key = 'sessions';
@@ -36,6 +57,44 @@ export class SessionService {
   static async saveSessions(sessions) {
     const filePath = this.getSessionsPath();
     return FileStore.writeJson(filePath, sessions);
+  }
+
+  static getIgnoredPeersPath() {
+    return path.join(getDataDir(), 'ignored_peers.json');
+  }
+
+  static async getIgnoredPeers() {
+    const filePath = this.getIgnoredPeersPath();
+    const list = await FileStore.readJson(filePath, []);
+    return Array.isArray(list) ? list : [];
+  }
+
+  static async saveIgnoredPeers(list) {
+    const filePath = this.getIgnoredPeersPath();
+    return FileStore.writeJson(filePath, list);
+  }
+
+  static async isPeerIgnored(nodeId, publicKey) {
+    if (!publicKey || !nodeId) return false;
+    const list = await this.getIgnoredPeers();
+    const normKey = publicKey.trim();
+    return list.some(item => item.nodeId === nodeId && item.publicKey === normKey);
+  }
+
+  static async addIgnoredPeer(nodeId, publicKey, reason = 'removed_by_user') {
+    if (!publicKey || !nodeId) return false;
+    const list = await this.getIgnoredPeers();
+    const normKey = publicKey.trim();
+    if (!list.some(item => item.nodeId === nodeId && item.publicKey === normKey)) {
+      list.push({
+        nodeId,
+        publicKey: normKey,
+        ignoredAt: new Date().toISOString(),
+        reason
+      });
+      await this.saveIgnoredPeers(list);
+    }
+    return true;
   }
 
   static async getSessionById(id) {
@@ -92,19 +151,26 @@ export class SessionService {
   }
 
   static async _commitSession({ norm, rawPayload, targetNode, config, registryInfo }) {
-    // 3. Check for existing session on the same node for this ASN
+    // 3. Check for existing session on the same node for this ASN or matching WireGuard pubkey
     const sessions = await this.getSessions();
-    const existingIndex = sessions.findIndex(s => s.asn === norm.asn && s.nodeId === norm.nodeId);
-    const isNew = existingIndex === -1;
+    let existingIndex = sessions.findIndex(s => s.asn === norm.asn && s.nodeId === norm.nodeId);
+    if (existingIndex === -1 && norm.publicKey) {
+      existingIndex = sessions.findIndex(s => s.nodeId === norm.nodeId && s.peering?.publicKey === norm.publicKey);
+    }
+    const isDiscovered = existingIndex !== -1 && sessions[existingIndex].source === 'discovered';
+    const isNew = existingIndex === -1 || isDiscovered;
+
+    // Clear any tombstone for this public key if it was previously ignored
+    if (norm.publicKey) {
+      const ignoredList = await this.getIgnoredPeers();
+      const filtered = ignoredList.filter(item => !(item.nodeId === norm.nodeId && item.publicKey === norm.publicKey));
+      if (filtered.length !== ignoredList.length) {
+        await this.saveIgnoredPeers(filtered);
+      }
+    }
 
     let sessionId = '';
     if (isNew) {
-      let registryInfo = null;
-      try {
-        registryInfo = await AuthService.getAsnRegistryInfo(norm.asn);
-      } catch {
-        // Fallback to AS tag if registry is offline/uninitialized
-      }
       let mntTag = '';
       if (registryInfo?.maintainer) {
         mntTag = registryInfo.maintainer.replace(/-(?:MNT|DN42)$/i, '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -178,6 +244,7 @@ export class SessionService {
     const now = new Date().toISOString();
     const newSession = {
       id: sessionId,
+      source: 'portal',
       asn: norm.asn,
       asName: registryInfo?.asName || `AS${norm.asn}`,
       mnt: AuthService.simplifyMnt(registryInfo?.maintainer) || '',
@@ -284,17 +351,29 @@ export class SessionService {
     // Release port in ledger
     await PortLedgerService.releaseSessionPort(session.nodeId, sessionId);
 
+    // Record tombstone if session has a WireGuard public key (prevents probe resurrection)
+    if (session.peering?.publicKey) {
+      await this.addIgnoredPeer(
+        session.nodeId,
+        session.peering.publicKey,
+        session.source === 'discovered' ? 'discovered_deleted' : 'session_deleted'
+      );
+    }
+
     sessions.splice(sessionIndex, 1);
     await this.saveSessions(sessions);
 
-    // Fire async Telegram deletion notification
-    NotificationService.notifySessionDeletion(session).catch(() => {});
+    // Fire async Telegram deletion notification only for portal-managed sessions
+    if (session.source !== 'discovered') {
+      NotificationService.notifySessionDeletion(session).catch(() => {});
+    }
 
     return { success: true, message: `Session ${sessionId} removed successfully` };
   }
 
   /**
    * Update runtime state from probe merge (WireGuard metrics via pubkey, BGP state via Node + ASN)
+   * Includes Round 25 auto-discovery for stock pre-existing peers (source: 'discovered').
    */
   static async updateRuntimePeers(nodeId, reportedData = [], optionalBgpSessions = []) {
     const sessions = await this.getSessions();
@@ -310,7 +389,7 @@ export class SessionService {
       bgpSessions = Array.isArray(reportedData.bgpSessions) ? reportedData.bgpSessions : [];
     }
 
-    // 1. WireGuard Telemetry Correlation (Pubkey driven) - reference info only, NEVER determines status
+    // 1. WireGuard Telemetry Correlation (Pubkey driven) for existing sessions
     for (const peer of reportedPeers) {
       const session = sessions.find(s => s.nodeId === nodeId && s.peering?.publicKey === peer.publicKey);
       if (session) {
@@ -319,31 +398,166 @@ export class SessionService {
         session.runtime.endpoint = peer.endpoint || session.runtime.endpoint || '';
         session.runtime.rxBytes = peer.rxBytes || 0;
         session.runtime.txBytes = peer.txBytes || 0;
+        if (peer.interface) {
+          session.peering = session.peering || {};
+          session.peering.interface = peer.interface;
+        }
+        if (session.source === 'discovered' && peer.allowedIps) {
+          session.peering = session.peering || {};
+          const parsed = parseAllowedIps(peer.allowedIps);
+          if (!session.peering.ipv4 && parsed.ipv4) session.peering.ipv4 = parsed.ipv4;
+          if (!session.peering.ipv6Ula && parsed.ipv6Ula) session.peering.ipv6Ula = parsed.ipv6Ula;
+          if (!session.peering.linkLocal && parsed.linkLocal) session.peering.linkLocal = parsed.linkLocal;
+          session.peering.allowedIps = peer.allowedIps;
+        }
         updated = true;
       }
     }
 
-    // 2. BGP Connectivity Correlation (Node + ASN driven) - Single source of truth for session status
+    // 2. Stock Peer Auto-Discovery (Round 25, 方案 A)
+    // For reported real peers whose pubkey does not match any existing session on this node:
+    for (const peer of reportedPeers) {
+      if (!peer.publicKey) continue;
+      const existing = sessions.find(s => s.nodeId === nodeId && s.peering?.publicKey === peer.publicKey);
+      if (existing) continue;
+
+      // Check if peer has been tombstoned/ignored on this node
+      if (await this.isPeerIgnored(nodeId, peer.publicKey)) {
+        continue;
+      }
+
+      // Correlate ASN from BGP data
+      let matchedAsn = null;
+      let matchedBgp = null;
+
+      if (bgpSessions && bgpSessions.length > 0) {
+        // Priority 1: Match BGP session by interface name
+        if (peer.interface) {
+          matchedBgp = bgpSessions.find(b =>
+            b.name && (
+              b.name.toLowerCase() === peer.interface.toLowerCase() ||
+              b.name.toLowerCase().includes(peer.interface.toLowerCase()) ||
+              peer.interface.toLowerCase().includes(b.name.toLowerCase())
+            )
+          );
+
+          // Priority 2: Extract ASN digits from interface name (e.g. dn42_3143 or as4242423143)
+          if (!matchedBgp) {
+            const m = peer.interface.match(/(?:as|asn|peer|p|dn42|_|^)(\d{4,10})/i);
+            if (m) {
+              const parsedNum = parseInt(m[1], 10);
+              const targetAsn = (parsedNum < 10000 && parsedNum > 0) ? (4242420000 + parsedNum) : parsedNum;
+              matchedBgp = bgpSessions.find(b => b.asn === targetAsn || b.cleanAsn === targetAsn || b.asn === parsedNum);
+              if (!matchedBgp) {
+                matchedAsn = targetAsn;
+              }
+            }
+          }
+        }
+
+        // Priority 3: If still unmatched, check if there's an unused BGP session on this node
+        if (!matchedBgp && !matchedAsn) {
+          const usedAsns = new Set(sessions.filter(s => s.nodeId === nodeId && s.asn).map(s => s.asn));
+          const candidateBgp = bgpSessions.filter(b => (b.cleanAsn || b.asn) && !usedAsns.has(b.cleanAsn || b.asn));
+          if (candidateBgp.length === 1) {
+            matchedBgp = candidateBgp[0];
+          }
+        }
+      }
+
+      if (matchedBgp) {
+        matchedAsn = matchedBgp.cleanAsn || matchedBgp.asn || matchedAsn;
+      }
+
+      const parsedAddrs = parseAllowedIps(peer.allowedIps || '');
+      const nodeTag = nodeId.toLowerCase().replace(/[^a-z0-9]/g, '_');
+      const pubShort = peer.publicKey.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toLowerCase();
+      const baseId = matchedAsn ? `disc_${nodeTag}_as${matchedAsn}` : `disc_${nodeTag}_${pubShort}`;
+      let discId = baseId;
+      let counter = 1;
+      while (sessions.some(s => s.id === discId)) {
+        discId = `${baseId}_${counter++}`;
+      }
+
+      const now = new Date().toISOString();
+      const newDiscSession = {
+        id: discId,
+        source: 'discovered',
+        asn: matchedAsn || null,
+        asName: matchedAsn ? `AS${matchedAsn}` : 'Unknown Peer',
+        mnt: '',
+        nodeId: nodeId,
+        status: 'pending',
+        createdAt: now,
+        updatedAt: now,
+        contact: '',
+        peering: {
+          publicKey: peer.publicKey,
+          endpoint: peer.endpoint || '',
+          ipv4: parsedAddrs.ipv4 || '',
+          ipv6Ula: parsedAddrs.ipv6Ula || '',
+          linkLocal: parsedAddrs.linkLocal || '',
+          listenPort: null,
+          clientPort: null,
+          interface: peer.interface || '',
+          allowedIps: peer.allowedIps || '',
+          mtu: 1420
+        },
+        assigned: {
+          hostPort: null,
+          interface: peer.interface || ''
+        },
+        runtime: {
+          stage: 1,
+          stageText: 'Discovered peer',
+          latestHandshake: peer.latestHandshake || 0,
+          endpoint: peer.endpoint || '',
+          rxBytes: peer.rxBytes || 0,
+          txBytes: peer.txBytes || 0,
+          bgpState: 'Pending'
+        }
+      };
+
+      sessions.push(newDiscSession);
+      updated = true;
+    }
+
+    // 3. BGP Connectivity Correlation (Node + ASN driven) - Single source of truth for session status
     if (bgpSessions && bgpSessions.length > 0) {
       const nodeSessions = sessions.filter(s => s.nodeId === nodeId);
       for (const session of nodeSessions) {
         if (!session.runtime) session.runtime = {};
         const sessionAsn = session.asn;
 
-        const bgp = bgpSessions.find(b => {
-          if (b.asn && sessionAsn) {
-            if (b.asn === sessionAsn) return true;
-            if (b.cleanAsn === sessionAsn) return true;
-            if (sessionAsn % 10000 === b.asn) return true;
-            if (sessionAsn % 100000 === b.asn) return true;
+        let bgp = null;
+        if (sessionAsn) {
+          bgp = bgpSessions.find(b => {
+            if (b.asn && sessionAsn) {
+              if (b.asn === sessionAsn) return true;
+              if (b.cleanAsn === sessionAsn) return true;
+              if (sessionAsn % 10000 === b.asn) return true;
+              if (sessionAsn % 100000 === b.asn) return true;
+            }
+            if (b.name && sessionAsn) {
+              const strAsn = String(sessionAsn);
+              const strTail = String(sessionAsn % 10000);
+              if (b.name.includes(strAsn) || b.name.includes(strTail)) return true;
+            }
+            return false;
+          });
+        } else if (session.source === 'discovered' && session.peering?.interface) {
+          bgp = bgpSessions.find(b =>
+            b.name && (
+              b.name.toLowerCase() === session.peering.interface.toLowerCase() ||
+              b.name.toLowerCase().includes(session.peering.interface.toLowerCase()) ||
+              session.peering.interface.toLowerCase().includes(b.name.toLowerCase())
+            )
+          );
+          if (bgp && (bgp.cleanAsn || bgp.asn)) {
+            session.asn = bgp.cleanAsn || bgp.asn;
+            session.asName = `AS${session.asn}`;
           }
-          if (b.name && sessionAsn) {
-            const strAsn = String(sessionAsn);
-            const strTail = String(sessionAsn % 10000);
-            if (b.name.includes(strAsn) || b.name.includes(strTail)) return true;
-          }
-          return false;
-        });
+        }
 
         if (bgp) {
           // BGP state transparent pass-through
@@ -377,11 +591,17 @@ export class SessionService {
           }
           updated = true;
         } else {
-          // Node reported BGP sessions, but this ASN does not exist in birdc protocols
           session.runtime.bgpState = 'Pending';
-          session.runtime.stageText = 'Awaiting BGP Config';
-          if (session.status === 'active') {
+          if (session.source === 'discovered') {
+            session.runtime.stageText = session.runtime.latestHandshake > 0
+              ? 'Discovered (Handshake OK, No BGP)'
+              : 'Discovered (Awaiting BGP)';
             session.status = 'pending';
+          } else {
+            session.runtime.stageText = 'Awaiting BGP Config';
+            if (session.status === 'active') {
+              session.status = 'pending';
+            }
           }
           updated = true;
         }
