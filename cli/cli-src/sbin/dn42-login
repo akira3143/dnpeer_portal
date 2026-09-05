@@ -53,10 +53,16 @@ enter_shell() {
   # Resolve identity display name: MNT simplified (AKIRA-MNT -> akira)
   id_resp=$(api_get "/api/auth/me")
   if echo "$id_resp" | grep -q '"success":true'; then
-    an=$(json_field "$id_resp" asName)
-    if [ -n "$an" ]; then
-      mnt=$(echo "$an" | tr '[:upper:]' '[:lower:]' | sed 's/-mnt$//; s/-dn42$//')
-      [ -n "$mnt" ] && disp="$mnt"
+    # Identity display name: mntner simplified (AKI001-MNT -> aki001)
+    mnt=$(json_field "$id_resp" mnt)
+    if [ -n "$mnt" ]; then
+      disp="$mnt"
+    else
+      an=$(json_field "$id_resp" asName)
+      if [ -n "$an" ]; then
+        mnt=$(echo "$an" | tr '[:upper:]' '[:lower:]' | sed 's/-mnt$//; s/-dn42$//')
+        [ -n "$mnt" ] && disp="$mnt"
+      fi
     fi
   fi
   echo ""

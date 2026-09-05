@@ -54,7 +54,7 @@ PersistentKeepalive = 25
       const message = `${actionText}
 ━━━━━━━━━━━━━━━━━━
 • <b>ASN</b>: <code>AS${escapeHtml(session.asn)}</code>
-• <b>AS Name</b>: <code>${escapeHtml(session.asName || 'DN42 Member')}</code>
+• <b>AS Name</b>: <code>${escapeHtml(session.mnt || session.asName || 'DN42 Member')}</code>
 • <b>Node</b>: <code>${escapeHtml(session.nodeId)}</code> (${escapeHtml(node.name || '')})
 • <b>PeerPort (Host)</b>: <code>${escapeHtml(hostPort)}</code>
 • <b>ListenPort (Client)</b>: <code>${escapeHtml(clientPort)}</code>
@@ -113,7 +113,7 @@ PersistentKeepalive = 25
       const message = `🗑️ <b>Peering Session Revoked / Deleted</b>
 ━━━━━━━━━━━━━━━━━━
 • <b>ASN</b>: <code>AS${escapeHtml(session.asn)}</code>
-• <b>AS Name</b>: <code>${escapeHtml(session.asName || 'DN42 Member')}</code>
+• <b>AS Name</b>: <code>${escapeHtml(session.mnt || session.asName || 'DN42 Member')}</code>
 • <b>Node</b>: <code>${escapeHtml(session.nodeId)}</code> (${escapeHtml(node.name || '')})
 • <b>Released Port</b>: <code>${escapeHtml(hostPort)}</code>
 • <b>WireGuard PubKey</b>: <code>${escapeHtml(session.peering?.publicKey || '')}</code>

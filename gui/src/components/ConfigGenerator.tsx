@@ -33,7 +33,7 @@ import {
 interface ConfigGeneratorProps {
   nodes: NetworkMeta['nodes'];
   network: NetworkMeta['network'];
-  user: { asn: number; asName: string; role: string } | null;
+  user: { asn: number; asName: string; mnt?: string; role: string } | null;
   targetNodeId?: string;
   onOpenAuthModal: () => void;
   editingSession?: PeeringSession | null;

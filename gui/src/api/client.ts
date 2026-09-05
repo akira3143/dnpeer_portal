@@ -61,6 +61,7 @@ export interface PeeringSession {
   id: string;
   asn: number;
   asName: string;
+  mnt?: string;
   nodeId: string;
   status: string;
   createdAt: string;

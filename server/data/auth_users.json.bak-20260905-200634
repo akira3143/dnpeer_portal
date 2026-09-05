@@ -1,0 +1,18 @@
+{
+  "4141410001": {
+    "asn": 4141410001,
+    "asName": "TEST-AS1",
+    "role": "user",
+    "salt": "a04e3f23ee776c02fc4b54972c8961c4",
+    "hash": "584fbcf1ec5fd26a2f9a7053e7d5999023d0eaee6450f1c5a7ba3f5583b5a8ba5c6a46d3597f7844e360d7718e7f22a507a45cd141d8ce7b0b08adb1292ed23e",
+    "createdAt": "2026-08-28T00:00:00.000Z"
+  },
+  "4242423143": {
+    "asn": 4242423143,
+    "asName": "AKILAB-MNT",
+    "role": "admin",
+    "salt": "80ce66504a08b6d9fac2e654181578dc",
+    "hash": "e44319f4a993c2673839e7dd8b9b622fcbf1370a38b142b245464b754ffb78a705c35fa6b148a0dbb8bff2dc716413cc4ed23a442ec9a76c683fc61a193c4853",
+    "createdAt": "2026-08-28T00:00:00.000Z"
+  }
+}

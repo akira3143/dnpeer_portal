@@ -19,7 +19,7 @@ interface NavbarProps {
   activeTab: 'home' | 'peer' | 'sessions' | 'lg';
   onSelectTab: (tab: 'home' | 'peer' | 'sessions' | 'lg') => void;
   network: NetworkMeta['network'];
-  user: { asn: number; asName: string; role: string } | null;
+  user: { asn: number; asName: string; mnt?: string; role: string } | null;
   onOpenAuthModal: () => void;
   onOpenPasswordModal: () => void;
   onLogout: () => void;
@@ -169,7 +169,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               {userMenuOpen && (
                 <div className="absolute right-0 mt-2 w-52 rounded-2xl bg-[#0b0f19] border border-white/10 shadow-2xl p-2 z-50 text-xs font-sans space-y-1 animate-in fade-in">
                   <div className="px-3 py-2 border-b border-white/5">
-                    <div className="font-semibold text-white truncate">{user.asName || `AS${user.asn}`}</div>
+                    <div className="font-semibold text-white truncate">{user.mnt || user.asName || `AS${user.asn}`}</div>
                     <div className="text-[10px] text-slate-500 font-mono">Role: {user.role}</div>
                   </div>
 

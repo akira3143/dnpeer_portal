@@ -154,6 +154,8 @@ export class AuthController {
     return successEnvelope({
       asn: user.asn,
       asName: user.asName,
+      maintainer: user.maintainer || '',
+      mnt: user.mnt || '',
       role: user.role,
       isAdmin: user.role === 'admin'
     }, 200);

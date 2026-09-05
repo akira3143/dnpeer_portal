@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 interface MyPeeringsDashboardProps {
-  user: { asn: number; asName: string; role: string } | null;
+  user: { asn: number; asName: string; mnt?: string; role: string } | null;
   onOpenAuthModal: () => void;
   onRequestPeering?: () => void;
   onEditSession?: (session: PeeringSession) => void;

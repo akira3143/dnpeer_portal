@@ -95,7 +95,7 @@ const AppContent: React.FC = () => {
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<'home' | 'peer' | 'sessions' | 'lg'>('home');
   const [meta, setMeta] = useState<NetworkMeta>(DEFAULT_META);
-  const [user, setUser] = useState<{ asn: number; asName: string; role: string } | null>(null);
+  const [user, setUser] = useState<{ asn: number; asName: string; mnt?: string; role: string } | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string>('JP-TYO-1');

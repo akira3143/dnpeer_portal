@@ -101,7 +101,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       showToast(
         res.data.user?.role === 'admin' || res.data.role === 'admin'
           ? `👑 Welcome Admin ${res.data.user?.asn || res.data.asn}`
-          : `🎉 Welcome back, AS${res.data.user?.asn || res.data.asn} (${res.data.user?.asName || res.data.asName || 'DN42 User'})`,
+          : `🎉 Welcome back, AS${res.data.user?.asn || res.data.asn} (${res.data.user?.mnt || res.data.user?.asName || res.data.asName || 'DN42 User'})`,
         'success'
       );
     } catch (err: any) {

@@ -46,6 +46,17 @@ export function verifyPassword(password, salt, storedHash) {
 }
 
 export class AuthService {
+  /**
+   * Simplify a mntner handle for display: AKI001-MNT -> aki001 (lowercase, no suffix)
+   */
+  static simplifyMnt(raw) {
+    if (!raw || typeof raw !== 'string') return '';
+    return raw
+      .replace(/-(?:MNT|DN42)$/i, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+  }
+
   // Deprecated: registry_cache.json is retired in Round 20
   static getRegistryPath() {
     return path.join(getDataDir(), 'registry_cache.json');
@@ -268,9 +279,13 @@ export class AuthService {
     const config = getActiveConfig();
     const isAdmin = Array.isArray(config.admins) && config.admins.includes(cleanAsn);
 
+    const maintainer = registryInfo?.maintainer || '';
+    const mnt = this.simplifyMnt(maintainer) || this.simplifyMnt(registryInfo?.asName) || `as${cleanAsn}`;
+
     const tokenData = this.signJwt({
       asn: cleanAsn,
       asName: registryInfo.asName || `AS${cleanAsn}`,
+      mnt,
       role: isAdmin ? 'admin' : 'user'
     }, rememberMe);
 
@@ -279,6 +294,8 @@ export class AuthService {
       data: {
         asn: cleanAsn,
         asName: registryInfo.asName || `AS${cleanAsn}`,
+        maintainer,
+        mnt,
         role: isAdmin ? 'admin' : 'user',
         ...tokenData
       }
@@ -313,9 +330,19 @@ export class AuthService {
     const config = getActiveConfig();
     const isAdmin = userEntry.role === 'admin' || (Array.isArray(config.admins) && config.admins.includes(userAsn));
 
+    let maintainer = '';
+    try {
+      const regInfo = await this.getAsnRegistryInfo(userAsn);
+      maintainer = regInfo?.maintainer || '';
+    } catch {
+      // Registry offline/uninitialized: fall back to asName-derived tag
+    }
+    const mnt = this.simplifyMnt(maintainer) || this.simplifyMnt(userEntry.asName) || `as${userAsn}`;
+
     const tokenData = this.signJwt({
       asn: userAsn,
       asName: userEntry.asName || `AS${userAsn}`,
+      mnt,
       role: isAdmin ? 'admin' : 'user'
     }, rememberMe);
 
@@ -324,6 +351,8 @@ export class AuthService {
       data: {
         asn: userAsn,
         asName: userEntry.asName || `AS${userAsn}`,
+        maintainer,
+        mnt,
         role: isAdmin ? 'admin' : 'user',
         ...tokenData
       }

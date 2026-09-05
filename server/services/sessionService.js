@@ -180,6 +180,7 @@ export class SessionService {
       id: sessionId,
       asn: norm.asn,
       asName: registryInfo?.asName || `AS${norm.asn}`,
+      mnt: AuthService.simplifyMnt(registryInfo?.maintainer) || '',
       nodeId: norm.nodeId,
       status: 'pending',
       createdAt: isNew ? now : sessions[existingIndex].createdAt,
