@@ -621,17 +621,8 @@ do_ls() {
     status=${line#*\"status\":\"}; status=${status%%\"*}
     stage=${line#*\"stageText\":\"}; [ "$stage" = "$line" ] && stage="$status"; stage=${stage%%\"*}
 
-    # 1. Target node display name
-    node_name=""
-    if [ -f /tmp/dn42_nodes ]; then
-      while IFS='|' read -r _nid _nname _nend; do
-        if [ "$_nid" = "$node" ]; then
-          node_name="$_nname"
-          break
-        fi
-      done < /tmp/dn42_nodes
-    fi
-    [ -z "$node_name" ] && node_name="$node"
+    # 1. Node column shows node ID (compact); name lookup dropped per user preference
+    node_name="$node"
 
     # 2. Session ID (discovered session uses tunnel interface name, no [auto] prefix)
     disp_id="$id"
