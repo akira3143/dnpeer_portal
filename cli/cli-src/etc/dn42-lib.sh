@@ -88,8 +88,13 @@ json_field() {
       out = ""
       for (i = 1; i <= length(rest); i++) {
         c = substr(rest, i, 1)
-        prev = (i > 1) ? substr(rest, i-1, 1) : ""
-        if (c == "\"" && prev != "\\") break
+        if (c == "\\") {
+          n = substr(rest, i+1, 1)
+          if (n == "\"" || n == "\\") { out = out n; i++; continue }
+          out = out c
+          continue
+        }
+        if (c == "\"") break
         out = out c
       }
       print out
