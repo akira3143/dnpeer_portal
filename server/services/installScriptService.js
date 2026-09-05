@@ -56,7 +56,7 @@ LG_URL="https://github.com/xddxdd/bird-lg-go/releases/download/v1.4.8/bird-lgpro
 LG_TMP=$(mktemp -d)
 if curl -fsSL "\${LG_URL}" -o "\${LG_TMP}/lg.tar.gz" 2>/dev/null; then
   tar -xzf "\${LG_TMP}/lg.tar.gz" -C "\${LG_TMP}"
-  LG_BIN=$(find "\${LG_TMP}" -maxdepth 2 -type f \( -name "bird-lgproxy-go" -o -name "bird-lgproxy" -o -name "lgproxy-go" \) | head -n 1)
+  LG_BIN=$(find "\${LG_TMP}" -maxdepth 2 -type f \\( -name "bird-lgproxy-go" -o -name "bird-lgproxy" -o -name "lgproxy-go" \\) | head -n 1)
   if [ -n "\${LG_BIN}" ]; then
     install -m 755 "\${LG_BIN}" /usr/local/bin/bird-lgproxy
     echo "    bird-lgproxy installed from Go release."
