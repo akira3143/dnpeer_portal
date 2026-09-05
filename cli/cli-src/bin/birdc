@@ -72,20 +72,20 @@ if [ -z "$raw_args" ]; then
       show\ protocols*)
         _sub=$(echo "$line" | sed 's/^show[ \t]*protocols[ \t]*//')
         if [ -n "$_sub" ]; then
-          "$LG_BIN" protocols "$_sub" -n "$target_node"
+          sh "$LG_BIN" protocols "$_sub" -n "$target_node"
         else
-          "$LG_BIN" protocols -n "$target_node"
+          sh "$LG_BIN" protocols -n "$target_node"
         fi
         ;;
       show\ status*)
-        "$LG_BIN" status -n "$target_node"
+        sh "$LG_BIN" status -n "$target_node"
         ;;
       show\ route*)
         _sub=$(echo "$line" | sed 's/^show[ \t]*route[ \t]*//')
         if [ -n "$_sub" ]; then
-          "$LG_BIN" route "$_sub" -n "$target_node"
+          sh "$LG_BIN" route "$_sub" -n "$target_node"
         else
-          "$LG_BIN" route -n "$target_node"
+          sh "$LG_BIN" route -n "$target_node"
         fi
         ;;
       *)
@@ -101,32 +101,32 @@ case "$raw_args" in
   show\ protocols*)
     sub_target=$(echo "$raw_args" | sed 's/^show[ \t]*protocols[ \t]*//')
     if [ -n "$sub_target" ]; then
-      exec "$LG_BIN" protocols "$sub_target" -n "$target_node"
+      exec sh "$LG_BIN" protocols "$sub_target" -n "$target_node"
     else
-      exec "$LG_BIN" protocols -n "$target_node"
+      exec sh "$LG_BIN" protocols -n "$target_node"
     fi
     ;;
   show\ status*)
-    exec "$LG_BIN" status -n "$target_node"
+    exec sh "$LG_BIN" status -n "$target_node"
     ;;
   show\ route*)
     sub_target=$(echo "$raw_args" | sed 's/^show[ \t]*route[ \t]*//')
     if [ -n "$sub_target" ]; then
-      exec "$LG_BIN" route "$sub_target" -n "$target_node"
+      exec sh "$LG_BIN" route "$sub_target" -n "$target_node"
     else
-      exec "$LG_BIN" route -n "$target_node"
+      exec sh "$LG_BIN" route -n "$target_node"
     fi
     ;;
   protocols|bgp)
-    exec "$LG_BIN" protocols -n "$target_node"
+    exec sh "$LG_BIN" protocols -n "$target_node"
     ;;
   status)
-    exec "$LG_BIN" status -n "$target_node"
+    exec sh "$LG_BIN" status -n "$target_node"
     ;;
   route)
-    exec "$LG_BIN" route -n "$target_node"
+    exec sh "$LG_BIN" route -n "$target_node"
     ;;
   *)
-    exec "$LG_BIN" $raw_args -n "$target_node"
+    exec sh "$LG_BIN" $raw_args -n "$target_node"
     ;;
 esac

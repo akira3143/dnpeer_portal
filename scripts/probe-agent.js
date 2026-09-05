@@ -97,10 +97,19 @@ export function parseBgpProtocols(bgpOutput) {
     const since = parts[4] || '';
     const info = parts.slice(5).join(' ');
 
-    let bgpState = 'Idle';
-    if (parts.length >= 6) {
-      bgpState = parts[5].replace(/[^A-Za-z0-9_-]/g, '');
-    } else {
+    // BGP state word is located in the Info column, but the Since column can be
+    // a combined date+time (two whitespace-separated tokens) depending on the
+    // BIRD "time format" config. Scan for a known state word instead of a fixed index.
+    const KNOWN_STATES = ['Established', 'Connect', 'Active', 'Idle', 'Start'];
+    let bgpState = '';
+    for (let i = 4; i < parts.length; i++) {
+      const candidate = parts[i].replace(/[^A-Za-z0-9_-]/g, '');
+      if (KNOWN_STATES.includes(candidate)) {
+        bgpState = candidate;
+        break;
+      }
+    }
+    if (!bgpState) {
       if (state.toLowerCase() === 'up') bgpState = 'Established';
       else if (state.toLowerCase() === 'start') bgpState = 'Connect';
       else bgpState = 'Idle';

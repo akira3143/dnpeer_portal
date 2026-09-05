@@ -9,7 +9,20 @@ import { ConfigEngine } from './configEngine.js';
 import { AuthService } from './authService.js';
 import { NotificationService } from './notificationService.js';
 
+// In-process commit mutex: serializes the read-modify-write session table cycle
+// (getSessions -> mutate -> saveSessions) so concurrent submissions cannot
+// overwrite each other with stale table snapshots.
+const sessionCommitQueues = new Map();
+
 export class SessionService {
+  static withSessionCommitLock(fn) {
+    const key = 'sessions';
+    const prev = sessionCommitQueues.get(key) || Promise.resolve();
+    const next = prev.then(() => fn());
+    sessionCommitQueues.set(key, next.catch(() => {}));
+    return next;
+  }
+
   static getSessionsPath() {
     return path.join(getDataDir(), 'peering_sessions.json');
   }
@@ -43,7 +56,7 @@ export class SessionService {
    * Authoritative Peer Submission: Validates, assigns server port, generates configs, persists session
    */
   static async submitPeering(rawPayload) {
-    // 1. Authoritative Format Validation
+    // ---- Lock-free phase: validation, node lookup, registry fetch ----
     const valRes = validatePeeringSubmission(rawPayload);
     if (!valRes.valid) {
       return {
@@ -55,7 +68,6 @@ export class SessionService {
 
     const norm = valRes.normalized;
 
-    // 2. Validate Node ID against active configuration
     const config = getActiveConfig();
     const targetNode = config.nodes.find(n => n.id === norm.nodeId);
     if (!targetNode) {
@@ -66,6 +78,20 @@ export class SessionService {
       };
     }
 
+    let registryInfo = null;
+    try {
+      registryInfo = await AuthService.getAsnRegistryInfo(norm.asn);
+    } catch {
+      // Fallback to AS tag if registry is offline/uninitialized
+    }
+
+    // ---- Serialized commit phase: read-modify-write of the session table ----
+    return this.withSessionCommitLock(() =>
+      this._commitSession({ norm, rawPayload, targetNode, config, registryInfo })
+    );
+  }
+
+  static async _commitSession({ norm, rawPayload, targetNode, config, registryInfo }) {
     // 3. Check for existing session on the same node for this ASN
     const sessions = await this.getSessions();
     const existingIndex = sessions.findIndex(s => s.asn === norm.asn && s.nodeId === norm.nodeId);
@@ -148,14 +174,7 @@ export class SessionService {
       bgpMode: norm.bgpMode
     });
 
-    // 6. Fetch Registry AS Name if available
-    let registryInfo = null;
-    try {
-      registryInfo = await AuthService.getAsnRegistryInfo(norm.asn);
-    } catch {
-      // Fallback if registry is offline/uninitialized
-    }
-
+    // 6. Registry AS Name (already fetched in the lock-free phase)
     const now = new Date().toISOString();
     const newSession = {
       id: sessionId,
