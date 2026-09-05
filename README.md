@@ -39,13 +39,14 @@ journalctl -u dn42-portal -f     # 日志
 
 ### 探针节点（Edge Node: JP-2 / HK-1 / US-LA1）
 
-先在主控生成节点专属安装命令：`dnp probe JP-2`（幂等生成 Token），然后在目标节点执行：
+探针安装命令由**主控动态生成**（含节点专属 Token），无需单独脚本：
 
 ```bash
-sudo PORTAL_MASTER_URL=https://<portal-domain> CLAIM_NODE_ID=JP-2 CLAIM_TOKEN=<token> bash -c "$(curl -fsSL https://raw.githubusercontent.com/akira3143/dnpeer_portal/main/deploy/install-probe.sh)"
+# 在主控执行（Token 幂等生成，可重复执行）
+dnp probe JP-2
 ```
 
-探针每 5 分钟上报：WG 端口、BGP 会话状态（birdc show protocols）、心跳；`/etc/wireguard` 文件变化即时触发。
+复制输出的安装命令，到目标节点执行即可（探针每 5 分钟上报：WG 端口、BGP 会话状态（birdc show protocols）、心跳；`/etc/wireguard` 文件变化即时触发）。
 
 ```bash
 # 卸载（保留身份）
