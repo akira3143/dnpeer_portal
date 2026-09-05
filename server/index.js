@@ -355,12 +355,24 @@ export function createServer() {
       }
 
       if (fs.existsSync(cliFile) && !fs.statSync(cliFile).isDirectory()) {
+        const stat = fs.statSync(cliFile);
         const ext = path.extname(cliFile);
         const mime = MIME_TYPES[ext] || 'application/octet-stream';
+        // Weak ETag from size+mtime: unchanged files get 304, no re-download
+        const etag = `W/"${stat.size.toString(16)}-${Math.floor(stat.mtimeMs).toString(16)}"`;
+        // Third-party vendor assets (4.3MB WASM kernel etc.) rarely change: cache 7 days;
+        // rootfs.dat and app files stay no-cache (revalidated via ETag each load).
+        const cacheControl = cliRel.startsWith('vendor/') ? 'public, max-age=604800' : 'no-cache';
         const headers = {
           'Content-Type': mime,
-          'Cache-Control': 'no-cache, no-store, must-revalidate'
+          'Content-Length': stat.size,
+          'Cache-Control': cacheControl,
+          'ETag': etag
         };
+        if (req.headers['if-none-match'] === etag) {
+          res.writeHead(304, { ETag: etag, 'Cache-Control': cacheControl });
+          return res.end();
+        }
         if (ext === '.dat' || ext === '.wasm') {
           const filename = path.basename(cliFile);
           headers['Content-Disposition'] = `inline; filename="${filename}"`;
