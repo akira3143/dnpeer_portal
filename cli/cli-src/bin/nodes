@@ -57,6 +57,8 @@ echo "$meta" | sed 's/},{/}\n{/g' | grep '"endpointDomain"' | while IFS= read -r
   if [ -n "$pblock" ]; then
     pblock=${pblock%%\}*}"}"
     nlat=${pblock#*\"latencyMs\":}; nlat=${nlat%%,*}; nlat=${nlat%%\}*}
+    # latencyMs must be a pure number; garbage from missing fields gets dropped
+    case "$nlat" in ''|*[!0-9]*) nlat="" ;; esac
     case "$pblock" in *\"online\":true*|*\"status\":\"online\"*) nup="1" ;; esac
   fi
 
