@@ -74,7 +74,7 @@ Wants=bird.service
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/bird-lgproxy -listen 127.0.0.1:5000
+ExecStart=/usr/local/bin/bird-lgproxy --listen 127.0.0.1:5000 --bird /run/bird/bird.ctl
 Restart=always
 RestartSec=5s
 

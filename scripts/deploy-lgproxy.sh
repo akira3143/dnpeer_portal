@@ -67,7 +67,7 @@ Wants=bird.service
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/bird-lgproxy -listen ${LISTEN_ADDR}:${LISTEN_PORT}
+ExecStart=/usr/local/bin/bird-lgproxy --listen ${LISTEN_ADDR}:${LISTEN_PORT} --bird /run/bird/bird.ctl
 Restart=always
 RestartSec=5s
 
