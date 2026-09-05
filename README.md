@@ -5,30 +5,65 @@
 
 ---
 
-## 🚀 部署与运行手册 (Deployment Runbook)
+## 🚀 一键安装 (One-Click Install)
 
 > [!TIP]
-> **免构建直接运行 (Zero-Build Clone-and-Run)**  
-> 本项目所有前端与 CLI 预构建产物（`gui/dist/`、`cli/public/rootfs.dat` 以及完整 WebAssembly 运行环境 `cli/public/vendor/`）**均已纳入版本控制**。  
-> 生产服务器拉取仓库后，**无需在服务器端运行任何 `npm run build`**，彻底避免轻量 VPS 因现场编译耗尽 CPU/内存。直接安装生产依赖即可上线。
+> **免构建直接运行 (Zero-Build Clone-and-Run)**
+> 本项目所有前端与 CLI 预构建产物（`gui/dist/`、`cli/public/rootfs.dat` 以及完整 WebAssembly 运行环境 `cli/public/vendor/`）**均已纳入版本控制**。安装脚本在服务器上**无需任何现场编译**，轻量 VPS 也毫无压力。
 
-### 1. 生产环境极速启动 (Production Quickstart)
+### 主控服务（Master Server）
 
 ```bash
-# 1. 克隆仓库
-git clone https://github.com/your-org/dn42-portal.git
-cd dn42-portal
+# 安装（自动：克隆仓库 → 依赖 → .env → DN42 registry → 管理员账号 → systemd 启动）
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/akira3143/dnpeer_portal/main/deploy/install.sh)"
 
-# 2. 仅安装生产运行依赖（无需编译工具链）
+# 或本地执行
+sudo bash deploy/install.sh
+```
+
+安装脚本会交互式引导：管理员 ASN（默认 4242423143）+ 管理员密码；`.env` 自动生成 JWT 密钥（Telegram 通知参数安装后手动补填）。
+
+```bash
+# 卸载（保留数据）
+sudo bash deploy/uninstall.sh
+# 卸载（连同全部数据彻底清除）
+sudo bash deploy/uninstall.sh --purge
+```
+
+服务管理：
+```bash
+systemctl status dn42-portal     # 状态
+systemctl restart dn42-portal    # 重启
+journalctl -u dn42-portal -f     # 日志
+```
+
+### 探针节点（Edge Node: JP-2 / HK-1 / US-LA1）
+
+先在主控生成节点专属安装命令：`dnp probe JP-2`（幂等生成 Token），然后在目标节点执行：
+
+```bash
+sudo PORTAL_MASTER_URL=https://<portal-domain> CLAIM_NODE_ID=JP-2 CLAIM_TOKEN=<token> bash -c "$(curl -fsSL https://raw.githubusercontent.com/akira3143/dnpeer_portal/main/deploy/install-probe.sh)"
+```
+
+探针每 5 分钟上报：WG 端口、BGP 会话状态（birdc show protocols）、心跳；`/etc/wireguard` 文件变化即时触发。
+
+```bash
+# 卸载（保留身份）
+sudo bash deploy/uninstall-probe.sh
+# 卸载（清除一切）
+sudo bash deploy/uninstall-probe.sh --purge
+```
+
+### 手动部署（可选，不推荐）
+
+```bash
+git clone https://github.com/akira3143/dnpeer_portal.git
+cd dnpeer_portal
 npm ci --omit=dev
-
-# 3. 配置环境与密钥
-cp .env.example .env
-vim .env
-vim portal.config.yaml
-
-# 4. 启动服务 (默认端口 4242)
-npm start
+cp .env.example .env && vim .env          # 至少改 AUTH_JWT_SECRET
+vim portal.config.yaml                    # 节点/隧道信息
+git clone --depth 1 https://git.dn42.dev/dn42/registry server/data/registry
+npm start                                  # 默认端口 4242
 ```
 
 ---
