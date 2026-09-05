@@ -257,7 +257,18 @@ const AppContent: React.FC = () => {
       <Footer
         network={meta.network}
         contacts={meta.contacts}
-        onScrollToLookingGlass={() => setActiveTab('lg')}
+        onScrollToLookingGlass={() => {
+          if (activeTab !== 'home') {
+            setActiveTab('home');
+            setTimeout(() => {
+              const el = document.querySelector('#looking-glass');
+              if (el) el.scrollIntoView({ behavior: 'smooth' });
+            }, 50);
+          } else {
+            const el = document.querySelector('#looking-glass');
+            if (el) el.scrollIntoView({ behavior: 'smooth' });
+          }
+        }}
       />
 
       {/* Modals */}

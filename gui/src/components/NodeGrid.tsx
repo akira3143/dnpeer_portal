@@ -182,7 +182,7 @@ export const NodeGrid: React.FC<NodeGridProps> = ({ nodes, onSelectNode }) => {
                           className="bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 hover:border-cyan-400 text-cyan-300 px-4 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition-all shadow-lg shadow-transparent hover:shadow-cyan-500/10"
                         >
                           <Terminal className="w-3.5 h-3.5" />
-                          <span>Request Peering &middot; <span className="text-cyan-100 font-normal text-[11px]">申请互联</span></span>
+                          <span>Request Peering</span>
                         </button>
                       </div>
                     </div>

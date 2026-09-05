@@ -98,9 +98,14 @@ PersistentKeepalive = 25
       serverEndpointLine = `Endpoint = ${clientEndpoint}:${clientPortNum}\n`;
     }
 
-    const serverWireguardSnippet = `[Peer]
+    const serverWireguardSnippet = `[Interface]
+PrivateKey = <SERVER_PRIVATE_KEY>
+ListenPort = ${hostPort}
+
+[Peer]
 PublicKey = ${clientPublicKey}
 ${serverEndpointLine}AllowedIPs = ${peerAllowedIps.join(', ')}
+PersistentKeepalive = 25
 `;
 
     return {

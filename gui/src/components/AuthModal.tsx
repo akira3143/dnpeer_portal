@@ -58,10 +58,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       : (osType === 'windows' ? `$HOME\\.ssh\\${rawKeyPath}` : `$HOME/.ssh/${rawKeyPath}`);
 
   const challengeText = challengeData?.challengeText || challengeData?.challenge || '';
+  const namespace = challengeData?.namespace || 'akilab';
 
   const generatedCommand = osType === 'windows'
-    ? `sc $env:TEMP\\dnp '${challengeText}' -NoNewline; ssh-keygen -q -Y sign -n akilab -f "${effectiveKeyPath}" $env:TEMP\\dnp; gc $env:TEMP\\dnp.sig; ri $env:TEMP\\dnp,$env:TEMP\\dnp.sig -ea 0`
-    : `printf '%s' '${challengeText}' > /tmp/dnp && ssh-keygen -q -Y sign -n akilab -f "${effectiveKeyPath}" /tmp/dnp && cat /tmp/dnp.sig && rm -f /tmp/dnp /tmp/dnp.sig`;
+    ? `'${challengeText}' | ssh-keygen -q -Y sign -n ${namespace} -f "${effectiveKeyPath}"`
+    : `printf '%s' '${challengeText}' | ssh-keygen -q -Y sign -n ${namespace} -f "${effectiveKeyPath}"`;
 
   const handleClose = () => {
     onClose();

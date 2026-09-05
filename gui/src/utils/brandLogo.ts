@@ -7,10 +7,14 @@
  * 2. Pity Rule: If the exact same logo has appeared 3 times in a row, the 4th pick
  *    is guaranteed to be different.
  */
+import logo1 from '../assets/logos/logo_1.png';
+import logo2 from '../assets/logos/logo_2.png';
+import logo3 from '../assets/logos/logo_3.png';
+
 export const BRAND_LOGOS = [
-  '/logos/logo_1.png',
-  '/logos/logo_2.png',
-  '/logos/logo_3.png',
+  logo1,
+  logo2,
+  logo3,
 ];
 
 const MAX_CONSECUTIVE_STREAK = 3;

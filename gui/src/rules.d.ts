@@ -19,3 +19,8 @@ declare module '@shared/generated/rules.js' {
   export function validatePort(val: any, isOptional?: boolean): { valid: boolean; value?: number | string; error?: string };
   export function validateMtu(val: any): { valid: boolean; value?: number; error?: string };
 }
+
+declare module '*.png' {
+  const src: string;
+  export default src;
+}

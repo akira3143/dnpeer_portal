@@ -286,6 +286,9 @@ export class SessionService {
     sessions.splice(sessionIndex, 1);
     await this.saveSessions(sessions);
 
+    // Fire async Telegram deletion notification
+    NotificationService.notifySessionDeletion(session).catch(() => {});
+
     return { success: true, message: `Session ${sessionId} removed successfully` };
   }
 

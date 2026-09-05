@@ -10,8 +10,6 @@ import {
   ChevronDown,
   KeyRound,
   LogOut,
-  Zap,
-  Radio,
   Menu,
   X,
   Mail
@@ -114,19 +112,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Layers className="w-3.5 h-3.5" />
-            <span>Overview &middot; <span className="text-slate-400 font-normal text-[11px]">首页</span></span>
-          </button>
-
-          <button
-            onClick={() => onSelectTab('peer')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              activeTab === 'peer'
-                ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 shadow-sm'
-                : 'text-slate-300 hover:text-cyan-300 hover:bg-white/[0.05]'
-            }`}
-          >
-            <Zap className="w-3.5 h-3.5" />
-            <span>Peering &middot; <span className="text-slate-400 font-normal text-[11px]">申请</span></span>
+            <span>Overview</span>
           </button>
 
           <button
@@ -138,19 +124,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Activity className="w-3.5 h-3.5" />
-            <span>Sessions &middot; <span className="text-slate-400 font-normal text-[11px]">会话</span></span>
-          </button>
-
-          <button
-            onClick={() => onSelectTab('lg')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              activeTab === 'lg'
-                ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 shadow-sm'
-                : 'text-slate-300 hover:text-cyan-300 hover:bg-white/[0.05]'
-            }`}
-          >
-            <Radio className="w-3.5 h-3.5" />
-            <span>Looking Glass</span>
+            <span>Sessions</span>
           </button>
 
           <a
@@ -159,7 +133,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hover:text-cyan-300 hover:bg-white/[0.05] transition-all cursor-pointer"
           >
             <Mail className="w-3.5 h-3.5" />
-            <span>Contact &middot; <span className="text-slate-400 font-normal text-[11px]">联络</span></span>
+            <span>Contact</span>
           </a>
         </nav>
 
@@ -202,17 +176,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <button
                     onClick={() => {
                       setUserMenuOpen(false);
-                      onSelectTab('sessions');
-                    }}
-                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-white/5 text-slate-200 hover:text-cyan-300 flex items-center gap-2 cursor-pointer"
-                  >
-                    <Activity className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>My Peerings</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setUserMenuOpen(false);
                       onOpenPasswordModal();
                     }}
                     className="w-full text-left px-3 py-2 rounded-xl hover:bg-white/5 text-slate-200 hover:text-cyan-300 flex items-center gap-2 cursor-pointer"
@@ -220,14 +183,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <KeyRound className="w-3.5 h-3.5 text-amber-400" />
                     <span>Change Password</span>
                   </button>
-
-                  <a
-                    href="/"
-                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-white/5 text-slate-200 hover:text-cyan-300 flex items-center gap-2 font-mono"
-                  >
-                    <Terminal className="w-3.5 h-3.5 text-blue-400" />
-                    <span>Open CLI Terminal</span>
-                  </a>
 
                   <button
                     onClick={() => {
@@ -276,19 +231,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Layers className="w-4 h-4" />
-            <span>Overview &middot; <span className="text-slate-400 font-normal text-xs">首页</span></span>
-          </button>
-          <button
-            onClick={() => {
-              setMobileMenuOpen(false);
-              onSelectTab('peer');
-            }}
-            className={`w-full text-left px-3 py-2 rounded-xl flex items-center gap-2 ${
-              activeTab === 'peer' ? 'bg-cyan-500/20 text-cyan-300 font-semibold' : 'text-slate-300'
-            }`}
-          >
-            <Zap className="w-4 h-4" />
-            <span>Peering &middot; <span className="text-slate-400 font-normal text-xs">互联申请</span></span>
+            <span>Overview</span>
           </button>
           <button
             onClick={() => {
@@ -300,26 +243,14 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Activity className="w-4 h-4" />
-            <span>Sessions &middot; <span className="text-slate-400 font-normal text-xs">我的会话</span></span>
-          </button>
-          <button
-            onClick={() => {
-              setMobileMenuOpen(false);
-              onSelectTab('lg');
-            }}
-            className={`w-full text-left px-3 py-2 rounded-xl flex items-center gap-2 ${
-              activeTab === 'lg' ? 'bg-cyan-500/20 text-cyan-300 font-semibold' : 'text-slate-300'
-            }`}
-          >
-            <Radio className="w-4 h-4" />
-            <span>Looking Glass</span>
+            <span>Sessions</span>
           </button>
           <a
             href="#contact"
             onClick={handleContactClick}
-            className="block w-full text-left px-3 py-2 rounded-xl text-slate-300"
+            className="block w-full text-left px-3 py-2 rounded-xl text-slate-300 hover:text-cyan-300 transition-colors"
           >
-            Contact &middot; <span className="text-slate-400 font-normal text-xs">联络</span>
+            <span>Contact</span>
           </a>
         </div>
       )}

@@ -270,6 +270,20 @@ export function createServer() {
         }
       }
 
+      // Direct Brand Logos Hosting (/logos/*)
+      if (pathname.startsWith('/logos/') && method === 'GET') {
+        const logoRel = pathname.slice('/logos/'.length);
+        const logoFile = path.resolve(ROOT_DIR, 'gui/public/logos', logoRel);
+        if (fs.existsSync(logoFile) && !fs.statSync(logoFile).isDirectory()) {
+          const ext = path.extname(logoFile);
+          res.writeHead(200, {
+            'Content-Type': MIME_TYPES[ext] || 'image/png',
+            'Cache-Control': 'no-cache, no-store, must-revalidate'
+          });
+          return fs.createReadStream(logoFile).pipe(res);
+        }
+      }
+
       // -------------------------------------------------------------
       // Static Hosting: Web GUI (/gui or custom guiPath) & WASM CLI (/)
       // -------------------------------------------------------------

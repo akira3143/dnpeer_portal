@@ -118,13 +118,14 @@ export class AuthService {
     const config = getActiveConfig();
     const namespace = config.network.shortName || 'akilab';
 
-    // Zero-trace signing commands
-    const sshPowershell = `sc $env:TEMP\\dnp '${challengeText}' -NoNewline; ssh-keygen -q -Y sign -n ${namespace} -f "$HOME\\.ssh\\id_ed25519" $env:TEMP\\dnp; gc $env:TEMP\\dnp.sig; ri $env:TEMP\\dnp,$env:TEMP\\dnp.sig -ea 0`;
-    const sshLinux = `printf '%s' '${challengeText}' > /tmp/dnp && ssh-keygen -q -Y sign -n ${namespace} -f "$HOME/.ssh/id_ed25519" /tmp/dnp && cat /tmp/dnp.sig && rm -f /tmp/dnp /tmp/dnp.sig`;
+    // Zero-trace pipe signing commands (no temp files created on user machines)
+    const sshPowershell = `'${challengeText}' | ssh-keygen -q -Y sign -n ${namespace} -f "$HOME\\.ssh\\id_ed25519"`;
+    const sshLinux = `printf '%s' '${challengeText}' | ssh-keygen -q -Y sign -n ${namespace} -f "$HOME/.ssh/id_ed25519"`;
 
     const challengeData = {
       asn: cleanAsn,
       challengeText,
+      namespace,
       expiresAt: Date.now() + (expiresInSeconds * 1000),
       expiresInSeconds,
       authTypes: ['ssh'],
@@ -156,12 +157,10 @@ export class AuthService {
       }
 
       const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dnp-verify-'));
-      const msgFile = path.join(tempDir, 'msg.txt');
       const sigFile = path.join(tempDir, 'msg.txt.sig');
       const allowedKeysFile = path.join(tempDir, 'allowed_signers');
 
       try {
-        fs.writeFileSync(msgFile, challengeText, 'utf8');
         fs.writeFileSync(sigFile, signatureArmored.trim(), 'utf8');
 
         const config = getActiveConfig();
@@ -175,25 +174,39 @@ export class AuthService {
 
         fs.writeFileSync(allowedKeysFile, signersContent, 'utf8');
 
-        const res = spawnSync('ssh-keygen', [
-          '-Y', 'verify',
-          '-f', allowedKeysFile,
-          '-I', namespace,
-          '-n', namespace,
-          '-s', sigFile
-        ], { input: challengeText, encoding: 'utf8', timeout: 5000 });
+        // Test raw challenge, CRLF (PowerShell string pipe), and LF (sh echo pipe)
+        const candidates = [challengeText, challengeText + '\r\n', challengeText + '\n'];
+        let lastError = 'Signature verification failed';
+        let verifiedOutput = null;
+
+        for (const candidate of candidates) {
+          const res = spawnSync('ssh-keygen', [
+            '-Y', 'verify',
+            '-f', allowedKeysFile,
+            '-I', namespace,
+            '-n', namespace,
+            '-s', sigFile
+          ], { input: candidate, encoding: 'utf8', timeout: 5000 });
+
+          if (res.status === 0) {
+            verifiedOutput = res.stdout;
+            break;
+          } else {
+            lastError = res.stderr || res.stdout || 'invalid signature';
+          }
+        }
 
         try {
           fs.rmSync(tempDir, { recursive: true, force: true });
         } catch {}
 
-        if (res.status !== 0) {
-          return resolve({
-            success: false,
-            error: `Signature verification failed: ${res.stderr || res.stdout || 'invalid signature'}`
-          });
+        if (verifiedOutput !== null) {
+          return resolve({ success: true, output: verifiedOutput });
         }
-        return resolve({ success: true, output: res.stdout });
+        return resolve({
+          success: false,
+          error: `Signature verification failed: ${lastError}`
+        });
       } catch (err) {
         try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
         resolve({ success: false, error: err.message });

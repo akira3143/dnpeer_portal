@@ -9,7 +9,7 @@ interface HeroTelemetryProps {
   onExploreNodes?: () => void;
 }
 
-export const HeroTelemetry: React.FC<HeroTelemetryProps> = ({ network, onSelectTab, onExploreNodes }) => {
+export const HeroTelemetry: React.FC<HeroTelemetryProps> = ({ network, onSelectTab: _onSelectTab, onExploreNodes }) => {
   const { copyToClipboard } = useToast();
 
   const handleExploreClick = (e: React.MouseEvent) => {
@@ -67,7 +67,10 @@ export const HeroTelemetry: React.FC<HeroTelemetryProps> = ({ network, onSelectT
             </a>
             <button
               type="button"
-              onClick={() => onSelectTab && onSelectTab('lg')}
+              onClick={() => {
+                const el = document.querySelector('#looking-glass');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              }}
               className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs sm:text-sm font-medium transition-all inline-flex items-center gap-1.5 cursor-pointer"
             >
               <span>Looking Glass</span>

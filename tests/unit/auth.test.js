@@ -69,7 +69,7 @@ descr:      No keys registered
     } catch {}
   });
 
-  await t.test('creates challenge with 5min TTL and flat/nested zero-trace commands', async () => {
+  await t.test('creates challenge with 5min TTL and zero-trace pipe commands', async () => {
     const challenge = await AuthService.createChallenge(4242423143);
     assert.equal(challenge.asn, 4242423143);
     assert.ok(challenge.challengeText.startsWith('akilab:4242423143:'));
@@ -79,8 +79,10 @@ descr:      No keys registered
     assert.ok(challenge.commandPowershell);
     assert.equal(challenge.commandLinux, challenge.commands.ssh_linux);
     assert.equal(challenge.commandPowershell, challenge.commands.ssh_powershell);
-    assert.ok(challenge.commandLinux.includes('ssh-keygen'));
-    assert.ok(challenge.commandPowershell.includes('ssh-keygen'));
+    assert.ok(challenge.commandLinux.includes('| ssh-keygen'));
+    assert.ok(challenge.commandPowershell.includes('| ssh-keygen'));
+    assert.ok(!challenge.commandLinux.includes('/tmp'));
+    assert.ok(!challenge.commandPowershell.includes('$env:TEMP'));
   });
 
   await t.test('signs and verifies JWT with correct claims', () => {
@@ -153,6 +155,22 @@ descr:      No keys registered
       signature: validSignature
     });
     assert.equal(replayRes.success, false, 'Replayed challenge must be rejected');
+  });
+
+  await t.test('P0-1: SSH verification succeeds with CRLF pipe-signed challenge (PowerShell pipe)', async () => {
+    const challenge = await AuthService.createChallenge(4242423143);
+    const msgFile = path.join(tempDir, 'msg_crlf.txt');
+    fs.writeFileSync(msgFile, challenge.challengeText + '\r\n', 'utf8');
+    execFileSync('ssh-keygen', ['-Y', 'sign', '-n', 'akilab', '-f', testKeyPath, msgFile]);
+    const crlfSig = fs.readFileSync(msgFile + '.sig', 'utf8');
+
+    const verifyRes = await AuthService.verifySignature({
+      asn: 4242423143,
+      challengeText: challenge.challengeText,
+      signature: crlfSig
+    });
+    assert.equal(verifyRes.success, true, 'CRLF pipe signature must pass');
+    assert.ok(verifyRes.data.token, 'Must issue JWT token');
   });
 
   await t.test('P0-1: SSH verification rejects missing or forged signature', async () => {
