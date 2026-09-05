@@ -1,6 +1,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { URL, pathToFileURL } from 'node:url';
 
 import { ENV, ROOT_DIR } from './config.js';
@@ -376,6 +377,20 @@ export function createServer() {
         if (ext === '.dat' || ext === '.wasm') {
           const filename = path.basename(cliFile);
           headers['Content-Disposition'] = `inline; filename="${filename}"`;
+        }
+        // Server-side gzip for compressible large assets (wasm/js/dat), skipping
+        // small files and honoring the client's Accept-Encoding. Proxies that
+        // already compressed will see Content-Encoding and pass it through.
+        const acceptEncoding = req.headers['accept-encoding'] || '';
+        const compressible = ['.wasm', '.js', '.dat', '.css', '.html'].includes(ext);
+        if (compressible && stat.size > 1024 && /\bgzip\b/.test(acceptEncoding) && !res.getHeader('Content-Encoding')) {
+          headers['Content-Encoding'] = 'gzip';
+          headers['Vary'] = 'Accept-Encoding';
+          delete headers['Content-Length'];
+          res.writeHead(200, headers);
+          const gzip = zlib.createGzip();
+          gzip.pipe(res);
+          return fs.createReadStream(cliFile).pipe(gzip);
         }
         res.writeHead(200, headers);
         return fs.createReadStream(cliFile).pipe(res);
