@@ -98,9 +98,17 @@ PersistentKeepalive = 25
       serverEndpointLine = `Endpoint = ${clientEndpoint}:${clientPortNum}\n`;
     }
 
+    const serverAddresses = [];
+    if (node.tunnelIpv4) serverAddresses.push(`${node.tunnelIpv4.replace(/\/.*$/, '')}/32`);
+    if (node.tunnelIpv6ULA) serverAddresses.push(`${node.tunnelIpv6ULA.replace(/\/.*$/, '')}/128`);
+    if (node.tunnelIpv6LLA) serverAddresses.push(`${node.tunnelIpv6LLA.replace(/\/.*$/, '')}/64`);
+    const serverAddressLine = serverAddresses.join(', ') || 'fe80::3143/64';
+
     const serverWireguardSnippet = `[Interface]
 PrivateKey = <SERVER_PRIVATE_KEY>
+Address = ${serverAddressLine}
 ListenPort = ${hostPort}
+MTU = ${mtu}
 
 [Peer]
 PublicKey = ${clientPublicKey}
