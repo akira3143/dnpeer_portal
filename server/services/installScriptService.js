@@ -43,12 +43,27 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -y -q || true
 apt-get install -y -q curl nodejs wireguard-tools iproute2 || true
 
-# 2. Setup bird-lgproxy
-echo "[2/5] Setting up bird-lgproxy..."
-if ! command -v bird-lgproxy >/dev/null 2>&1; then
-  apt-get install -y -q bird-lgproxy || {
-    echo "Notice: bird-lgproxy package not found directly via apt; continuing."
-  }
+# 2. Setup bird-lgproxy (prebuilt Go binary, no apt dependency)
+echo "[2/5] Setting up bird-lgproxy (Go binary)..."
+case "$(uname -m)" in
+  x86_64) LG_ARCH="amd64" ;;
+  aarch64) LG_ARCH="arm64" ;;
+  armv7l) LG_ARCH="arm" ;;
+  i386|i686) LG_ARCH="386" ;;
+  *) LG_ARCH="amd64" ;;
+esac
+LG_URL="https://github.com/xddxdd/bird-lg-go/releases/download/v1.4.8/bird-lgproxy-go-v1.4.8-linux-\${LG_ARCH}.tar.gz"
+LG_TMP=$(mktemp -d)
+if curl -fsSL "\${LG_URL}" -o "\${LG_TMP}/lg.tar.gz" 2>/dev/null; then
+  tar -xzf "\${LG_TMP}/lg.tar.gz" -C "\${LG_TMP}"
+  LG_BIN=$(find "\${LG_TMP}" -maxdepth 2 -type f \( -name "bird-lgproxy-go" -o -name "bird-lgproxy" -o -name "lgproxy-go" \) | head -n 1)
+  if [ -n "\${LG_BIN}" ]; then
+    install -m 755 "\${LG_BIN}" /usr/local/bin/bird-lgproxy
+    echo "    bird-lgproxy installed from Go release."
+  fi
+  rm -rf "\${LG_TMP}"
+else
+  echo "Notice: bird-lgproxy download failed; LG-based BGP queries will be unavailable."
 fi
 
 cat << 'EOF' > /etc/systemd/system/bird-lgproxy.service
