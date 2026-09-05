@@ -57,9 +57,16 @@ if ! command -v dnp >/dev/null 2>&1; then
   npm link --no-fund --no-audit >/dev/null 2>&1 || ln -sf "$INSTALL_DIR/bin/dnp.js" /usr/local/bin/dnp
 fi
 
-# 4. Environment file
+# 4. Real configuration file (portal.config.yaml is NOT tracked in git)
+if [ ! -f "$INSTALL_DIR/portal.config.yaml" ]; then
+  cp "$INSTALL_DIR/portal.config.example.yaml" "$INSTALL_DIR/portal.config.yaml"
+  echo "[4/7] portal.config.yaml created from example. EDIT IT with your real ASN/nodes BEFORE starting the service!"
+  echo "      (The installer continues; fix the config then restart the service.)"
+fi
+
+# 4b. Environment file
 if [ ! -f "$INSTALL_DIR/.env" ]; then
-  echo "[4/7] Generating .env ..."
+  echo "[4b/7] Generating .env ..."
   JWT_SECRET=$(openssl rand -hex 32 2>/dev/null || head -c32 /dev/urandom | xxd -p -c64)
   {
     echo "NODE_ENV=production"

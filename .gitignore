@@ -19,3 +19,6 @@ cli/staging_rootfs/bin/*
 
 # Local data backups
 server/data/*.bak*
+
+# Real configuration (never commit; deploy-time only)
+portal.config.yaml
