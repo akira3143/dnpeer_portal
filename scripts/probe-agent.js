@@ -238,8 +238,8 @@ export function parseBgpProtocols(bgpOutput) {
  */
 export async function queryLocalLgProxy(lgProxyUrl = 'http://127.0.0.1:5000') {
   try {
-    const url = new URL('/api/bird', lgProxyUrl);
-    url.searchParams.set('cmd', 'show protocols all');
+    const url = new URL('/bird', lgProxyUrl);
+    url.searchParams.set('q', 'show protocols all');
 
     const res = await fetch(url.toString(), {
       headers: { 'Accept': 'application/json, text/plain;q=0.9, */*;q=0.8' },
