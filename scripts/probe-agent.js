@@ -132,67 +132,137 @@ export function parseBgpProtocols(bgpOutput) {
   const sessions = [];
   if (!bgpOutput || typeof bgpOutput !== 'string') return sessions;
 
+  let currentSession = null;
+  const KNOWN_STATES = ['Established', 'Connect', 'Active', 'Idle', 'Start'];
+
   for (const line of bgpOutput.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    // Strip BIRD machine-readable numeric code prefix like "1002-" or "2002-" or "0000 "
+    // Strip BIRD machine-readable numeric code prefix like "1002-" or "2002-" or "1006-" or "0000 "
     const cleaned = trimmed.replace(/^[0-9]{4}[- ]/, '').trim();
     const parts = cleaned.split(/\s+/);
-    if (parts.length < 4) continue;
 
-    const name = parts[0];
-    const proto = parts[1];
-    if (proto.toUpperCase() !== 'BGP') continue;
+    // Check if this line is a protocol header line: <name> <proto> <table/state> ...
+    if (parts.length >= 4 && parts[1].toUpperCase() === 'BGP') {
+      const name = parts[0];
+      const proto = 'BGP';
+      const table = parts[2];
+      const state = parts[3];
+      const since = parts[4] || '';
+      const info = parts.slice(5).join(' ');
 
-    const table = parts[2];
-    const state = parts[3];
-    const since = parts[4] || '';
-    const info = parts.slice(5).join(' ');
+      let bgpState = '';
+      for (let i = 4; i < parts.length; i++) {
+        const candidate = parts[i].replace(/[^A-Za-z0-9_-]/g, '');
+        if (KNOWN_STATES.includes(candidate)) {
+          bgpState = candidate;
+          break;
+        }
+      }
+      if (!bgpState) {
+        if (state.toLowerCase() === 'up') bgpState = 'Established';
+        else if (state.toLowerCase() === 'start') bgpState = 'Connect';
+        else bgpState = 'Idle';
+      }
 
-    // BGP state word is located in the Info column, but the Since column can be
-    // a combined date+time (two whitespace-separated tokens) depending on the
-    // BIRD "time format" config. Scan for a known state word instead of a fixed index.
-    const KNOWN_STATES = ['Established', 'Connect', 'Active', 'Idle', 'Start'];
-    let bgpState = '';
-    for (let i = 4; i < parts.length; i++) {
-      const candidate = parts[i].replace(/[^A-Za-z0-9_-]/g, '');
-      if (KNOWN_STATES.includes(candidate)) {
-        bgpState = candidate;
-        break;
+      // Extract ASN from protocol name (as default / fallback)
+      let asn = null;
+      let cleanAsn = null;
+      const mFull = name.match(/424242\d{4}/) || name.match(/(?:as|asn|peer|p|dn42|_|^)(\d{5,10})(?:_|$|[a-z])/i);
+      const mTail = name.match(/(?:as|asn|peer|p|dn42|_|^)(\d{4})(?:_|$|[a-z])/i) || name.match(/(\d{4,10})/);
+
+      const m = mFull || mTail;
+      if (m) {
+        asn = parseInt(m[1] || m[0], 10);
+        cleanAsn = (asn < 10000 && asn > 0) ? (4242420000 + asn) : asn;
+      }
+
+      currentSession = {
+        name,
+        proto: 'BGP',
+        table,
+        state,
+        since,
+        bgpState,
+        info: info || bgpState,
+        asn,
+        cleanAsn,
+        neighborAddress: null,
+        neighborAsn: null
+      };
+      sessions.push(currentSession);
+      continue;
+    }
+
+    // If we are currently inside a BGP session block, parse detailed attributes (from show protocols all)
+    if (currentSession) {
+      // Check if this line is another protocol header (non-BGP, like Device/Direct)
+      if (parts.length >= 4 && parts[1].toUpperCase() !== 'BGP' && ['DEVICE', 'DIRECT', 'STATIC', 'OSPF', 'BABEL', 'KERNEL'].includes(parts[1].toUpperCase())) {
+        currentSession = null;
+        continue;
+      }
+
+      // Neighbor address / Peer IP: e.g. "Neighbor address: 172.20.150.100" or "Peer IP: fe80::3143%dn42_3143"
+      const addrMatch = cleaned.match(/(?:neighbor\s+address|peer\s+(?:ip|address)):\s*([^\s%]+)/i);
+      if (addrMatch) {
+        currentSession.neighborAddress = addrMatch[1].trim().toLowerCase();
+      }
+
+      // Neighbor AS / Peer AS: e.g. "Neighbor AS: 4242423143" or "Peer AS: 4242423143"
+      const asnMatch = cleaned.match(/(?:neighbor\s+as|peer\s+as):\s*(\d+)/i);
+      if (asnMatch) {
+        const parsedAsn = parseInt(asnMatch[1], 10);
+        currentSession.neighborAsn = parsedAsn;
+        currentSession.asn = parsedAsn;
+        currentSession.cleanAsn = (parsedAsn < 10000 && parsedAsn > 0) ? (4242420000 + parsedAsn) : parsedAsn;
+      }
+
+      // BGP state detail line: e.g. "BGP state: Established"
+      const stateMatch = cleaned.match(/bgp\s+state:\s*([A-Za-z]+)/i);
+      if (stateMatch) {
+        const parsedState = stateMatch[1].trim();
+        if (KNOWN_STATES.includes(parsedState)) {
+          currentSession.bgpState = parsedState;
+        }
       }
     }
-    if (!bgpState) {
-      if (state.toLowerCase() === 'up') bgpState = 'Established';
-      else if (state.toLowerCase() === 'start') bgpState = 'Connect';
-      else bgpState = 'Idle';
-    }
-
-    // Extract ASN from protocol name
-    let asn = null;
-    let cleanAsn = null;
-    const mFull = name.match(/424242\d{4}/) || name.match(/(?:as|asn|peer|p|dn42|_|^)(\d{5,10})(?:_|$|[a-z])/i);
-    const mTail = name.match(/(?:as|asn|peer|p|dn42|_|^)(\d{4})(?:_|$|[a-z])/i) || name.match(/(\d{4,10})/);
-
-    const m = mFull || mTail;
-    if (m) {
-      asn = parseInt(m[1] || m[0], 10);
-      cleanAsn = (asn < 10000 && asn > 0) ? (4242420000 + asn) : asn;
-    }
-
-    sessions.push({
-      name,
-      proto: 'BGP',
-      table,
-      state,
-      since,
-      bgpState,
-      info: info || bgpState,
-      asn,
-      cleanAsn
-    });
   }
 
   return sessions;
+}
+
+/**
+ * Query BGP session details via local bird-lgproxy (127.0.0.1:5000)
+ * Uses show protocols all to capture neighbor IPs and states.
+ * Fails safely with empty output if lgproxy is unreachable.
+ */
+export async function queryLocalLgProxy(lgProxyUrl = 'http://127.0.0.1:5000') {
+  try {
+    const url = new URL('/api/bird', lgProxyUrl);
+    url.searchParams.set('cmd', 'protocols all');
+
+    const res = await fetch(url.toString(), {
+      headers: { 'Accept': 'application/json, text/plain;q=0.9, */*;q=0.8' },
+      signal: AbortSignal.timeout(3000)
+    });
+
+    if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        return data.output || data.result || (typeof data === 'string' ? data : '');
+      } else {
+        const text = await res.text();
+        try {
+          const data = JSON.parse(text);
+          return data.output || data.result || (typeof data === 'string' ? data : text);
+        } catch {
+          return text;
+        }
+      }
+    }
+  } catch {}
+  return '';
 }
 
 function runCmd(cmd, options = {}) {
@@ -381,15 +451,11 @@ export async function collectAndReport(options = {}) {
   const ssOutput = options.mockSsOutput !== undefined ? options.mockSsOutput : runCmd('ss -tulnp');
   const systemPorts = parseSsOutput(ssOutput, ports);
 
-  // 3. Collect BGP Session States: birdc show protocols
+  // 3. Collect BGP Session States via local lgproxy (127.0.0.1:5000)
   let bgpOutput = options.mockBgpOutput !== undefined ? options.mockBgpOutput : process.env.MOCK_BGP_OUTPUT;
   if (bgpOutput === undefined) {
-    let rawBgp = runCmd('birdc -r show protocols') || runCmd('birdc show protocols');
-    try {
-      const rawBgp6 = runCmd('birdc6 -r show protocols') || runCmd('birdc6 show protocols');
-      if (rawBgp6) rawBgp += '\n' + rawBgp6;
-    } catch {}
-    bgpOutput = rawBgp;
+    const lgUrl = options.lgProxyUrl || process.env.LG_PROXY_URL || 'http://127.0.0.1:5000';
+    bgpOutput = await queryLocalLgProxy(lgUrl);
   }
   const bgpSessions = parseBgpProtocols(bgpOutput);
 

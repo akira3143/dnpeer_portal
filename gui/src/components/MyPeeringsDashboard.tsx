@@ -276,7 +276,7 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredSessions.map((sess) => {
-              const hostPort = sess.assigned?.hostPort || sess.peering?.listenPort || 'auto';
+              const hostPort = sess.assigned?.hostPort || sess.peering?.listenPort || 0;
               const badge = getStatusBadge(sess);
 
               return (
@@ -291,11 +291,6 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                         <div className="text-base font-bold text-white font-sans flex items-center gap-2">
                           <CountryFlag code={sess.nodeId} className="w-5 h-3.5 object-cover rounded-[2px]" />
                           <span>{sess.nodeId}</span>
-                          {sess.source === 'discovered' && (
-                            <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                              auto
-                            </span>
-                          )}
                         </div>
                         <div className="text-[11px] font-mono text-cyan-400/80 mt-0.5 flex items-center gap-2">
                           <span>{sess.id}</span>

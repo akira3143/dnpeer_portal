@@ -124,17 +124,21 @@ export class ScannerService {
     let bgpOutput = options.mockBgpOutput;
     if (bgpOutput === undefined) {
       try {
-        let rawBgp = execSync('birdc -r show protocols', { encoding: 'utf8', timeout: 5000 }).trim();
+        let rawBgp = execSync('birdc -r show protocols all', { encoding: 'utf8', timeout: 5000 }).trim();
         try {
-          const rawBgp6 = execSync('birdc6 -r show protocols', { encoding: 'utf8', timeout: 5000 }).trim();
+          const rawBgp6 = execSync('birdc6 -r show protocols all', { encoding: 'utf8', timeout: 5000 }).trim();
           if (rawBgp6) rawBgp += '\n' + rawBgp6;
         } catch {}
         bgpOutput = rawBgp;
       } catch {
         try {
-          bgpOutput = execSync('birdc show protocols', { encoding: 'utf8', timeout: 5000 }).trim();
+          bgpOutput = execSync('birdc show protocols all', { encoding: 'utf8', timeout: 5000 }).trim();
         } catch {
-          bgpOutput = '';
+          try {
+            bgpOutput = execSync('birdc show protocols', { encoding: 'utf8', timeout: 5000 }).trim();
+          } catch {
+            bgpOutput = '';
+          }
         }
       }
     }

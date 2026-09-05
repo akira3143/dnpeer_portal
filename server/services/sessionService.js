@@ -157,8 +157,8 @@ export class SessionService {
     if (existingIndex === -1 && norm.publicKey) {
       existingIndex = sessions.findIndex(s => s.nodeId === norm.nodeId && s.peering?.publicKey === norm.publicKey);
     }
-    const isDiscovered = existingIndex !== -1 && sessions[existingIndex].source === 'discovered';
-    const isNew = existingIndex === -1 || isDiscovered;
+    const isExisting = existingIndex !== -1;
+    const isNew = !isExisting;
 
     // Clear any tombstone for this public key if it was previously ignored
     if (norm.publicKey) {
@@ -170,7 +170,7 @@ export class SessionService {
     }
 
     let sessionId = '';
-    if (isNew) {
+    if (!isExisting) {
       let mntTag = '';
       if (registryInfo?.maintainer) {
         mntTag = registryInfo.maintainer.replace(/-(?:MNT|DN42)$/i, '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -426,22 +426,36 @@ export class SessionService {
         continue;
       }
 
-      // Correlate ASN from BGP data
+      // Correlate ASN from BGP data via BGP Neighbor IP <-> WG AllowedIPs bridge
       let matchedAsn = null;
       let matchedBgp = null;
 
       if (bgpSessions && bgpSessions.length > 0) {
-        // Priority 1: Match BGP session by interface name
-        if (peer.interface) {
+        // Priority 1 (Primary Bridge): BGP Neighbor IP <-> WG AllowedIPs
+        const allowedIpsList = (peer.allowedIps || '')
+          .split(/[,;\s]+/)
+          .map(ip => ip.replace(/\/\d+$/, '').replace(/%[a-zA-Z0-9_-]+$/, '').trim().toLowerCase())
+          .filter(Boolean);
+        const allowedSet = new Set(allowedIpsList);
+
+        if (allowedSet.size > 0) {
+          matchedBgp = bgpSessions.find(b => {
+            if (!b.neighborAddress) return false;
+            const normAddr = b.neighborAddress.replace(/\/\d+$/, '').replace(/%[a-zA-Z0-9_-]+$/, '').trim().toLowerCase();
+            return allowedSet.has(normAddr);
+          });
+        }
+
+        // Priority 2: Direct match by WireGuard tunnel interface name
+        if (!matchedBgp && peer.interface) {
           matchedBgp = bgpSessions.find(b =>
             b.name && (
               b.name.toLowerCase() === peer.interface.toLowerCase() ||
-              b.name.toLowerCase().includes(peer.interface.toLowerCase()) ||
-              peer.interface.toLowerCase().includes(b.name.toLowerCase())
+              b.name.toLowerCase() === `dn42_${peer.interface.toLowerCase()}` ||
+              peer.interface.toLowerCase() === `dn42_${b.name.toLowerCase()}`
             )
           );
 
-          // Priority 2: Extract ASN digits from interface name (e.g. dn42_3143 or as4242423143)
           if (!matchedBgp) {
             const m = peer.interface.match(/(?:as|asn|peer|p|dn42|_|^)(\d{4,10})/i);
             if (m) {
@@ -454,15 +468,7 @@ export class SessionService {
             }
           }
         }
-
-        // Priority 3: If still unmatched, check if there's an unused BGP session on this node
-        if (!matchedBgp && !matchedAsn) {
-          const usedAsns = new Set(sessions.filter(s => s.nodeId === nodeId && s.asn).map(s => s.asn));
-          const candidateBgp = bgpSessions.filter(b => (b.cleanAsn || b.asn) && !usedAsns.has(b.cleanAsn || b.asn));
-          if (candidateBgp.length === 1) {
-            matchedBgp = candidateBgp[0];
-          }
-        }
+        // NOTE: Priority 3 greedy matching is deleted per Round 26 mandate (preventing mis-association)
       }
 
       if (matchedBgp) {
@@ -471,8 +477,19 @@ export class SessionService {
 
       const parsedAddrs = parseAllowedIps(peer.allowedIps || '');
       const nodeTag = nodeId.toLowerCase().replace(/[^a-z0-9]/g, '_');
-      const pubShort = peer.publicKey.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toLowerCase();
-      const baseId = matchedAsn ? `disc_${nodeTag}_as${matchedAsn}` : `disc_${nodeTag}_${pubShort}`;
+
+      // Naming & ID: Prefer WireGuard tunnel interface name, fallback to BGP protocol name, never pubkey hash
+      let baseId = '';
+      if (peer.interface && peer.interface !== '(none)') {
+        baseId = peer.interface;
+      } else if (matchedBgp && matchedBgp.name) {
+        baseId = matchedBgp.name;
+      } else if (matchedAsn) {
+        baseId = `dn42_${matchedAsn}`;
+      } else {
+        baseId = `peer_${nodeTag}`;
+      }
+
       let discId = baseId;
       let counter = 1;
       while (sessions.some(s => s.id === discId)) {
@@ -509,7 +526,7 @@ export class SessionService {
         },
         runtime: {
           stage: 1,
-          stageText: 'Discovered peer',
+          stageText: 'pending',
           latestHandshake: peer.latestHandshake || 0,
           endpoint: peer.endpoint || '',
           rxBytes: peer.rxBytes || 0,
@@ -530,7 +547,24 @@ export class SessionService {
         const sessionAsn = session.asn;
 
         let bgp = null;
-        if (sessionAsn) {
+
+        // Bridge A: Match by BGP Neighbor IP <-> WG AllowedIPs
+        const sessionAllowedList = (session.peering?.allowedIps || '')
+          .split(/[,;\s]+/)
+          .map(ip => ip.replace(/\/\d+$/, '').replace(/%[a-zA-Z0-9_-]+$/, '').trim().toLowerCase())
+          .filter(Boolean);
+        const sessionAllowedSet = new Set(sessionAllowedList);
+
+        if (sessionAllowedSet.size > 0) {
+          bgp = bgpSessions.find(b => {
+            if (!b.neighborAddress) return false;
+            const normAddr = b.neighborAddress.replace(/\/\d+$/, '').replace(/%[a-zA-Z0-9_-]+$/, '').trim().toLowerCase();
+            return sessionAllowedSet.has(normAddr);
+          });
+        }
+
+        // Bridge B: Match by session ASN
+        if (!bgp && sessionAsn) {
           bgp = bgpSessions.find(b => {
             if (b.asn && sessionAsn) {
               if (b.asn === sessionAsn) return true;
@@ -545,15 +579,21 @@ export class SessionService {
             }
             return false;
           });
-        } else if (session.source === 'discovered' && session.peering?.interface) {
+        }
+
+        // Bridge C: Match by interface name for discovered session
+        if (!bgp && session.source === 'discovered' && session.peering?.interface) {
           bgp = bgpSessions.find(b =>
             b.name && (
               b.name.toLowerCase() === session.peering.interface.toLowerCase() ||
-              b.name.toLowerCase().includes(session.peering.interface.toLowerCase()) ||
-              session.peering.interface.toLowerCase().includes(b.name.toLowerCase())
+              b.name.toLowerCase() === `dn42_${session.peering.interface.toLowerCase()}` ||
+              session.peering.interface.toLowerCase() === `dn42_${b.name.toLowerCase()}`
             )
           );
-          if (bgp && (bgp.cleanAsn || bgp.asn)) {
+        }
+
+        if (bgp && (bgp.cleanAsn || bgp.asn)) {
+          if (!session.asn) {
             session.asn = bgp.cleanAsn || bgp.asn;
             session.asName = `AS${session.asn}`;
           }
@@ -593,9 +633,7 @@ export class SessionService {
         } else {
           session.runtime.bgpState = 'Pending';
           if (session.source === 'discovered') {
-            session.runtime.stageText = session.runtime.latestHandshake > 0
-              ? 'Discovered (Handshake OK, No BGP)'
-              : 'Discovered (Awaiting BGP)';
+            session.runtime.stageText = 'pending';
             session.status = 'pending';
           } else {
             session.runtime.stageText = 'Awaiting BGP Config';

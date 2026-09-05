@@ -599,7 +599,7 @@ do_edit() {
 # ---------- peer ls ----------
 do_ls() {
   require_login || return 1
-  local resp line id asn node status port stage source disp_id disp_asn disp_port color
+  local resp line id asn node status port stage disp_id disp_asn disp_port color node_name ep ep_port
   echo -e "\033[90mFetching peering sessions...\033[0m"
   resp=$(api_get "/api/sessions")
   if ! echo "$resp" | grep -q '"success":true'; then
@@ -607,8 +607,10 @@ do_ls() {
     return 1
   fi
 
+  ensure_nodes || true
+
   echo ""
-  printf "%-32s %-12s %-12s %-8s %s\n" "SESSION ID" "ASN" "NODE" "PORT" "STATUS"
+  printf "%-26s %-24s %-14s %-8s %s\n" "NODE" "SESSION ID" "ASN" "PORT" "STATUS"
   printf "\033[90m------------------------------------------------------------------------------------\033[0m\n"
 
   echo "$resp" | sed 's/},{/}\n{/g' | grep '"id"' | while IFS= read -r line; do
@@ -618,27 +620,47 @@ do_ls() {
     port=${line#*\"hostPort\":}; port=${port%%,*}; port=${port%%\}*}
     status=${line#*\"status\":\"}; status=${status%%\"*}
     stage=${line#*\"stageText\":\"}; [ "$stage" = "$line" ] && stage="$status"; stage=${stage%%\"*}
-    source=${line#*\"source\":\"}; [ "$source" = "$line" ] && source=""; source=${source%%\"*}
 
-    # Format discovered sessions
-    disp_id="$id"
-    if [ "$source" = "discovered" ]; then
-      disp_id="[auto] $id"
+    # 1. Target node display name
+    node_name=""
+    if [ -f /tmp/dn42_nodes ]; then
+      while IFS='|' read -r _nid _nname _nend; do
+        if [ "$_nid" = "$node" ]; then
+          node_name="$_nname"
+          break
+        fi
+      done < /tmp/dn42_nodes
     fi
+    [ -z "$node_name" ] && node_name="$node"
 
+    # 2. Session ID (discovered session uses tunnel interface name, no [auto] prefix)
+    disp_id="$id"
+
+    # 3. ASN
     if [ -z "$asn" ] || [ "$asn" = "null" ] || [ "$asn" = "$line" ]; then
       disp_asn="unknown"
     else
       disp_asn="AS$asn"
     fi
 
-    if [ -z "$port" ] || [ "$port" = "null" ] || [ "$port" = "0" ] || [ "$port" = "$line" ]; then
-      disp_port="N/A"
-    else
-      disp_port="$port"
+    # 4. Port: parse from endpoint; if not available, fallback to hostPort; if still unreadable, display 0
+    ep=${line#*\"endpoint\":\"}; ep=${ep%%\"*}
+    disp_port=""
+    if [ -n "$ep" ] && [ "$ep" != "$line" ] && echo "$ep" | grep -q ':'; then
+      ep_port=${ep##*:}
+      if echo "$ep_port" | grep -q '^[0-9][0-9]*$' && [ "$ep_port" -gt 0 ]; then
+        disp_port="$ep_port"
+      fi
+    fi
+    if [ -z "$disp_port" ]; then
+      if [ -n "$port" ] && [ "$port" != "null" ] && [ "$port" != "$line" ] && echo "$port" | grep -q '^[0-9][0-9]*$' && [ "$port" -gt 0 ]; then
+        disp_port="$port"
+      else
+        disp_port="0"
+      fi
     fi
 
-    # Colorize status based on transparent BGP state
+    # 5. Status: BGP truth progression (Established/Connect/Idle/pending)
     color="\033[0m"
     case "$stage" in
       *Established*|*active*)
@@ -651,7 +673,7 @@ do_ls() {
         color="\033[90m" ;;
     esac
 
-    printf "%-32s %-12s %-12s %-8s %b%s\033[0m\n" "$disp_id" "$disp_asn" "$node" "$disp_port" "$color" "$stage"
+    printf "%-26s %-24s %-14s %-8s %b%s\033[0m\n" "$node_name" "$disp_id" "$disp_asn" "$disp_port" "$color" "$stage"
   done
   echo ""
   echo -e "\033[90mTip: Run 'peer edit' to update an existing session; 'peer new' for a new one.\033[0m"

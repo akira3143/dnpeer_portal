@@ -167,7 +167,7 @@ AllowedIPs = 10.0.0.2/32
     assert.equal(discovered.asn, null, 'ASN must be null when uncorrelatable');
     assert.equal(discovered.asName, 'Unknown Peer');
     assert.equal(discovered.status, 'pending', 'Initial status is pending');
-    assert.ok(discovered.runtime.stageText.includes('Discovered'));
+    assert.equal(discovered.runtime.stageText, 'pending', 'StageText must be pending when unassociated');
   });
 
   await t.test('6. Deleting discovered session creates tombstone and prevents resurrection', async () => {
