@@ -52,6 +52,11 @@ echo "[3/7] Installing dependencies (npm ci --omit=dev)..."
 cd "$INSTALL_DIR"
 npm ci --omit=dev
 
+# 3b. Register dnp management CLI globally
+if ! command -v dnp >/dev/null 2>&1; then
+  npm link --no-fund --no-audit >/dev/null 2>&1 || ln -sf "$INSTALL_DIR/bin/dnp.js" /usr/local/bin/dnp
+fi
+
 # 4. Environment file
 if [ ! -f "$INSTALL_DIR/.env" ]; then
   echo "[4/7] Generating .env ..."
