@@ -86,10 +86,13 @@ fi
 AUTH_FILE="$INSTALL_DIR/server/data/auth_users.json"
 if [ ! -s "$AUTH_FILE" ]; then
   echo "[6/7] Initializing admin account..."
-  printf "Admin ASN [4242423143]: "
-  read -r ADMIN_ASN
-  ADMIN_ASN="${ADMIN_ASN:-4242423143}"
-  ADMIN_ASN=$(echo "$ADMIN_ASN" | tr -cd '0-9')
+  ADMIN_ASN=""
+  while [ -z "$ADMIN_ASN" ]; do
+    printf "Admin ASN: "
+    read -r ADMIN_ASN
+    ADMIN_ASN=$(echo "$ADMIN_ASN" | tr -cd '0-9')
+    [ -z "$ADMIN_ASN" ] && echo "    Admin ASN is required."
+  done
   printf "Admin password (min 8 chars): "
   stty -echo
   read -r ADMIN_PASS

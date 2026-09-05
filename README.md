@@ -21,7 +21,7 @@ sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/akira3143/dnpeer_po
 sudo bash deploy/install.sh
 ```
 
-安装脚本会交互式引导：管理员 ASN（默认 4242423143）+ 管理员密码；`.env` 自动生成 JWT 密钥（Telegram 通知参数安装后手动补填）。
+安装脚本会交互式引导：管理员 ASN + 管理员密码（ASN 必填、无默认值）；`.env` 自动生成 JWT 密钥（Telegram 通知参数安装后手动补填）。
 
 ```bash
 # 卸载（保留数据）

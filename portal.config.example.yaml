@@ -7,8 +7,8 @@
 guiPath: "/gui"
 
 network:
-  asn: "AS4242423143"
-  asnNumber: 4242423143
+  asn: "AS4242420000"
+  asnNumber: 4242420000
   networkName: "AkiLab DN42 Network"
   shortName: "akilab"
   tagline: "High Performance DN42 Experimental Autonomous System"
@@ -20,7 +20,7 @@ network:
   bgpMode: "MP-BGP + Extended Next Hop (ENH)"
   portFormulaDisplay: "20000 + (ASN % 10000) [Auto-increments +10000 on conflict]"
   lookingGlassUrl: "https://lg.akilab.dn42"
-  dn42WhoisUrl: "https://explorer.burble.com/#/AS4242423143"
+  dn42WhoisUrl: "https://explorer.burble.com/#/AS4242420000"
   lastUpdated: "2026-08-29"
 
 nodes:
@@ -74,4 +74,4 @@ contacts:
     preferred: true
 
 admins:
-  - 4242423143
+  - 4242420000
