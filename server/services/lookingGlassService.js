@@ -53,23 +53,38 @@ export class LookingGlassService {
     }
 
     try {
-      const url = new URL('/api/bird', node.lgProxyUrl);
-      url.searchParams.set('cmd', cleanCmd);
-      if (cleanTarget) url.searchParams.set('target', cleanTarget);
+      // bird-lgproxy (Go/Python) API: /bird?q=<full birdc command>, /traceroute?q=<target>
+      let lgPath = '/bird';
+      let qValue = `show ${cleanCmd}${cleanTarget ? ' ' + cleanTarget : ''}`;
+      if (cleanCmd === 'traceroute') {
+        lgPath = '/traceroute';
+        qValue = cleanTarget || '';
+      }
+      const url = new URL(lgPath, node.lgProxyUrl);
+      url.searchParams.set('q', qValue);
 
       const response = await fetch(url.toString(), {
-        headers: { 'Accept': 'application/json' },
+        headers: { 'Accept': 'text/plain, application/json' },
         signal: AbortSignal.timeout(4000)
       });
 
       if (response.ok) {
-        const data = await response.json();
+        const raw = await response.text();
+        let data = raw;
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            data = parsed.output || parsed.result || JSON.stringify(parsed);
+          }
+        } catch {
+          // plain text output, use as-is
+        }
         return {
           success: true,
           nodeId: node.id,
           command: cleanCmd,
           target: cleanTarget,
-          output: data.output || data.result || JSON.stringify(data)
+          output: data
         };
       }
 
