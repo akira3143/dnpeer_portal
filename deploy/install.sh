@@ -41,7 +41,13 @@ echo "[1/7] Prerequisites OK (node $(node -v), git $(git --version | cut -d' ' -
 # 2. Fetch source (clone or update)
 if [ -d "$INSTALL_DIR/.git" ]; then
   echo "[2/7] Updating existing repository..."
-  git -C "$INSTALL_DIR" pull --ff-only origin main || git -C "$INSTALL_DIR" pull --ff-only origin master
+  if ! git -C "$INSTALL_DIR" pull --ff-only 2>/dev/null; then
+    # History rewrite / diverged branch: hard-reset to remote (local data files
+    # live in gitignored paths and are untouched)
+    echo "    Fast-forward failed, hard-resetting to remote (local data preserved)..."
+    git -C "$INSTALL_DIR" fetch origin
+    git -C "$INSTALL_DIR" reset --hard origin/master 2>/dev/null || git -C "$INSTALL_DIR" reset --hard origin/main
+  fi
 else
   echo "[2/7] Cloning repository to $INSTALL_DIR..."
   git clone "$REPO_URL" "$INSTALL_DIR"
