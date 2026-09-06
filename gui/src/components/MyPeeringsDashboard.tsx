@@ -17,7 +17,12 @@ import {
   Edit3,
   ChevronDown,
   ChevronRight,
-  Copy
+  Copy,
+  Shield,
+  Network,
+  Clock,
+  ArrowDownRight,
+  ArrowUpRight
 } from 'lucide-react';
 
 interface MyPeeringsDashboardProps {
@@ -128,6 +133,25 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
       badgeClass: 'bg-slate-500/10 text-slate-400 border border-slate-500/20',
       dotClass: 'bg-slate-400 animate-pulse'
     };
+  };
+
+  const formatBytes = (bytes?: number): string => {
+    if (!bytes || bytes <= 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+  };
+
+  const formatHandshake = (timestamp?: number): string => {
+    if (!timestamp || timestamp <= 0) return 'Never';
+    const now = Math.floor(Date.now() / 1000);
+    const diff = now - timestamp;
+    if (diff < 0 || diff < 10) return 'Just now';
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
   };
 
   const filteredSessions = useMemo(() => {
@@ -301,7 +325,7 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                       <th className="py-3.5 px-3 w-[120px]">ASN</th>
                       <th className="py-3.5 px-3 w-[110px]">PEERPORT</th>
                       <th className="py-3.5 px-3 w-[110px]">LISTENPORT</th>
-                      <th className="py-3.5 px-3">TUNNEL IP</th>
+                      <th className="py-3.5 px-3 w-[150px]">TRANSFER</th>
                       <th className="py-3.5 px-3 text-center w-[160px]">STATUS</th>
                       <th className="py-3.5 pl-2 pr-4 text-right w-[100px]">ACTION</th>
                     </tr>
@@ -390,29 +414,16 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                               </span>
                             </td>
 
-                            {/* Column 6: Tunnel Addresses (LLA + IPv4) */}
+                            {/* Column 6: Transfer (Rx / Tx Traffic) */}
                             <td className="py-3.5 px-3">
                               <div className="font-mono text-[11px] flex flex-col gap-0.5">
-                                {cleanLla ? (
-                                  <span className="text-slate-300 truncate max-w-[200px]" title={cleanLla}>
-                                    {cleanLla}
-                                  </span>
-                                ) : cleanIpv4 ? (
-                                  <span className="text-slate-300 truncate max-w-[200px]" title={cleanIpv4}>
-                                    {cleanIpv4}
-                                  </span>
-                                ) : (
-                                  <span className="text-slate-500">N/A</span>
-                                )}
-                                <div className="flex items-center gap-2 text-[10px]">
-                                  {cleanLla && cleanIpv4 && (
-                                    <span className="text-emerald-400">{cleanIpv4}</span>
-                                  )}
-                                  {cleanUla && (
-                                    <span className="text-purple-400/80 truncate max-w-[120px]" title={cleanUla}>
-                                      {cleanUla}
-                                    </span>
-                                  )}
+                                <div className="flex items-center gap-1.5 text-cyan-400 font-medium" title={`Received: ${sess.runtime?.rxBytes || 0} bytes`}>
+                                  <ArrowDownRight className="w-3.5 h-3.5 shrink-0" />
+                                  <span>{formatBytes(sess.runtime?.rxBytes)}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-emerald-400/80 text-[10px]" title={`Transmitted: ${sess.runtime?.txBytes || 0} bytes`}>
+                                  <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
+                                  <span>{formatBytes(sess.runtime?.txBytes)}</span>
                                 </div>
                               </div>
                             </td>
@@ -465,98 +476,196 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                           {isExpanded && (
                             <tr className="bg-cyan-950/10 border-b border-cyan-500/20">
                               <td colSpan={8} className="p-4 sm:p-5">
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-mono bg-black/60 p-4 rounded-xl border border-white/5 shadow-inner">
-                                  {/* Col 1: Keys & Endpoint */}
-                                  <div className="space-y-2">
-                                    <div>
-                                      <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans">
-                                        WireGuard Public Key
-                                      </span>
-                                      <div className="flex items-center gap-1.5 text-slate-300 font-mono text-[11px] truncate mt-0.5">
-                                        <span className="truncate">{sess.peering?.publicKey || 'N/A'}</span>
-                                        {sess.peering?.publicKey && (
-                                          <button
-                                            type="button"
-                                            onClick={() => copyToClipboard(sess.peering.publicKey, 'WG PubKey')}
-                                            className="p-1 hover:text-cyan-400 text-slate-500 transition-colors cursor-pointer shrink-0"
-                                            title="Copy Public Key"
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-mono">
+                                  {/* Card 1: Tunnel & Security */}
+                                  <div className="bg-black/60 p-4 rounded-xl border border-white/5 space-y-3.5 flex flex-col justify-between shadow-inner">
+                                    <div className="space-y-3">
+                                      <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                                        <span className="text-slate-400 text-[10px] font-sans uppercase tracking-wider font-semibold flex items-center gap-1.5">
+                                          <Shield className="w-3.5 h-3.5 text-cyan-400" />
+                                          Tunnel & Security
+                                        </span>
+                                        <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-sans font-medium">
+                                          MTU {sess.peering?.mtu || 1420} B
+                                        </span>
+                                      </div>
+
+                                      <div>
+                                        <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans mb-1">
+                                          WireGuard Public Key
+                                        </span>
+                                        <div className="flex items-center justify-between gap-1.5 bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/5">
+                                          <span className="text-slate-300 font-mono text-[11px] truncate select-all" title={sess.peering?.publicKey || 'N/A'}>
+                                            {sess.peering?.publicKey || 'N/A'}
+                                          </span>
+                                          {sess.peering?.publicKey && (
+                                            <button
+                                              type="button"
+                                              onClick={() => copyToClipboard(sess.peering.publicKey, 'WG PubKey')}
+                                              className="p-1 hover:text-cyan-400 text-slate-500 transition-colors cursor-pointer shrink-0"
+                                              title="Copy Public Key"
+                                            >
+                                              <Copy className="w-3 h-3" />
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      <div>
+                                        <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans mb-1">
+                                          WireGuard Endpoint
+                                        </span>
+                                        <div className="text-[11px]">
+                                          {sess.peering?.endpoint ? (
+                                            <span className="inline-block text-cyan-300 font-mono bg-cyan-500/10 px-2.5 py-1 rounded border border-cyan-500/20 max-w-full truncate" title={sess.peering.endpoint}>
+                                              {sess.peering.endpoint}
+                                            </span>
+                                          ) : (
+                                            <span className="inline-block text-slate-400 italic bg-white/5 px-2.5 py-1 rounded border border-white/10">
+                                              Roaming / Dynamic (None)
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="text-[10px] text-slate-500 flex items-center justify-between pt-2.5 border-t border-white/5 font-sans">
+                                      <span>Interface: <code className="text-slate-300 font-mono">{sess.peering?.interface || sess.id}</code></span>
+                                      <span>Created: {new Date(sess.createdAt).toLocaleDateString()}</span>
+                                    </div>
+                                  </div>
+
+                                  {/* Card 2: DN42 Addressing */}
+                                  <div className="bg-black/60 p-4 rounded-xl border border-white/5 space-y-3.5 flex flex-col justify-between shadow-inner">
+                                    <div className="space-y-3">
+                                      <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                                        <span className="text-slate-400 text-[10px] font-sans uppercase tracking-wider font-semibold flex items-center gap-1.5">
+                                          <Network className="w-3.5 h-3.5 text-emerald-400" />
+                                          DN42 Addressing
+                                        </span>
+                                        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-sans font-medium">
+                                          MP-BGP ENH
+                                        </span>
+                                      </div>
+
+                                      <div>
+                                        <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans mb-1">
+                                          Link-Local IPv6 (LLA)
+                                        </span>
+                                        <div className="flex items-center justify-between bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/5">
+                                          <span className="text-slate-200 font-mono text-[11px] select-all">
+                                            {cleanLla || 'N/A'}
+                                          </span>
+                                          {cleanLla && (
+                                            <button
+                                              type="button"
+                                              onClick={() => copyToClipboard(cleanLla, 'Link-Local IPv6')}
+                                              className="p-1 hover:text-cyan-400 text-slate-500 transition-colors cursor-pointer shrink-0"
+                                              title="Copy LLA"
+                                            >
+                                              <Copy className="w-3 h-3" />
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                          <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans mb-1">
+                                            DN42 IPv4
+                                          </span>
+                                          <span className={`block font-mono text-[11px] px-2.5 py-1 rounded border ${
+                                            cleanIpv4
+                                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                              : 'bg-white/5 text-slate-500 border-white/5'
+                                          }`}>
+                                            {cleanIpv4 || 'None'}
+                                          </span>
+                                        </div>
+                                        <div>
+                                          <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans mb-1">
+                                            IPv6 ULA
+                                          </span>
+                                          <span
+                                            className={`block font-mono text-[11px] px-2.5 py-1 rounded border truncate ${
+                                              cleanUla
+                                                ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                                                : 'bg-white/5 text-slate-500 border-white/5'
+                                            }`}
+                                            title={cleanUla || 'None'}
                                           >
-                                            <Copy className="w-3 h-3" />
-                                          </button>
-                                        )}
+                                            {cleanUla || 'None'}
+                                          </span>
+                                        </div>
                                       </div>
                                     </div>
-                                    <div>
-                                      <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans">
-                                        WireGuard Endpoint
-                                      </span>
-                                      <span className="text-slate-300 font-mono text-[11px] block mt-0.5">
-                                        {sess.peering?.endpoint || 'Roaming / Dynamic (0.0.0.0)'}
-                                      </span>
+
+                                    <div className="text-[10px] text-slate-500 pt-2.5 border-t border-white/5 font-sans">
+                                      Routing: <span className="text-slate-300">Multiprotocol BGP via IPv6 LLA</span>
                                     </div>
                                   </div>
 
-                                  {/* Col 2: Addresses */}
-                                  <div className="space-y-2">
-                                    <div>
-                                      <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans">
-                                        Link-Local IPv6 (LLA)
-                                      </span>
-                                      <span className="text-slate-200 font-mono text-[11px] block mt-0.5">
-                                        {cleanLla || 'N/A'}
-                                      </span>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                      <div>
-                                        <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans">
-                                          DN42 IPv4
+                                  {/* Card 3: Telemetry & Diagnostics */}
+                                  <div className="bg-black/60 p-4 rounded-xl border border-white/5 space-y-3.5 flex flex-col justify-between shadow-inner">
+                                    <div className="space-y-3">
+                                      <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                                        <span className="text-slate-400 text-[10px] font-sans uppercase tracking-wider font-semibold flex items-center gap-1.5">
+                                          <Activity className="w-3.5 h-3.5 text-cyan-400" />
+                                          Telemetry & Health
                                         </span>
-                                        <span className="text-emerald-400 font-mono text-[11px] block mt-0.5">
-                                          {cleanIpv4 || 'None'}
+                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-sans font-medium ${badge.badgeClass}`}>
+                                          <span className={`w-1.5 h-1.5 rounded-full ${badge.dotClass}`} />
+                                          {badge.label}
                                         </span>
                                       </div>
-                                      <div>
-                                        <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans">
-                                          IPv6 ULA
-                                        </span>
-                                        <span className="text-purple-400 font-mono text-[11px] truncate block mt-0.5" title={cleanUla}>
-                                          {cleanUla || 'None'}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
 
-                                  {/* Col 3: Parameters & Diagnostics */}
-                                  <div className="space-y-2">
-                                    <div className="grid grid-cols-3 gap-2">
                                       <div>
-                                        <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans">
-                                          MTU
+                                        <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans mb-1">
+                                          Latest Handshake
                                         </span>
-                                        <span className="text-slate-300 block mt-0.5">{sess.peering?.mtu || 1420}</span>
+                                        <div className="flex items-center gap-2 bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/5">
+                                          <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                          <span className="font-mono text-[11px] text-slate-200">
+                                            {formatHandshake(sess.runtime?.latestHandshake)}
+                                          </span>
+                                          {sess.runtime?.latestHandshake && sess.runtime.latestHandshake > 0 ? (
+                                            <span className="ml-auto text-[10px] text-emerald-400 font-sans font-medium">Active</span>
+                                          ) : (
+                                            <span className="ml-auto text-[10px] text-slate-500 font-sans">Idle / Waiting</span>
+                                          )}
+                                        </div>
                                       </div>
-                                      <div>
-                                        <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans">
-                                          Protocol
-                                        </span>
-                                        <span className="text-cyan-400 block mt-0.5">MP-BGP ENH</span>
-                                      </div>
-                                      <div>
-                                        <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans">
-                                          Created
-                                        </span>
-                                        <span className="text-slate-400 text-[10px] block mt-0.5">
-                                          {new Date(sess.createdAt).toLocaleDateString()}
-                                        </span>
+
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <div className="bg-black/40 p-2.5 rounded-lg border border-white/5">
+                                          <span className="text-slate-500 block text-[9px] uppercase tracking-wider font-sans mb-0.5 flex items-center gap-1">
+                                            <ArrowDownRight className="w-3 h-3 text-cyan-400" /> Rx Volume
+                                          </span>
+                                          <span className="font-mono text-cyan-300 text-xs font-semibold">
+                                            {formatBytes(sess.runtime?.rxBytes)}
+                                          </span>
+                                        </div>
+                                        <div className="bg-black/40 p-2.5 rounded-lg border border-white/5">
+                                          <span className="text-slate-500 block text-[9px] uppercase tracking-wider font-sans mb-0.5 flex items-center gap-1">
+                                            <ArrowUpRight className="w-3 h-3 text-emerald-400" /> Tx Volume
+                                          </span>
+                                          <span className="font-mono text-emerald-300 text-xs font-semibold">
+                                            {formatBytes(sess.runtime?.txBytes)}
+                                          </span>
+                                        </div>
                                       </div>
                                     </div>
 
-                                    {sess.runtime?.bgpInfo && sess.runtime.bgpInfo !== sess.runtime.bgpState && (
+                                    {sess.runtime?.bgpInfo && sess.runtime.bgpInfo !== sess.runtime.bgpState ? (
                                       <div
-                                        className="text-[10px] text-amber-400/90 font-mono bg-amber-500/10 px-2.5 py-1.5 rounded-lg border border-amber-500/20 truncate"
+                                        className="text-[10px] text-amber-400/90 font-mono bg-amber-500/10 px-2.5 py-1 rounded border border-amber-500/20 truncate"
                                         title={sess.runtime.bgpInfo}
                                       >
-                                        Diagnostic: {sess.runtime.bgpInfo}
+                                        BGP Info: {sess.runtime.bgpInfo}
+                                      </div>
+                                    ) : (
+                                      <div className="text-[10px] text-slate-500 pt-2.5 border-t border-white/5 font-sans">
+                                        Status: <span className="text-slate-300">{sess.runtime?.stageText || sess.status}</span>
                                       </div>
                                     )}
                                   </div>

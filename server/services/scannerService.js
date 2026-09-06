@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process';
+import fs from 'node:fs';
 import { getActiveConfig } from '../storage/configLoader.js';
 import { PortLedgerService } from './portLedgerService.js';
 import { SessionService } from './sessionService.js';
@@ -160,11 +161,34 @@ export class ScannerService {
 
     const configPeers = options.mockConfigPeers !== undefined ? options.mockConfigPeers : parseWireguardConfigs();
     for (const peer of peers) {
-      if (!peer.allowedIps && configPeers[peer.publicKey]?.allowedIps) {
-        peer.allowedIps = configPeers[peer.publicKey].allowedIps;
+      const conf = configPeers[peer.publicKey];
+      if (conf) {
+        if (!peer.allowedIps && conf.allowedIps) {
+          peer.allowedIps = conf.allowedIps;
+        }
+        if (conf.endpoint) {
+          peer.endpoint = conf.endpoint;
+        } else {
+          peer.endpoint = '';
+        }
+        if (conf.mtu) {
+          peer.mtu = conf.mtu;
+        }
+        if ((!peer.listenPort || peer.listenPort === 0) && conf.listenPort) {
+          peer.listenPort = conf.listenPort;
+        }
       }
-      if (!peer.endpoint && configPeers[peer.publicKey]?.endpoint) {
-        peer.endpoint = configPeers[peer.publicKey].endpoint;
+
+      if (peer.interface) {
+        try {
+          const mtuPath = `/sys/class/net/${peer.interface}/mtu`;
+          if (fs.existsSync(mtuPath)) {
+            const sysMtu = parseInt(fs.readFileSync(mtuPath, 'utf8').trim(), 10);
+            if (!isNaN(sysMtu) && sysMtu > 0) {
+              peer.mtu = sysMtu;
+            }
+          }
+        } catch {}
       }
     }
 

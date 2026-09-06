@@ -508,9 +508,36 @@ export class SessionService {
       if (session) {
         if (!session.runtime) session.runtime = {};
         session.runtime.latestHandshake = peer.latestHandshake || session.runtime.latestHandshake || 0;
-        session.runtime.endpoint = peer.endpoint || session.runtime.endpoint || '';
         session.runtime.rxBytes = peer.rxBytes || 0;
         session.runtime.txBytes = peer.txBytes || 0;
+
+        // Endpoint: Prefer domain or configured endpoint from probe (avoid exposing resolved numeric IPs)
+        if (peer.endpoint !== undefined) {
+          session.runtime.endpoint = peer.endpoint || '';
+          if (peer.endpoint) {
+            const hasLetters = /[a-zA-Z]/.test(peer.endpoint);
+            const currentHasLetters = session.peering?.endpoint && /[a-zA-Z]/.test(session.peering.endpoint);
+            if (session.source === 'discovered' || !session.peering?.endpoint || (hasLetters && !currentHasLetters)) {
+              session.peering = session.peering || {};
+              session.peering.endpoint = peer.endpoint;
+              updated = true;
+            }
+          } else if (session.source === 'discovered' && session.peering?.endpoint && !/[a-zA-Z]/.test(session.peering.endpoint)) {
+            // Discovered session had a resolved numeric IP, but probe reports no static endpoint in .conf (roaming peer)
+            session.peering.endpoint = '';
+            updated = true;
+          }
+        }
+
+        // MTU: Update session.peering.mtu if reported by probe (live kernel MTU or conf MTU)
+        if (peer.mtu && peer.mtu > 0) {
+          session.peering = session.peering || {};
+          if (session.peering.mtu !== peer.mtu) {
+            session.peering.mtu = peer.mtu;
+            updated = true;
+          }
+        }
+
         if (peer.interface) {
           session.peering = session.peering || {};
           session.peering.interface = peer.interface;
@@ -647,7 +674,7 @@ export class SessionService {
           clientPort: null,
           interface: rawIface,
           allowedIps: peer.allowedIps || '',
-          mtu: 1420
+          mtu: peer.mtu || 1420
         },
         assigned: {
           hostPort: resolvedListenPort,

@@ -86,6 +86,7 @@ export function parseWireguardConfigs(wgDir = '/etc/wireguard') {
         const content = fs.readFileSync(fullPath, 'utf8');
         let currentPeer = null;
         let currentIfaceListenPort = null;
+        let currentIfaceMtu = null;
         let inInterface = false;
 
         for (const line of content.split('\n')) {
@@ -98,7 +99,11 @@ export function parseWireguardConfigs(wgDir = '/etc/wireguard') {
           }
           if (/^\[peer\]/i.test(trimmed)) {
             inInterface = false;
-            currentPeer = { listenPort: currentIfaceListenPort };
+            currentPeer = {
+              listenPort: currentIfaceListenPort,
+              mtu: currentIfaceMtu,
+              interface: path.basename(file, '.conf')
+            };
             continue;
           }
           if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
@@ -111,9 +116,14 @@ export function parseWireguardConfigs(wgDir = '/etc/wireguard') {
           if (eqIdx !== -1) {
             const key = trimmed.slice(0, eqIdx).trim().toLowerCase();
             const val = trimmed.slice(eqIdx + 1).trim();
-            if (inInterface && key === 'listenport') {
-              const lp = parseInt(val, 10);
-              if (!isNaN(lp) && lp > 0) currentIfaceListenPort = lp;
+            if (inInterface) {
+              if (key === 'listenport') {
+                const lp = parseInt(val, 10);
+                if (!isNaN(lp) && lp > 0) currentIfaceListenPort = lp;
+              } else if (key === 'mtu') {
+                const m = parseInt(val, 10);
+                if (!isNaN(m) && m > 0) currentIfaceMtu = m;
+              }
             } else if (currentPeer) {
               if (key === 'publickey') {
                 currentPeer.publicKey = val;
@@ -123,6 +133,16 @@ export function parseWireguardConfigs(wgDir = '/etc/wireguard') {
               } else if (key === 'endpoint') {
                 currentPeer.endpoint = val;
               }
+            }
+          }
+        }
+
+        // Backfill MTU and interface for all peers in this file if currentIfaceMtu was found
+        if (currentIfaceMtu) {
+          const ifaceName = path.basename(file, '.conf');
+          for (const k of Object.keys(configPeers)) {
+            if (configPeers[k].interface === ifaceName && !configPeers[k].mtu) {
+              configPeers[k].mtu = currentIfaceMtu;
             }
           }
         }
@@ -503,14 +523,37 @@ export async function collectAndReport(options = {}) {
   const targetWgDir = wgDir || process.env.WG_DIR || '/etc/wireguard';
   const configPeers = options.mockConfigPeers !== undefined ? options.mockConfigPeers : parseWireguardConfigs(targetWgDir);
   for (const peer of peers) {
-    if (!peer.allowedIps && configPeers[peer.publicKey]?.allowedIps) {
-      peer.allowedIps = configPeers[peer.publicKey].allowedIps;
+    const conf = configPeers[peer.publicKey];
+    if (conf) {
+      if (!peer.allowedIps && conf.allowedIps) {
+        peer.allowedIps = conf.allowedIps;
+      }
+      // Prefer endpoint from conf file (preserves domain names over kernel-resolved IPs)
+      if (conf.endpoint) {
+        peer.endpoint = conf.endpoint;
+      } else {
+        // If peer is defined in .conf without an endpoint, it's roaming/responder; don't leak dynamic client IP
+        peer.endpoint = '';
+      }
+      if ((!peer.listenPort || peer.listenPort === 0) && conf.listenPort) {
+        peer.listenPort = conf.listenPort;
+      }
+      if (conf.mtu) {
+        peer.mtu = conf.mtu;
+      }
     }
-    if (!peer.endpoint && configPeers[peer.publicKey]?.endpoint) {
-      peer.endpoint = configPeers[peer.publicKey].endpoint;
-    }
-    if ((!peer.listenPort || peer.listenPort === 0) && configPeers[peer.publicKey]?.listenPort) {
-      peer.listenPort = configPeers[peer.publicKey].listenPort;
+
+    // Inspect live Linux interface MTU if available (/sys/class/net/<iface>/mtu)
+    if (peer.interface) {
+      try {
+        const mtuPath = `/sys/class/net/${peer.interface}/mtu`;
+        if (fs.existsSync(mtuPath)) {
+          const sysMtu = parseInt(fs.readFileSync(mtuPath, 'utf8').trim(), 10);
+          if (!isNaN(sysMtu) && sysMtu > 0) {
+            peer.mtu = sysMtu;
+          }
+        }
+      } catch {}
     }
   }
 
