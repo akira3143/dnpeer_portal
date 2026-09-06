@@ -253,6 +253,7 @@ export class SessionService {
       updatedAt: now,
       contact: rawPayload.contact || '',
       peering: {
+        interface: isNew ? undefined : (sessions[existingIndex].peering?.interface || sessions[existingIndex].assigned?.interface),
         publicKey: norm.publicKey,
         endpoint: norm.endpoint,
         ipv4: norm.ipv4,
@@ -265,6 +266,7 @@ export class SessionService {
         bgpMode: norm.bgpMode
       },
       assigned: {
+        interface: isNew ? undefined : (sessions[existingIndex].assigned?.interface || sessions[existingIndex].peering?.interface),
         hostPort: portResult.port,
         isShifted: portResult.isShifted,
         expectedPort: portResult.expectedPort,
@@ -336,7 +338,12 @@ export class SessionService {
    */
   static async deleteSession(sessionId, requesterAsn, isAdmin = false) {
     const sessions = await this.getSessions();
-    const sessionIndex = sessions.findIndex(s => s.id === sessionId);
+    let sessionIndex = sessions.findIndex(s => s.id === sessionId);
+    if (sessionIndex === -1) {
+      sessionIndex = sessions.findIndex(s =>
+        s.peering?.interface === sessionId || s.assigned?.interface === sessionId
+      );
+    }
 
     if (sessionIndex === -1) {
       return { success: false, message: 'Session not found' };
@@ -348,7 +355,10 @@ export class SessionService {
     }
 
     // Release port in ledger
-    await PortLedgerService.releaseSessionPort(session.nodeId, sessionId);
+    await PortLedgerService.releaseSessionPort(session.nodeId, session.id);
+    if (session.peering?.interface) {
+      await PortLedgerService.releaseSessionPort(session.nodeId, session.peering.interface);
+    }
 
     // Record tombstone if session has a WireGuard public key or ID (prevents probe resurrection)
     if (session.peering?.publicKey) {
@@ -362,6 +372,13 @@ export class SessionService {
       await this.addIgnoredPeer(
         session.nodeId,
         session.id,
+        session.source === 'discovered' ? 'discovered_deleted' : 'session_deleted'
+      );
+    }
+    if (session.peering?.interface) {
+      await this.addIgnoredPeer(
+        session.nodeId,
+        session.peering.interface,
         session.source === 'discovered' ? 'discovered_deleted' : 'session_deleted'
       );
     }
@@ -384,6 +401,27 @@ export class SessionService {
   static async updateRuntimePeers(nodeId, reportedData = [], optionalBgpSessions = []) {
     const sessions = await this.getSessions();
     let updated = false;
+
+    // Migration: ensure all discovered sessions have canonical peer_<name>_<nodeTag> IDs
+    // while preserving their interface names in peering.interface / assigned.interface
+    for (const s of sessions) {
+      if (s.source === 'discovered' && !s.id.startsWith('peer_')) {
+        const oldId = s.id;
+        s.peering = s.peering || {};
+        if (!s.peering.interface) s.peering.interface = oldId;
+        if (!s.assigned) s.assigned = {};
+        if (!s.assigned.interface) s.assigned.interface = oldId;
+        const cleanName = oldId.replace(/^(dn42|wg|peer|p|ibgp|bgp)_+/i, '').replace(/[^a-zA-Z0-9_]/g, '').toLowerCase() || 'stock';
+        const nodeTag = (s.nodeId || '').toLowerCase().replace(/[^a-z0-9]/g, '_');
+        let newId = `peer_${cleanName}_${nodeTag}`;
+        let c = 1;
+        while (sessions.some(other => other.id === newId && other !== s)) {
+          newId = `peer_${cleanName}_${nodeTag}_${c++}`;
+        }
+        s.id = newId;
+        updated = true;
+      }
+    }
 
     let reportedPeers = [];
     let bgpSessions = [];
@@ -513,17 +551,13 @@ export class SessionService {
       const parsedAddrs = parseAllowedIps(peer.allowedIps || '');
       const nodeTag = nodeId.toLowerCase().replace(/[^a-z0-9]/g, '_');
 
-      // Naming & ID: Prefer WireGuard tunnel interface name, fallback to BGP protocol name, never pubkey hash
-      let baseId = '';
-      if (peer.interface && peer.interface !== '(none)') {
-        baseId = peer.interface;
-      } else if (matchedBgp && matchedBgp.name) {
-        baseId = matchedBgp.name;
-      } else if (matchedAsn) {
-        baseId = `dn42_${matchedAsn}`;
-      } else {
-        baseId = `peer_${nodeTag}`;
-      }
+      // Naming & ID: Canonical peer_<name>_<nodeTag> format
+      const rawIface = (peer.interface && peer.interface !== '(none)') ? peer.interface : (matchedBgp?.name || '');
+      const cleanName = rawIface
+        .replace(/^(dn42|wg|peer|p|ibgp|bgp)_+/i, '')
+        .replace(/[^a-zA-Z0-9_]/g, '')
+        .toLowerCase() || (matchedAsn ? `as${matchedAsn}` : 'stock');
+      const baseId = `peer_${cleanName}_${nodeTag}`;
 
       let discId = baseId;
       let counter = 1;
@@ -532,8 +566,7 @@ export class SessionService {
       }
 
       const now = new Date().toISOString();
-      const ifaceName = peer.interface || discId;
-      const resolvedListenPort = peer.listenPort || (ifaceName ? portByIface.get(ifaceName.toLowerCase()) : null) || null;
+      const resolvedListenPort = peer.listenPort || (rawIface ? portByIface.get(rawIface.toLowerCase()) : null) || null;
       const newDiscSession = {
         id: discId,
         source: 'discovered',
@@ -553,13 +586,13 @@ export class SessionService {
           linkLocal: parsedAddrs.linkLocal || '',
           listenPort: resolvedListenPort,
           clientPort: null,
-          interface: peer.interface || '',
+          interface: rawIface,
           allowedIps: peer.allowedIps || '',
           mtu: 1420
         },
         assigned: {
           hostPort: resolvedListenPort,
-          interface: peer.interface || ''
+          interface: rawIface
         },
         runtime: {
           stage: 1,
@@ -748,10 +781,17 @@ export class SessionService {
         const now = new Date().toISOString();
         const normState = (bgp.bgpState || '').toLowerCase();
 
-        let discId = bgp.name;
+        const cleanBgpName = (bgp.name || '')
+          .replace(/^(dn42|wg|peer|p|ibgp|bgp)_+/i, '')
+          .replace(/[^a-zA-Z0-9_]/g, '')
+          .toLowerCase() || (targetAsn ? `as${targetAsn}` : 'bgp');
+        const nodeTag = nodeId.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        const baseId = `peer_${cleanBgpName}_${nodeTag}`;
+
+        let discId = baseId;
         let counter = 1;
         while (sessions.some(s => s.id === discId)) {
-          discId = `${bgp.name}_${counter++}`;
+          discId = `${baseId}_${counter++}`;
         }
 
         let stage = 1;

@@ -493,7 +493,9 @@ do_edit() {
     _snode=${line#*\"nodeId\":\"}; _snode=${_snode%%\"*}
     _sstat=${line#*\"status\":\"}; _sstat=${_sstat%%\"*}
     _sport=${line#*\"hostPort\":}; _sport=${_sport%%,*}; _sport=${_sport%%\}*}
-    echo "$_sid|$_snode|$_sstat|$_sport" >> /tmp/dn42_my_sessions
+    _siface=${line#*\"interface\":\"}; _siface=${_siface%%\"*}
+    [ "$_siface" = "$line" ] && _siface=""
+    echo "$_sid|$_snode|$_sstat|$_sport|$_siface" >> /tmp/dn42_my_sessions
   done
 
   sess_count=0
@@ -508,11 +510,12 @@ do_edit() {
     if echo "$target_idx" | grep -q '^[0-9][0-9]*$' && [ "$target_idx" -ge 1 ] && [ "$target_idx" -le "$sess_count" ]; then
       sel_line=$(sed -n "${target_idx}p" /tmp/dn42_my_sessions)
     else
-      # Match by node ID (case-insensitive) or session ID
+      # Match by node ID (case-insensitive), session ID, or interface name
       _tgt_lower=$(echo "$target_idx" | tr '[:upper:]' '[:lower:]')
-      while IFS='|' read -r _sid _snode _sstat _sport; do
+      while IFS='|' read -r _sid _snode _sstat _sport _siface; do
         if [ "$(echo "$_snode" | tr '[:upper:]' '[:lower:]')" = "$_tgt_lower" ] || \
-           [ "$(echo "$_sid" | tr '[:upper:]' '[:lower:]')" = "$_tgt_lower" ]; then
+           [ "$(echo "$_sid" | tr '[:upper:]' '[:lower:]')" = "$_tgt_lower" ] || \
+           [ -n "$_siface" ] && [ "$(echo "$_siface" | tr '[:upper:]' '[:lower:]')" = "$_tgt_lower" ]; then
           sel_line="$_sid|$_snode|$_sstat|$_sport"
           break
         fi
@@ -520,7 +523,7 @@ do_edit() {
     fi
 
     if [ -z "$sel_line" ]; then
-      echo -e "\033[31merror: Session '$target_idx' not found. Use 1-$sess_count, node ID (e.g. JP-7), or session ID.\033[0m"
+      echo -e "\033[31merror: Session '$target_idx' not found. Use 1-$sess_count, node ID (e.g. JP-7), session ID, or interface name.\033[0m"
       return 1
     fi
   else
@@ -528,9 +531,11 @@ do_edit() {
     echo -e "\033[36m------ MY PEERING SESSIONS -----\033[0m"
     echo ""
     i=0
-    while IFS='|' read -r _sid _snode _sstat _sport; do
+    while IFS='|' read -r _sid _snode _sstat _sport _siface; do
       i=$((i + 1))
-      echo -e "  \033[32m[$i]\033[0m $_snode - $_sstat - port $_sport"
+      disp_tag="$_snode - $_sid"
+      [ -n "$_siface" ] && [ "$_siface" != "-" ] && disp_tag="$disp_tag ($_siface)"
+      echo -e "  \033[32m[$i]\033[0m $disp_tag - $_sstat - port $_sport"
     done < /tmp/dn42_my_sessions
     echo ""
     while true; do
@@ -599,7 +604,7 @@ do_edit() {
 # ---------- peer ls ----------
 do_ls() {
   require_login || return 1
-  local resp line id asn node status port stage disp_id disp_asn disp_port color node_name ep ep_port
+  local resp line id asn node status port stage disp_id disp_asn disp_port color node_name ep ep_port divider iface disp_iface
   echo -e "\033[90mFetching peering sessions...\033[0m"
   resp=$(api_get "/api/sessions")
   if ! echo "$resp" | grep -q '"success":true'; then
@@ -609,9 +614,10 @@ do_ls() {
 
   ensure_nodes || true
 
+  divider="-----------------------------------------------------------------------------------------------------------------"
   echo ""
-  printf "%-14s %-24s %-14s %-12s %-12s %s\n" "NODE" "SESSION ID" "ASN" "PEERPORT" "LISTENPORT" "STATUS"
-  printf "\033[90m------------------------------------------------------------------------------------------\033[0m\n"
+  printf "%-10s %-26s %-18s %-14s %-10s %-12s %s\n" "NODE" "SESSION ID" "INTERFACE" "ASN" "PEERPORT" "LISTENPORT" "STATUS"
+  printf "\033[90m%s\033[0m\n" "$divider"
 
   last_node=""
   echo "$resp" | sed 's/},{/}\n{/g' | grep '"id"' | while IFS= read -r line; do
@@ -628,21 +634,27 @@ do_ls() {
     node_name="$node"
 
     if [ -n "$last_node" ] && [ "$node_name" != "$last_node" ]; then
-      printf "\033[90m------------------------------------------------------------------------------------------\033[0m\n"
+      printf "\033[90m%s\033[0m\n" "$divider"
     fi
     last_node="$node_name"
 
-    # 2. Session ID (discovered session uses tunnel interface name, no [auto] prefix)
+    # 2. Session ID (canonical peer_<name>_<nodeTag> format)
     disp_id="$id"
 
-    # 3. ASN
+    # 3. Interface name (WireGuard interface or BGP protocol name on device)
+    iface=${line#*\"interface\":\"}; iface=${iface%%\"*}
+    [ "$iface" = "$line" ] && iface="-"
+    [ -z "$iface" ] && iface="-"
+    disp_iface="$iface"
+
+    # 4. ASN
     if [ -z "$asn" ] || [ "$asn" = "null" ] || [ "$asn" = "$line" ]; then
       disp_asn="unknown"
     else
       disp_asn="AS$asn"
     fi
 
-    # 4. PEERPORT (user's peering partner / AkiLab node WireGuard listen port: assigned.hostPort or peering.listenPort)
+    # 5. PEERPORT (user's peering partner / AkiLab node WireGuard listen port: assigned.hostPort or peering.listenPort)
     disp_pport=""
     if [ -n "$host_port" ] && [ "$host_port" != "null" ] && [ "$host_port" != "$line" ] && echo "$host_port" | grep -q '^[0-9][0-9]*$' && [ "$host_port" -gt 0 ]; then
       disp_pport="$host_port"
@@ -652,7 +664,7 @@ do_ls() {
       disp_pport="0"
     fi
 
-    # 5. LISTENPORT (user's local listen port: remote endpoint port or clientPort; roaming/missing is 0)
+    # 6. LISTENPORT (user's local listen port: remote endpoint port or clientPort; roaming/missing is 0)
     ep=${line#*\"endpoint\":\"}; ep=${ep%%\"*}
     disp_lport=""
     if [ -n "$ep" ] && [ "$ep" != "$line" ] && echo "$ep" | grep -q ':'; then
@@ -669,7 +681,7 @@ do_ls() {
       fi
     fi
 
-    # 6. Status: BGP truth progression (Established/Connect/Idle/pending)
+    # 7. Status: BGP truth progression (Established/Connect/Idle/pending)
     color="\033[0m"
     case "$stage" in
       *Established*|*active*)
@@ -682,7 +694,7 @@ do_ls() {
         color="\033[90m" ;;
     esac
 
-    printf "%-14s %-24s %-14s %-12s %-12s %b%s\033[0m\n" "$node_name" "$disp_id" "$disp_asn" "$disp_pport" "$disp_lport" "$color" "$stage"
+    printf "%-10s %-26s %-18s %-14s %-10s %-12s %b%s\033[0m\n" "$node_name" "$disp_id" "$disp_iface" "$disp_asn" "$disp_pport" "$disp_lport" "$color" "$stage"
   done
   echo ""
   echo -e "\033[90mTip: Run 'peer edit' to update an existing session; 'peer new' for a new one.\033[0m"

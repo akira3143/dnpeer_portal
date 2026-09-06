@@ -157,12 +157,15 @@ test_peer  BGP      ---        up     12:00:00  Established
     assert.ok(sessionB, 'Session B must be discovered');
 
     // Associated accurately via IP bridge, NOT confused
+    const nodeTag = testNodeId.toLowerCase().replace(/[^a-z0-9]/g, '_');
     assert.equal(sessionA.asn, 4242421111, 'Peer A matched fe80::10:1 -> AS4242421111');
-    assert.equal(sessionA.id, 'wg_peer_a', 'Session ID uses WireGuard tunnel name');
+    assert.equal(sessionA.id, `peer_peer_a_${nodeTag}`, 'Session ID uses canonical peer_<name>_<node>');
+    assert.equal(sessionA.peering.interface, 'wg_peer_a', 'WireGuard interface name preserved');
     assert.equal(sessionA.status, 'active', 'BGP Established sets status to active');
 
     assert.equal(sessionB.asn, 4242422222, 'Peer B matched 172.20.20.1 -> AS4242422222');
-    assert.equal(sessionB.id, 'wg_peer_b', 'Session ID uses WireGuard tunnel name');
+    assert.equal(sessionB.id, `peer_peer_b_${nodeTag}`, 'Session ID uses canonical peer_<name>_<node>');
+    assert.equal(sessionB.peering.interface, 'wg_peer_b', 'WireGuard interface name preserved');
     assert.equal(sessionB.status, 'active');
   });
 
@@ -207,16 +210,20 @@ test_peer  BGP      ---        up     12:00:00  Established
     assert.ok(m1);
     assert.ok(m2);
 
+    const nodeTag = testNodeId.toLowerCase().replace(/[^a-z0-9]/g, '_');
+
     // With Priority 3 deleted, neither peer should falsely take AS4242428888!
     assert.equal(m1.asn, null, 'Must NOT greedily match unmatched BGP session');
     assert.equal(m1.status, 'pending', 'Must remain pending');
     assert.equal(m1.runtime.stageText, 'pending', 'StageText must be pending');
-    assert.equal(m1.id, 'wg_mystery_1', 'ID must be tunnel name');
+    assert.equal(m1.id, `peer_mystery_1_${nodeTag}`, 'ID must be canonical peer_<name>_<node>');
+    assert.equal(m1.peering.interface, 'wg_mystery_1');
 
     assert.equal(m2.asn, null, 'Must NOT greedily match unmatched BGP session');
     assert.equal(m2.status, 'pending');
     assert.equal(m2.runtime.stageText, 'pending');
-    assert.equal(m2.id, 'wg_mystery_2');
+    assert.equal(m2.id, `peer_mystery_2_${nodeTag}`);
+    assert.equal(m2.peering.interface, 'wg_mystery_2');
   });
 
   await t.test('5. Non-WG peer uses readable BGP protocol name fallback without pubkey hash', async () => {
@@ -248,17 +255,19 @@ test_peer  BGP      ---        up     12:00:00  Established
     const sessions = await SessionService.getSessions();
     const nonWg = sessions.find(s => s.peering?.publicKey.startsWith('NonWgKey9'));
     assert.ok(nonWg);
-    assert.equal(nonWg.id, 'dn42_as4242427777', 'Should fallback to readable BGP protocol name, not pubkey hash');
+    const nodeTag = testNodeId.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    assert.equal(nonWg.id, `peer_as4242427777_${nodeTag}`, 'Should use canonical ID peer_<name>_<nodeTag>');
+    assert.equal(nonWg.peering.interface, 'dn42_as4242427777');
     assert.equal(nonWg.asn, 4242427777);
   });
 
-  await t.test('6. CLI peer ls displays dual ports (PEERPORT and LISTENPORT), port 0 fallback, and no [auto] prefix', () => {
+  await t.test('6. CLI peer ls displays dual ports (PEERPORT and LISTENPORT), INTERFACE column, port 0 fallback, and no [auto] prefix', () => {
     const peerScript = fs.readFileSync(path.resolve('cli/cli-src/bin/peer'), 'utf8');
 
-    // 1. Header has dual ports (user perspective: PEERPORT then LISTENPORT)
+    // 1. Header has INTERFACE and dual ports (user perspective: PEERPORT then LISTENPORT)
     assert.ok(
-      peerScript.includes('"NODE" "SESSION ID" "ASN" "PEERPORT" "LISTENPORT" "STATUS"'),
-      'CLI must have dual ports: NODE, SESSION ID, ASN, PEERPORT, LISTENPORT, STATUS'
+      peerScript.includes('"NODE" "SESSION ID" "INTERFACE" "ASN" "PEERPORT" "LISTENPORT" "STATUS"'),
+      'CLI must have dual ports: NODE, SESSION ID, INTERFACE, ASN, PEERPORT, LISTENPORT, STATUS'
     );
 
     // 2. Port fallback logic: if port missing, displays 0
@@ -291,10 +300,12 @@ test_peer  BGP      ---        up     12:00:00  Established
       }]
     });
 
+    const nodeTag = testNodeId.toLowerCase().replace(/[^a-z0-9]/g, '_');
     let sessions = await SessionService.getSessions();
     assert.equal(sessions.length, 1);
     assert.equal(sessions[0].source, 'discovered');
-    assert.equal(sessions[0].id, 'dn42_upgrade');
+    assert.equal(sessions[0].id, `peer_upgrade_${nodeTag}`);
+    assert.equal(sessions[0].peering.interface, 'dn42_upgrade');
 
     // 2. User submits/edits this session through portal / CLI
     const submitResult = await SessionService.submitPeering({
@@ -314,6 +325,7 @@ test_peer  BGP      ---        up     12:00:00  Established
     const upgraded = sessions[0];
     assert.equal(upgraded.source, 'portal', 'Source must be upgraded to portal');
     assert.equal(upgraded.peering.publicKey, pubKey);
+    assert.equal(upgraded.peering.interface, 'dn42_upgrade');
     assert.ok(upgraded.assigned.hostPort >= 20000, 'Host port must be allocated by portal');
     assert.equal(upgraded.status, 'pending', 'Newly submitted portal session enters pending or active');
   });
@@ -343,10 +355,12 @@ test_peer  BGP      ---        up     12:00:00  Established
 
     await SessionService.updateRuntimePeers(testNodeId, discReport);
 
+    const nodeTag = testNodeId.toLowerCase().replace(/[^a-z0-9]/g, '_');
     // Verify session received hostPort and listenPort
     const sessions = await SessionService.getSessions();
-    const afnSession = sessions.find(s => s.id === 'dn42_afn_hk');
+    const afnSession = sessions.find(s => s.id === `peer_afn_hk_${nodeTag}`);
     assert.ok(afnSession);
+    assert.equal(afnSession.peering.interface, 'dn42_afn_hk');
     assert.equal(afnSession.assigned.hostPort, 23143, 'Discovered session must receive listenport from wg ports');
     assert.equal(afnSession.peering.listenPort, 23143);
 
@@ -356,7 +370,7 @@ test_peer  BGP      ---        up     12:00:00  Established
     const ledgerEntry = nodePorts.find(p => p.port === 23143);
     assert.ok(ledgerEntry, 'Port ledger MUST record listenport 23143');
     assert.equal(ledgerEntry.interfaceName, 'dn42_afn_hk');
-    assert.equal(ledgerEntry.sessionId, 'dn42_afn_hk');
+    assert.equal(ledgerEntry.sessionId, `peer_afn_hk_${nodeTag}`);
     assert.equal(ledgerEntry.asn, 4242422213);
   });
 
@@ -436,31 +450,34 @@ test_peer  BGP      ---        up     12:00:00  Established
 
     await SessionService.updateRuntimePeers(testNodeId, pureBgpReport);
 
+    const nodeTag = testNodeId.toLowerCase().replace(/[^a-z0-9]/g, '_');
     const sessions = await SessionService.getSessions();
     assert.equal(sessions.length, 2, 'Must discover 2 pure BGP sessions');
 
-    const ibgp = sessions.find(s => s.id === 'ibgp_tyix_jp7');
+    const ibgp = sessions.find(s => s.peering?.interface === 'ibgp_tyix_jp7' || s.id === `peer_tyix_jp7_${nodeTag}`);
     assert.ok(ibgp, 'ibgp_tyix_jp7 must be discovered');
+    assert.equal(ibgp.id, `peer_tyix_jp7_${nodeTag}`);
+    assert.equal(ibgp.peering.interface, 'ibgp_tyix_jp7');
     assert.equal(ibgp.asn, 4242423143);
     assert.equal(ibgp.status, 'active');
     assert.equal(ibgp.runtime.bgpState, 'Established');
     assert.equal(ibgp.peering.listenPort, 0, 'Non-WG port must be 0');
     assert.equal(ibgp.assigned.hostPort, 0);
 
-    const tyix2289 = sessions.find(s => s.id === 'tyix_peer2289');
+    const tyix2289 = sessions.find(s => s.peering?.interface === 'tyix_peer2289' || s.id === `peer_tyix_peer2289_${nodeTag}`);
     assert.ok(tyix2289, 'tyix_peer2289 must be discovered');
     assert.equal(tyix2289.asn, 4242422289);
     assert.equal(tyix2289.status, 'active');
 
-    // Test deletion and tombstoning
+    // Test deletion and tombstoning using interface name
     const delRes = await SessionService.deleteSession('ibgp_tyix_jp7', 4242423143, true);
-    assert.equal(delRes.success, true);
+    assert.equal(delRes.success, true, 'Deleting by interface name must succeed');
 
     // Re-running updateRuntimePeers must NOT resurrect the deleted session
     await SessionService.updateRuntimePeers(testNodeId, pureBgpReport);
     const afterSessions = await SessionService.getSessions();
     assert.equal(afterSessions.length, 1, 'Tombstoned pure BGP session must not be resurrected');
-    assert.ok(!afterSessions.some(s => s.id === 'ibgp_tyix_jp7'));
+    assert.ok(!afterSessions.some(s => s.id === ibgp.id || s.peering?.interface === 'ibgp_tyix_jp7'));
   });
 
   await t.test('11. CLI peer ls includes node divider logic between different nodes', () => {
