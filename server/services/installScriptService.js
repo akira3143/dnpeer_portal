@@ -85,7 +85,7 @@ Wants=bird.service
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/bird-lgproxy --listen 127.0.0.1:5000 --bird /run/bird/bird.ctl
+ExecStart=/usr/local/bin/bird-lgproxy --listen 0.0.0.0:5000 --bird /run/bird/bird.ctl
 Restart=always
 RestartSec=5s
 
@@ -125,11 +125,6 @@ After=network.target
 Type=oneshot
 WorkingDirectory=/opt/dn42-probe
 EnvironmentFile=-/etc/default/dn42-probe
-Environment="PORTAL_MASTER_URL="
-Environment="CLAIM_NODE_ID="
-Environment="CLAIM_TOKEN="
-Environment="NODE_ID="
-Environment="NODE_TOKEN="
 ExecStart=\${NODE_BIN} /opt/dn42-probe/probe-agent.js
 EOF
 

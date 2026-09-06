@@ -138,6 +138,47 @@ flush_after_input() {
   done
 }
 
+# ---------- ensure node matrix cache ----------
+ensure_nodes() {
+  [ -s /tmp/dn42_nodes ] && return 0
+  local meta
+  if [ -s /tmp/dn42_meta ]; then
+    meta=$(cat /tmp/dn42_meta)
+  else
+    meta=$(api_get "/api/network-meta")
+    [ -n "$meta" ] && echo "$meta" > /tmp/dn42_meta
+  fi
+  if ! echo "$meta" | grep -q '"success":true'; then
+    return 1
+  fi
+
+  echo "$meta" | sed 's/},{/}\n{/g' | grep '"endpointDomain"' > /tmp/dn42_nodes_raw
+  rm -f /tmp/dn42_nodes
+  while IFS= read -r line; do
+    nid=${line#*\"id\":\"}; nid=${nid%%\"*}
+    nname=${line#*\"name\":\"}; nname=${nname%%\"*}
+    nend=${line#*\"endpointDomain\":\"}; nend=${nend%%\"*}
+    echo "$nid|$nname|$nend" >> /tmp/dn42_nodes
+  done < /tmp/dn42_nodes_raw
+  rm -f /tmp/dn42_nodes_raw
+  return 0
+}
+
+is_known_node() {
+  local candidate="$1"
+  [ -z "$candidate" ] && return 1
+  ensure_nodes >/dev/null 2>&1
+  if [ -s /tmp/dn42_nodes ]; then
+    if grep -qi "^$candidate|" /tmp/dn42_nodes; then
+      return 0
+    fi
+  fi
+  case "$candidate" in
+    JP-7|JP-2|HK-1|US-LA1) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # read_line_edit <var_name> [-s/--secret]
 # Minimal line editor supporting Left/Right/Home/End/Backspace/Delete with 0-fork built-in read (U16)
 read_line_edit() {

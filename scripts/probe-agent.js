@@ -279,7 +279,7 @@ export function parseBgpProtocols(bgpOutput) {
 
 function runCmd(cmd, options = {}) {
   try {
-    return execSync(cmd, { encoding: 'utf8', timeout: 5000, ...options }).trim();
+    return execSync(cmd, { encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'ignore'], ...options }).trim();
   } catch (err) {
     return '';
   }
@@ -362,26 +362,60 @@ export async function queryLocalLgProxy(lgProxyUrl = 'http://127.0.0.1:5000') {
  */
 export function deriveCandidatePublicKeys(wgDir = '/etc/wireguard') {
   const candidateKeys = [];
-  if (!fs.existsSync(wgDir)) return candidateKeys;
 
+  // 1. Derive from active kernel WireGuard interfaces if available
+  try {
+    const activeDump = runCmd('wg show all private-key');
+    if (activeDump) {
+      for (const line of activeDump.split('\n')) {
+        const parts = line.trim().split(/\s+/);
+        const privKey = parts.length >= 2 ? parts[1] : parts[0];
+        if (privKey && privKey.length >= 40) {
+          const pubKey = runCmd('wg pubkey', { input: privKey });
+          if (pubKey && pubKey.length >= 40) {
+            candidateKeys.push(pubKey);
+          }
+        }
+      }
+    }
+  } catch {}
+
+  if (!fs.existsSync(wgDir)) return [...new Set(candidateKeys)];
+
+  // 2. Scan wgDir for private key files and .conf files with PrivateKey = ...
   try {
     const files = fs.readdirSync(wgDir);
     for (const file of files) {
-      // Fuzzy match any file containing 'private' in its name
-      if (/private/i.test(file)) {
-        const fullPath = path.join(wgDir, file);
-        try {
-          const stat = fs.statSync(fullPath);
-          if (!stat.isFile()) continue;
+      const fullPath = path.join(wgDir, file);
+      try {
+        const stat = fs.statSync(fullPath);
+        if (!stat.isFile()) continue;
+
+        // 2a. Match files with private / key / priv in name
+        if (/private|key|priv/i.test(file)) {
           const privKeyContent = fs.readFileSync(fullPath, 'utf8').trim();
           if (privKeyContent) {
-            const pubKey = runCmd('wg pubkey', { input: privKeyContent });
+            // Check first line or valid base64 key
+            const firstLine = privKeyContent.split('\n')[0].trim();
+            const pubKey = runCmd('wg pubkey', { input: firstLine });
             if (pubKey && pubKey.length >= 40) {
               candidateKeys.push(pubKey);
             }
           }
-        } catch {}
-      }
+        }
+
+        // 2b. Match PrivateKey = <base64> in .conf files
+        if (file.endsWith('.conf')) {
+          const confContent = fs.readFileSync(fullPath, 'utf8');
+          const m = confContent.match(/^\s*PrivateKey\s*=\s*([A-Za-z0-9+/]{43}=)/im);
+          if (m && m[1]) {
+            const pubKey = runCmd('wg pubkey', { input: m[1].trim() });
+            if (pubKey && pubKey.length >= 40) {
+              candidateKeys.push(pubKey);
+            }
+          }
+        }
+      } catch {}
     }
   } catch {}
 
@@ -574,7 +608,8 @@ export async function collectAndReport(options = {}) {
     ports,
     systemPorts,
     peers,
-    bgpSessions
+    bgpSessions,
+    rawBgpOutput: typeof bgpOutput === 'string' ? bgpOutput : ''
   };
 
   const targetUrl = `${masterUrl.replace(/\/+$/, '')}/api/probe/report`;

@@ -85,13 +85,16 @@ export class ScannerService {
   /**
    * Process report submitted by node probe-agent
    */
-  static async handleProbeReport({ nodeId, ports = [], systemPorts = [], peers = [], bgpSessions = [] }) {
+  static async handleProbeReport({ nodeId, ports = [], systemPorts = [], peers = [], bgpSessions = [], rawBgpOutput = '' }) {
     if (!nodeId) {
       throw new Error('nodeId is required in probe report');
     }
 
     // 1. Record live heartbeat in StatusTracker
     StatusTracker.recordHeartbeat(nodeId);
+
+    // 1b. Record BGP snapshot in StatusTracker (for Looking Glass fallback)
+    StatusTracker.recordBgpSnapshot(nodeId, { rawBgpOutput, bgpSessions });
 
     // 2. Merge ports into ledger
     const mergedPorts = await PortLedgerService.mergeProbeReport(nodeId, { ports, systemPorts });

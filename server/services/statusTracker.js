@@ -6,6 +6,7 @@ import { FileStore } from '../storage/fileStore.js';
 class StatusTrackerService {
   constructor() {
     this.heartbeats = new Map();
+    this.bgpSnapshots = new Map();
     this.HEARTBEAT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
     this.loadedPath = null;
     this.saveTimer = null;
@@ -186,7 +187,42 @@ class StatusTrackerService {
   }
 
   /**
-   * Clear all heartbeat records (used in test teardown)
+   * Record BGP snapshot from probe report
+   * @param {string} nodeId
+   * @param {{ rawBgpOutput?: string, bgpSessions?: any[], updatedAt?: string }} snapshot
+   */
+  recordBgpSnapshot(nodeId, snapshot = {}) {
+    if (!nodeId || typeof nodeId !== 'string') return;
+    const cleanId = nodeId.trim();
+    const data = {
+      rawBgpOutput: snapshot.rawBgpOutput || '',
+      bgpSessions: snapshot.bgpSessions || [],
+      updatedAt: snapshot.updatedAt || new Date().toISOString()
+    };
+    this.bgpSnapshots.set(cleanId, data);
+    const lower = cleanId.toLowerCase();
+    this.bgpSnapshots.set(lower, data);
+    this.bgpSnapshots.set(lower.replace(/[^a-z0-9]/g, ''), data);
+  }
+
+  /**
+   * Retrieve latest BGP snapshot for a node
+   * @param {string} nodeId
+   * @returns {{ rawBgpOutput: string, bgpSessions: any[], updatedAt: string } | null}
+   */
+  getBgpSnapshot(nodeId) {
+    if (!nodeId) return null;
+    const cleanId = String(nodeId).trim();
+    let snapshot = this.bgpSnapshots.get(cleanId);
+    if (!snapshot) {
+      const lower = cleanId.toLowerCase();
+      snapshot = this.bgpSnapshots.get(lower) || this.bgpSnapshots.get(lower.replace(/[^a-z0-9]/g, ''));
+    }
+    return snapshot || null;
+  }
+
+  /**
+   * Clear all heartbeat records and BGP snapshots (used in test teardown)
    */
   reset() {
     if (this.saveTimer) {
@@ -194,6 +230,7 @@ class StatusTrackerService {
       this.saveTimer = null;
     }
     this.heartbeats.clear();
+    this.bgpSnapshots.clear();
     const cachePath = this.getCachePath();
     try {
       if (fs.existsSync(cachePath)) {

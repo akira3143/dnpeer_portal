@@ -1,6 +1,14 @@
 #!/bin/busybox sh
 # birdc —— BIRD Internet Routing Daemon Client (CLI alias to lg)
 
+if [ -f /etc/dn42-lib.sh ]; then
+  . /etc/dn42-lib.sh
+elif [ -f "${0%/*}/../etc/dn42-lib.sh" ]; then
+  . "${0%/*}/../etc/dn42-lib.sh"
+elif [ -f "cli-src/etc/dn42-lib.sh" ]; then
+  . "cli-src/etc/dn42-lib.sh"
+fi
+
 # Locate lg binary
 LG_BIN="lg"
 if [ -x "/bin/lg" ]; then
@@ -44,6 +52,9 @@ done
 
 # Default node resolution
 if [ -z "$target_node" ]; then
+  if command -v ensure_nodes >/dev/null 2>&1; then
+    ensure_nodes >/dev/null 2>&1
+  fi
   if [ -s /tmp/dn42_nodes ]; then
     target_node=$(head -n 1 /tmp/dn42_nodes | cut -d'|' -f1)
   fi

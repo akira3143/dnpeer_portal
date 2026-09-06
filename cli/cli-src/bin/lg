@@ -43,7 +43,7 @@ while [ $# -gt 0 ]; do
               target="$target $1"
               ;;
             *)
-              if grep -q "^$1|" /tmp/dn42_nodes 2>/dev/null || [ "$1" = "JP-7" ] || [ "$1" = "JP-2" ] || [ "$1" = "US-1" ] || [ "$1" = "DE-1" ] || [ "$1" = "SGP-1" ]; then
+              if is_known_node "$1"; then
                 node="$1"
               else
                 target="$target $1"
@@ -69,7 +69,7 @@ fi
 if [ "$cmd" = "bgp" ] || [ "$cmd" = "protocols" ]; then
   cmd="protocols"
   if [ -n "$target" ] && [ -z "$node" ] && [ "$target" != "all" ]; then
-    if grep -q "^$target|" /tmp/dn42_nodes 2>/dev/null || [ "$target" = "JP-7" ] || [ "$target" = "JP-2" ] || [ "$target" = "US-1" ] || [ "$target" = "DE-1" ] || [ "$target" = "SGP-1" ]; then
+    if is_known_node "$target"; then
       node="$target"
       target=""
     fi
@@ -81,6 +81,7 @@ if [ "$cmd" = "trace" ] || [ "$cmd" = "traceroute" ]; then
 fi
 
 if [ -z "$node" ]; then
+  ensure_nodes >/dev/null 2>&1
   if [ -s /tmp/dn42_nodes ]; then
     node=$(head -n 1 /tmp/dn42_nodes | cut -d'|' -f1)
   fi
