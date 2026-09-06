@@ -293,9 +293,9 @@ export class RegistryService {
   }
 
   /**
-   * In-process background timer: pull every 30 minutes to warm repository
+   * In-process background timer: pull every 10 minutes to warm repository
    */
-  static startPeriodicSync(intervalMs = 30 * 60 * 1000) {
+  static startPeriodicSync(intervalMs = (parseInt(process.env.REGISTRY_SYNC_INTERVAL_MS, 10) || 10 * 60 * 1000)) {
     if (periodicTimer) return periodicTimer;
 
     periodicTimer = setInterval(async () => {
