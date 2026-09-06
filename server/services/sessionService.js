@@ -35,6 +35,27 @@ export function parseAllowedIps(allowedIpsStr = '') {
   return result;
 }
 
+/**
+ * Extract clean peer name from raw interface or BGP name, stripping prefixes and trailing node tags
+ */
+export function extractCleanPeerName(rawName = '', nodeTag = '') {
+  let clean = (rawName || '')
+    .replace(/^((?:dn42|wg|peer|p|ibgp|bgp)_+)+/i, '')
+    .replace(/[^a-zA-Z0-9_]/g, '')
+    .toLowerCase();
+
+  if (nodeTag) {
+    const nodeAlpha = nodeTag.replace(/[0-9]+$/, '');
+    const suffixes = [nodeTag];
+    if (nodeAlpha && nodeAlpha.length >= 2 && nodeAlpha !== nodeTag) {
+      suffixes.push(nodeAlpha);
+    }
+    const suffixRegex = new RegExp(`_(?:${suffixes.join('|')})$`, 'i');
+    clean = clean.replace(suffixRegex, '');
+  }
+  return clean;
+}
+
 export class SessionService {
   static withSessionCommitLock(fn) {
     const key = 'sessions';
@@ -180,7 +201,7 @@ export class SessionService {
       if (!mntTag) {
         mntTag = `as${norm.asn}`;
       }
-      const nodeTag = norm.nodeId.toLowerCase().replace(/[^a-z0-9]/g, '_');
+      const nodeTag = norm.nodeId.toLowerCase().replace(/[^a-z0-9]/g, '');
       sessionId = `peer_${mntTag}_${nodeTag}`;
     } else {
       sessionId = sessions[existingIndex].id;
@@ -402,24 +423,27 @@ export class SessionService {
     const sessions = await this.getSessions();
     let updated = false;
 
-    // Migration: ensure all discovered sessions have canonical peer_<name>_<nodeTag> IDs
+    // Migration: ensure all discovered sessions have canonical peer_<name>_<node> IDs
     // while preserving their interface names in peering.interface / assigned.interface
     for (const s of sessions) {
-      if (s.source === 'discovered' && !s.id.startsWith('peer_')) {
-        const oldId = s.id;
+      if (s.source === 'discovered') {
+        const raw = s.peering?.interface || s.assigned?.interface || s.id;
         s.peering = s.peering || {};
-        if (!s.peering.interface) s.peering.interface = oldId;
+        if (!s.peering.interface) s.peering.interface = raw;
         if (!s.assigned) s.assigned = {};
-        if (!s.assigned.interface) s.assigned.interface = oldId;
-        const cleanName = oldId.replace(/^(dn42|wg|peer|p|ibgp|bgp)_+/i, '').replace(/[^a-zA-Z0-9_]/g, '').toLowerCase() || 'stock';
-        const nodeTag = (s.nodeId || '').toLowerCase().replace(/[^a-z0-9]/g, '_');
-        let newId = `peer_${cleanName}_${nodeTag}`;
-        let c = 1;
-        while (sessions.some(other => other.id === newId && other !== s)) {
-          newId = `peer_${cleanName}_${nodeTag}_${c++}`;
+        if (!s.assigned.interface) s.assigned.interface = raw;
+        const nodeTag = (s.nodeId || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const cleanName = extractCleanPeerName(raw, nodeTag) || (s.asn ? `as${s.asn}` : 'stock');
+        const canonicalBase = `peer_${cleanName}_${nodeTag}`;
+        if (s.id !== canonicalBase && (!s.id.startsWith('peer_') || s.id.includes(`_${nodeTag}_`) || s.id.includes('_jp_') || s.id.includes('_hk_') || s.id.endsWith(`_${nodeTag}`))) {
+          let newId = canonicalBase;
+          let c = 1;
+          while (sessions.some(other => other.id === newId && other !== s)) {
+            newId = `${canonicalBase}_${c++}`;
+          }
+          s.id = newId;
+          updated = true;
         }
-        s.id = newId;
-        updated = true;
       }
     }
 
@@ -549,14 +573,11 @@ export class SessionService {
       }
 
       const parsedAddrs = parseAllowedIps(peer.allowedIps || '');
-      const nodeTag = nodeId.toLowerCase().replace(/[^a-z0-9]/g, '_');
+      const nodeTag = nodeId.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-      // Naming & ID: Canonical peer_<name>_<nodeTag> format
+      // Naming & ID: Canonical peer_<name>_<node> format
       const rawIface = (peer.interface && peer.interface !== '(none)') ? peer.interface : (matchedBgp?.name || '');
-      const cleanName = rawIface
-        .replace(/^(dn42|wg|peer|p|ibgp|bgp)_+/i, '')
-        .replace(/[^a-zA-Z0-9_]/g, '')
-        .toLowerCase() || (matchedAsn ? `as${matchedAsn}` : 'stock');
+      const cleanName = extractCleanPeerName(rawIface, nodeTag) || (matchedAsn ? `as${matchedAsn}` : 'stock');
       const baseId = `peer_${cleanName}_${nodeTag}`;
 
       let discId = baseId;
@@ -781,11 +802,8 @@ export class SessionService {
         const now = new Date().toISOString();
         const normState = (bgp.bgpState || '').toLowerCase();
 
-        const cleanBgpName = (bgp.name || '')
-          .replace(/^(dn42|wg|peer|p|ibgp|bgp)_+/i, '')
-          .replace(/[^a-zA-Z0-9_]/g, '')
-          .toLowerCase() || (targetAsn ? `as${targetAsn}` : 'bgp');
-        const nodeTag = nodeId.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        const nodeTag = nodeId.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const cleanBgpName = extractCleanPeerName(bgp.name || '', nodeTag) || (targetAsn ? `as${targetAsn}` : 'bgp');
         const baseId = `peer_${cleanBgpName}_${nodeTag}`;
 
         let discId = baseId;

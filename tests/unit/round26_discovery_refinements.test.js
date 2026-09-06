@@ -157,14 +157,14 @@ test_peer  BGP      ---        up     12:00:00  Established
     assert.ok(sessionB, 'Session B must be discovered');
 
     // Associated accurately via IP bridge, NOT confused
-    const nodeTag = testNodeId.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const nodeTag = testNodeId.toLowerCase().replace(/[^a-z0-9]/g, '');
     assert.equal(sessionA.asn, 4242421111, 'Peer A matched fe80::10:1 -> AS4242421111');
-    assert.equal(sessionA.id, `peer_peer_a_${nodeTag}`, 'Session ID uses canonical peer_<name>_<node>');
+    assert.equal(sessionA.id, `peer_a_${nodeTag}`, 'Session ID uses concise peer_<name>_<node>');
     assert.equal(sessionA.peering.interface, 'wg_peer_a', 'WireGuard interface name preserved');
     assert.equal(sessionA.status, 'active', 'BGP Established sets status to active');
 
     assert.equal(sessionB.asn, 4242422222, 'Peer B matched 172.20.20.1 -> AS4242422222');
-    assert.equal(sessionB.id, `peer_peer_b_${nodeTag}`, 'Session ID uses canonical peer_<name>_<node>');
+    assert.equal(sessionB.id, `peer_b_${nodeTag}`, 'Session ID uses concise peer_<name>_<node>');
     assert.equal(sessionB.peering.interface, 'wg_peer_b', 'WireGuard interface name preserved');
     assert.equal(sessionB.status, 'active');
   });
@@ -210,13 +210,13 @@ test_peer  BGP      ---        up     12:00:00  Established
     assert.ok(m1);
     assert.ok(m2);
 
-    const nodeTag = testNodeId.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const nodeTag = testNodeId.toLowerCase().replace(/[^a-z0-9]/g, '');
 
     // With Priority 3 deleted, neither peer should falsely take AS4242428888!
     assert.equal(m1.asn, null, 'Must NOT greedily match unmatched BGP session');
     assert.equal(m1.status, 'pending', 'Must remain pending');
     assert.equal(m1.runtime.stageText, 'pending', 'StageText must be pending');
-    assert.equal(m1.id, `peer_mystery_1_${nodeTag}`, 'ID must be canonical peer_<name>_<node>');
+    assert.equal(m1.id, `peer_mystery_1_${nodeTag}`, 'ID must be concise peer_<name>_<node>');
     assert.equal(m1.peering.interface, 'wg_mystery_1');
 
     assert.equal(m2.asn, null, 'Must NOT greedily match unmatched BGP session');
@@ -255,8 +255,8 @@ test_peer  BGP      ---        up     12:00:00  Established
     const sessions = await SessionService.getSessions();
     const nonWg = sessions.find(s => s.peering?.publicKey.startsWith('NonWgKey9'));
     assert.ok(nonWg);
-    const nodeTag = testNodeId.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    assert.equal(nonWg.id, `peer_as4242427777_${nodeTag}`, 'Should use canonical ID peer_<name>_<nodeTag>');
+    const nodeTag = testNodeId.toLowerCase().replace(/[^a-z0-9]/g, '');
+    assert.equal(nonWg.id, `peer_as4242427777_${nodeTag}`, 'Should use concise ID peer_<name>_<nodeTag>');
     assert.equal(nonWg.peering.interface, 'dn42_as4242427777');
     assert.equal(nonWg.asn, 4242427777);
   });
@@ -300,7 +300,7 @@ test_peer  BGP      ---        up     12:00:00  Established
       }]
     });
 
-    const nodeTag = testNodeId.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const nodeTag = testNodeId.toLowerCase().replace(/[^a-z0-9]/g, '');
     let sessions = await SessionService.getSessions();
     assert.equal(sessions.length, 1);
     assert.equal(sessions[0].source, 'discovered');
@@ -355,7 +355,7 @@ test_peer  BGP      ---        up     12:00:00  Established
 
     await SessionService.updateRuntimePeers(testNodeId, discReport);
 
-    const nodeTag = testNodeId.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const nodeTag = testNodeId.toLowerCase().replace(/[^a-z0-9]/g, '');
     // Verify session received hostPort and listenPort
     const sessions = await SessionService.getSessions();
     const afnSession = sessions.find(s => s.id === `peer_afn_hk_${nodeTag}`);
@@ -450,13 +450,13 @@ test_peer  BGP      ---        up     12:00:00  Established
 
     await SessionService.updateRuntimePeers(testNodeId, pureBgpReport);
 
-    const nodeTag = testNodeId.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const nodeTag = testNodeId.toLowerCase().replace(/[^a-z0-9]/g, '');
     const sessions = await SessionService.getSessions();
     assert.equal(sessions.length, 2, 'Must discover 2 pure BGP sessions');
 
-    const ibgp = sessions.find(s => s.peering?.interface === 'ibgp_tyix_jp7' || s.id === `peer_tyix_jp7_${nodeTag}`);
+    const ibgp = sessions.find(s => s.peering?.interface === 'ibgp_tyix_jp7' || s.id === `peer_tyix_${nodeTag}`);
     assert.ok(ibgp, 'ibgp_tyix_jp7 must be discovered');
-    assert.equal(ibgp.id, `peer_tyix_jp7_${nodeTag}`);
+    assert.equal(ibgp.id, `peer_tyix_${nodeTag}`);
     assert.equal(ibgp.peering.interface, 'ibgp_tyix_jp7');
     assert.equal(ibgp.asn, 4242423143);
     assert.equal(ibgp.status, 'active');
@@ -486,6 +486,33 @@ test_peer  BGP      ---        up     12:00:00  Established
       peerScript.includes('if [ -n "$last_node" ] && [ "$node_name" != "$last_node" ]; then'),
       'peer ls must contain node boundary divider logic'
     );
+  });
+
+  await t.test('12. extractCleanPeerName strips duplicate node suffixes and produces concise peer_<NAME>_<NODE>', async () => {
+    const { extractCleanPeerName } = await import('../../server/services/sessionService.js');
+
+    assert.equal(extractCleanPeerName('dn42_hexp_jp', 'jp7'), 'hexp');
+    assert.equal(extractCleanPeerName('dn42_hexp_jp', 'jp'), 'hexp');
+    assert.equal(extractCleanPeerName('ibgp_tyix_jp7', 'jp7'), 'tyix');
+    assert.equal(extractCleanPeerName('dn42_afn_hk', 'hk1'), 'afn');
+    assert.equal(extractCleanPeerName('dn42_afn_hk', 'hk'), 'afn');
+    assert.equal(extractCleanPeerName('wg_peer_a', 'jp7'), 'a');
+    assert.equal(extractCleanPeerName('dn42_upgrade', 'jp7'), 'upgrade');
+
+    // Verify auto-discovery on dn42_hexp_jp produces peer_hexp_jp7 (not peer_hexp_jp_jp_7)
+    fs.writeFileSync(sessionsFile, JSON.stringify([]), 'utf8');
+    await SessionService.updateRuntimePeers(testNodeId, {
+      peers: [{
+        interface: 'dn42_hexp_jp',
+        publicKey: 'HexpKeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+        endpoint: '198.51.100.1:23143'
+      }]
+    });
+    const sessions = await SessionService.getSessions();
+    const hexp = sessions.find(s => s.peering?.publicKey === 'HexpKeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=');
+    assert.ok(hexp);
+    assert.equal(hexp.id, 'peer_hexp_jp7', 'Must generate concise peer_hexp_jp7, avoiding duplicate _jp_jp_7');
+    assert.equal(hexp.peering.interface, 'dn42_hexp_jp');
   });
 });
 
