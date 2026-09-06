@@ -134,6 +134,11 @@ export function createServer() {
         }
 
         // Auth
+        if (pathname === '/api/auth/check' && method === 'GET') {
+          const resp = await AuthController.checkAuth(parsedUrl.searchParams);
+          return sendJson(res, 200, resp);
+        }
+
         if (pathname === '/api/auth/challenge' && (method === 'GET' || method === 'POST')) {
           let body = {};
           if (method === 'POST') body = await parseJsonBody(req);

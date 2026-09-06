@@ -114,4 +114,46 @@ test('Auth Flow API Integration Tests', async (t) => {
     // Should fail with credentials error, NOT format error
     assert.match(body.error.message, /Invalid credentials|Invalid username or password/);
   });
+
+  await t.test('GET /api/auth/check returns hasPassword true for existing user and false for new user', async () => {
+    // 1. User with password
+    const check1 = await fetch(`${baseUrl}/api/auth/check?asn=4242423143`);
+    assert.equal(check1.status, 200);
+    const body1 = await check1.json();
+    assert.equal(body1.success, true);
+    assert.equal(body1.data.asn, 4242423143);
+    assert.equal(body1.data.hasPassword, true);
+
+    // 2. User without password
+    const check2 = await fetch(`${baseUrl}/api/auth/check?asn=4242422466`);
+    assert.equal(check2.status, 200);
+    const body2 = await check2.json();
+    assert.equal(body2.success, true);
+    assert.equal(body2.data.asn, 4242422466);
+    assert.equal(body2.data.hasPassword, false);
+
+    // 3. Invalid ASN
+    const check3 = await fetch(`${baseUrl}/api/auth/check?asn=invalid`);
+    assert.equal(check3.status, 200);
+    const body3 = await check3.json();
+    assert.equal(body3.success, false);
+    assert.match(body3.error.message, /Invalid ASN format/);
+  });
+
+  await t.test('CLI dn42-login checks /api/auth/check and defaults to SSH login when hasPassword is false', () => {
+    const loginScript = fs.readFileSync(path.resolve('cli/cli-src/sbin/dn42-login'), 'utf8');
+
+    // 1. Must query /api/auth/check
+    assert.ok(loginScript.includes('/api/auth/check?asn=$clean'), 'Must query /api/auth/check?asn=$clean');
+
+    // 2. Must conditionally trigger password login only if has_pwd == true
+    assert.ok(loginScript.includes('[ "$has_pwd" = "true" ]'), 'Must gate do_password_login on hasPassword == true');
+
+    // 3. Must default to SSH login when no password is set
+    assert.ok(loginScript.includes('No stored password for AS$clean. Defaulting to SSH signature verification'), 'Must announce defaulting to SSH');
+
+    // 4. do_password_login must allow typing ssh to switch
+    assert.ok(loginScript.includes('[ "$pwd" = "ssh" ]'), 'Must allow typing ssh to switch to SSH verification');
+  });
 });
+

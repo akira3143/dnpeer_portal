@@ -391,4 +391,13 @@ export class AuthService {
     await this.saveAuthUsers(authUsers);
     return { success: true, message: 'Password updated successfully' };
   }
+
+  /**
+   * Check if a password is set for the given ASN in auth_users.json
+   */
+  static async hasPassword(asn) {
+    const cleanAsn = parseInt(String(asn).replace(/^AS/i, ''), 10);
+    const authUsers = await this.getAuthUsers();
+    return !!(authUsers[String(cleanAsn)] || authUsers[`AS${cleanAsn}`] || authUsers[String(asn)]);
+  }
 }

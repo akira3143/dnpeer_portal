@@ -120,6 +120,7 @@ save_token() {
 
 do_password_login() {
   local clean="$1" remember="$2" pwd resp token user_asn
+  echo -e "\033[90m(Enter password, type 'ssh' for SSH key sign-in, or 'q' to cancel)\033[0m"
   while true; do
     printf "\033[33mPassword for %s\033[0m: " "$clean"
     read_line_edit pwd -s
@@ -132,6 +133,7 @@ do_password_login() {
       return 2
     fi
     if [ -z "$pwd" ]; then
+      echo -e "\033[90m(Password cannot be empty. Type 'ssh' for SSH sign-in, or 'q' to cancel)\033[0m"
       continue
     fi
 
@@ -148,6 +150,39 @@ do_password_login() {
 
     echo -e "\033[31merror: $(json_field "$resp" message)\033[0m"
     echo -e "\033[90m(Type 'ssh' to switch to SSH cryptographic sign-in, or retry password)\033[0m"
+  done
+}
+
+do_set_password() {
+  local clean="$1" new_pwd confirm_pwd resp
+  while true; do
+    printf "\033[33mNew password (min 8 chars, 'q' to skip)\033[0m: "
+    read_line_edit new_pwd -s
+    flush_after_input
+    if [ "$new_pwd" = "q" ] || [ -z "$new_pwd" ]; then
+      echo -e "\033[90mPassword setup skipped.\033[0m"
+      return 0
+    fi
+    if [ "${#new_pwd}" -lt 8 ]; then
+      echo -e "\033[31merror: Password must be at least 8 characters.\033[0m"
+      continue
+    fi
+    printf "\033[33mConfirm new password\033[0m: "
+    read_line_edit confirm_pwd -s
+    flush_after_input
+    if [ "$new_pwd" != "$confirm_pwd" ]; then
+      echo -e "\033[31merror: Passwords do not match. Please try again.\033[0m"
+      continue
+    fi
+
+    resp=$(api_post "/api/auth/set-password" "{\"password\":\"$new_pwd\"}")
+    if echo "$resp" | grep -q '"success":true'; then
+      echo -e "\033[32mPassword saved successfully! You can use this password for fast logins next time.\033[0m"
+      return 0
+    else
+      echo -e "\033[31merror: $(json_field "$resp" message)\033[0m"
+      return 1
+    fi
   done
 }
 
@@ -271,17 +306,43 @@ main() {
       remember="true"
     fi
 
-    do_password_login "$clean" "$remember"
-    ret=$?
-    if [ $ret -eq 0 ]; then
-      enter_shell "$clean"
-      return 0
+    # 4. Check auth methods and registration on gateway
+    check_resp=$(api_get "/api/auth/check?asn=$clean")
+    if ! echo "$check_resp" | grep -q '"success":true'; then
+      err_msg=$(json_field "$check_resp" message)
+      [ -z "$err_msg" ] && err_msg="ASN verification failed"
+      echo -e "\033[31merror: $err_msg\033[0m"
+      continue
     fi
-    # ret 3 = cancelled (Ctrl+C at password), back to login prompt
-    [ $ret -eq 3 ] && continue
+
+    has_pwd=$(json_field "$check_resp" hasPassword)
+
+    if [ "$has_pwd" = "true" ]; then
+      do_password_login "$clean" "$remember"
+      ret=$?
+      if [ $ret -eq 0 ]; then
+        enter_shell "$clean"
+        return 0
+      fi
+      # ret 3 = cancelled (Ctrl+C / 'q' at password), back to login prompt
+      [ $ret -eq 3 ] && continue
+      # ret 2 = user typed 'ssh', proceed to SSH login below
+    else
+      echo -e "\033[90mNo stored password for AS$clean. Defaulting to SSH signature verification...\033[0m"
+    fi
 
     do_ssh_login "$clean" "$remember"
     if [ $? -eq 0 ]; then
+      if [ "$has_pwd" != "true" ]; then
+        echo ""
+        printf "\033[33mSet a password for future fast logins? [y/N]\033[0m: "
+        set_pwd_ans=""
+        read_line_edit set_pwd_ans
+        flush_after_input
+        if [ "$set_pwd_ans" = "y" ] || [ "$set_pwd_ans" = "Y" ]; then
+          do_set_password "$clean"
+        fi
+      fi
       enter_shell "$clean"
       return 0
     fi

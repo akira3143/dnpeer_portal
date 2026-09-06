@@ -4,6 +4,34 @@ import { validateAsn, normalizeAsn, isValidAsnFormat } from '../utils/validator.
 import { successEnvelope, errorEnvelope } from '../utils/envelope.js';
 
 export class AuthController {
+  static async checkAuth(params) {
+    const asn = params?.get ? params.get('asn') : (params?.asn || params?.asnNumber);
+
+    if (!isValidAsnFormat(asn)) {
+      return errorEnvelope('Invalid ASN format. Please enter a valid ASN number (1-4294967295)', { asn: 'Invalid ASN format' }, 200);
+    }
+
+    const cleanAsn = parseInt(normalizeAsn(asn), 10);
+
+    // Authoritative verification via DN42 Registry when repository is initialized
+    if (RegistryService.isRepoInitialized()) {
+      try {
+        const regInfo = await RegistryService.getAsnInfo(cleanAsn);
+        if (!regInfo) {
+          return errorEnvelope(`AS${cleanAsn} is not registered in the DN42 registry`, { asn: 'ASN not found in DN42 registry' }, 200);
+        }
+      } catch (err) {
+        console.warn(`[AuthController] Registry lookup error for AS${cleanAsn}:`, err.message);
+      }
+    }
+
+    const hasPassword = await AuthService.hasPassword(cleanAsn);
+    return successEnvelope({
+      asn: cleanAsn,
+      hasPassword
+    }, 200);
+  }
+
   static async getChallenge(params) {
     const asn = params?.asn || params?.asnNumber;
 
@@ -27,6 +55,7 @@ export class AuthController {
     }
 
     const challenge = await AuthService.createChallenge(cleanAsn);
+    challenge.hasPassword = await AuthService.hasPassword(cleanAsn);
     return successEnvelope(challenge, 200);
   }
 
