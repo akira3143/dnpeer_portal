@@ -129,25 +129,34 @@
     term.attachCustomKeyEventHandler((event) => {
       // (A) Ctrl+Shift+C: 强制复制当前选区，无条件拦截
       if (event.ctrlKey && event.shiftKey && (event.key === 'c' || event.key === 'C')) {
-        if (term.hasSelection()) {
+        if (event.type === 'keydown' && term.hasSelection()) {
           const selection = term.getSelection();
           if (selection) {
             navigator.clipboard.writeText(selection).catch(() => {});
+            term.clearSelection();
           }
         }
         return false; // 无条件拦截
       }
 
-      // (B) Ctrl+C: 如果屏幕上有选中文本，则执行复制并拦截（^C 不进终端）；无选区则放行（^C 进入终端中断输入）
+      // (B) Ctrl+C: 如果屏幕上有选中文本，则执行复制并拦截（^C 不进终端）；无选区则放行（^C 进入终端中断当前输入）
       if (event.ctrlKey && (event.key === 'c' || event.key === 'C') && !event.shiftKey && !event.altKey) {
         if (term.hasSelection()) {
-          const selection = term.getSelection();
-          if (selection) {
-            navigator.clipboard.writeText(selection).catch(() => {});
+          if (event.type === 'keydown') {
+            const selection = term.getSelection();
+            if (selection) {
+              navigator.clipboard.writeText(selection).catch(() => {});
+              term.clearSelection(); // 复制完毕立即清除选区，防止后续 Ctrl+C 误判为复制而吃掉打断信号
+            }
           }
           return false; // 拦截！不向 Linux 发送 ^C
         }
         return true; // 放行！^C 进入终端中断当前输入
+      }
+
+      // 常规打字输入或回车：若有历史悬挂选区，主动清空，避免干扰后续中断快捷键
+      if (term.hasSelection() && (event.key === 'Enter' || (!event.ctrlKey && !event.altKey && !event.metaKey && event.key.length === 1))) {
+        term.clearSelection();
       }
 
       // (C) Ctrl+V / Ctrl+Shift+V / Shift+Insert / Cmd+V: 拦截按键本身，交由 paste 事件单路径处理（防双份粘贴与未审阅回车）

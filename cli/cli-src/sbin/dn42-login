@@ -81,6 +81,7 @@ enter_shell() {
   export PS1="\[\033[32m\]peer@$disp\[\033[0m\]:\[\033[36m\]~\[\033[0m\]# "
   export HOME=/root
   cd /root
+  stty sane 2>/dev/null || stty icanon echo isig 2>/dev/null
   trap - INT
   exec /bin/sh -l
 }

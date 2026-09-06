@@ -3,6 +3,8 @@ export TERM=xterm-256color
 export EDITOR=nano
 help() { /bin/help "$@"; }
 command -v api_get >/dev/null 2>&1 || . /etc/dn42-lib.sh
+stty sane 2>/dev/null || stty icanon echo isig 2>/dev/null
+set -m 2>/dev/null
 
 # ---- boot warm-up (one-time cost at login, speeds up every later action) ----
 # 1. Page-cache hot binaries/scripts so exec() never re-reads them from disk

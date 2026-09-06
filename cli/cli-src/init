@@ -31,6 +31,6 @@ fi
 
 cd /root
 while true; do
-  /bin/busybox cttyhack /sbin/dn42-login </dev/hvc0 >/dev/hvc0 2>&1
+  /bin/busybox setsid -c /bin/busybox cttyhack /sbin/dn42-login </dev/hvc0 >/dev/hvc0 2>&1
   sleep 1
 done

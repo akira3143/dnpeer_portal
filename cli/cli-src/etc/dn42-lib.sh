@@ -356,8 +356,9 @@ read_line_edit() {
 
   if [ -n "$_old_stty" ]; then
     stty "$_old_stty" 2>/dev/null
+    stty isig 2>/dev/null
   else
-    stty icanon echo 2>/dev/null
+    stty icanon echo isig 2>/dev/null
   fi
 
   if [ -n "$_target_var" ]; then
