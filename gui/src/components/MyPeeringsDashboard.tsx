@@ -14,7 +14,10 @@ import {
   Server,
   Terminal,
   Loader2,
-  Edit3
+  Edit3,
+  ChevronDown,
+  ChevronRight,
+  Copy
 } from 'lucide-react';
 
 interface MyPeeringsDashboardProps {
@@ -30,7 +33,7 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
   onRequestPeering,
   onEditSession
 }) => {
-  const { showToast } = useToast();
+  const { showToast, copyToClipboard } = useToast();
 
   const [sessions, setSessions] = useState<PeeringSession[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -38,6 +41,19 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'pending'>('all');
   const [sessionToDelete, setSessionToDelete] = useState<PeeringSession | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (id: string) => {
+    setExpandedSessions((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   const fetchSessions = async () => {
     if (!user) return;
@@ -274,117 +290,268 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredSessions.map((sess) => {
-              const hostPort = sess.assigned?.hostPort || sess.peering?.listenPort || 0;
-              const peerPort = (sess.peering?.endpoint && sess.peering.endpoint.includes(':') ? sess.peering.endpoint.split(':').pop() : null) || sess.assigned?.clientPort || sess.peering?.clientPort || 0;
-              const badge = getStatusBadge(sess);
+          <div className="glass-panel rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black/20">
+            <div className="overflow-x-auto">
+              <div className="min-w-[1000px]">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-white/10 bg-white/[0.02] text-slate-400 text-[11px] font-sans font-medium uppercase tracking-wider select-none">
+                      <th className="py-3.5 pl-4 pr-2 w-[180px]">NODE &middot; <span className="text-slate-600 font-normal">节点</span></th>
+                      <th className="py-3.5 px-3 w-[180px]">SESSION ID &middot; <span className="text-slate-600 font-normal">会话</span></th>
+                      <th className="py-3.5 px-3 w-[120px]">ASN</th>
+                      <th className="py-3.5 px-3 w-[110px]">PEERPORT &middot; <span className="text-slate-600 font-normal">对端</span></th>
+                      <th className="py-3.5 px-3 w-[110px]">LISTENPORT &middot; <span className="text-slate-600 font-normal">本地</span></th>
+                      <th className="py-3.5 px-3">TUNNEL IP &middot; <span className="text-slate-600 font-normal">互联地址</span></th>
+                      <th className="py-3.5 px-3 text-center w-[160px]">STATUS &middot; <span className="text-slate-600 font-normal">状态</span></th>
+                      <th className="py-3.5 pl-2 pr-4 text-right w-[100px]">ACTION</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/[0.04] text-xs">
+                    {filteredSessions.map((sess) => {
+                      const hostPort = sess.assigned?.hostPort || sess.peering?.listenPort || 0;
+                      const peerPort = (sess.peering?.endpoint && sess.peering.endpoint.includes(':') ? sess.peering.endpoint.split(':').pop() : null) || sess.assigned?.clientPort || sess.peering?.clientPort || 0;
+                      const badge = getStatusBadge(sess);
+                      const isExpanded = expandedSessions.has(sess.id);
 
-              return (
-                <div
-                  key={sess.id}
-                  className="glass-panel p-5 rounded-2xl border border-white/10 hover:border-cyan-500/30 transition-all space-y-4 bg-black/40 flex flex-col justify-between"
-                >
-                  <div className="space-y-3">
-                    {/* Top Row: Node & Status */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-base font-bold text-white font-sans flex items-center gap-2">
-                          <CountryFlag code={sess.nodeId} className="w-5 h-3.5 object-cover rounded-[2px]" />
-                          <span>{sess.nodeId}</span>
-                        </div>
-                        <div className="text-[11px] font-mono text-cyan-400/80 mt-0.5 flex items-center gap-2">
-                          <span>{sess.id}</span>
-                          {sess.asn ? (
-                            <span className="text-slate-400 font-sans text-[10px]">· AS{sess.asn}</span>
-                          ) : (
-                            <span className="text-amber-400/80 font-sans text-[10px]">· unknown ASN</span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono font-medium ${badge.badgeClass}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${badge.dotClass}`} />
-                          <span>{badge.label}</span>
-                        </span>
-
-                        {onEditSession && (
-                          <button
-                            onClick={() => onEditSession(sess)}
-                            className="p-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 transition-colors cursor-pointer"
-                            title="Edit or Re-submit Session"
+                      return (
+                        <React.Fragment key={sess.id}>
+                          <tr
+                            onClick={() => toggleExpand(sess.id)}
+                            className={`hover:bg-white/[0.04] transition-colors group cursor-pointer ${
+                              isExpanded ? 'bg-white/[0.02]' : ''
+                            }`}
                           >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                            {/* Column 1: Node */}
+                            <td className="py-3.5 pl-4 pr-2">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleExpand(sess.id);
+                                  }}
+                                  className="text-slate-500 hover:text-cyan-400 transition-colors cursor-pointer p-0.5"
+                                  title={isExpanded ? 'Collapse Details' : 'Expand Details'}
+                                >
+                                  {isExpanded ? (
+                                    <ChevronDown className="w-3.5 h-3.5 text-cyan-400" />
+                                  ) : (
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                                <CountryFlag
+                                  code={sess.nodeId}
+                                  className="w-5 h-3.5 object-cover rounded-[2px] border border-white/10 shrink-0"
+                                />
+                                <span className="font-semibold text-slate-100 group-hover:text-cyan-300 transition-colors font-sans">
+                                  {sess.nodeId}
+                                </span>
+                              </div>
+                            </td>
 
-                        <button
-                          onClick={() => setSessionToDelete(sess)}
-                          className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-colors cursor-pointer"
-                          title="Revoke Peering Session"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
+                            {/* Column 2: Session ID */}
+                            <td className="py-3.5 px-3">
+                              <span className="font-mono text-cyan-400/90 font-medium">
+                                {sess.id}
+                              </span>
+                            </td>
 
-                    {/* Diagnostic Info if BGP error / socket message */}
-                    {sess.runtime?.bgpInfo && sess.runtime.bgpInfo !== sess.runtime.bgpState && (
-                      <div className="text-[10px] text-amber-400/80 font-mono bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20 truncate" title={sess.runtime.bgpInfo}>
-                        Info: {sess.runtime.bgpInfo}
-                      </div>
-                    )}
+                            {/* Column 3: ASN */}
+                            <td className="py-3.5 px-3">
+                              {sess.asn ? (
+                                <span className="font-mono text-slate-200">AS{sess.asn}</span>
+                              ) : (
+                                <span className="font-mono text-amber-400/80">unknown</span>
+                              )}
+                            </td>
 
-                    {/* Parameters Grid */}
-                    <div className="grid grid-cols-2 gap-2 text-[11px] font-mono p-3 rounded-xl bg-black/50 border border-white/5">
-                      <div>
-                        <span className="text-slate-500 block text-[10px]">Listen Port (Node)</span>
-                        <span className="text-cyan-300 font-semibold">{hostPort}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 block text-[10px]">Peer Port</span>
-                        <span className="text-cyan-300 font-semibold">{peerPort}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 block text-[10px]">MTU</span>
-                        <span className="text-slate-300">{sess.peering?.mtu || 1420}</span>
-                      </div>
-                      <div className="col-span-2">
-                        <span className="text-slate-500 block text-[10px]">Link-Local IPv6 (LLA)</span>
-                        <span className="text-slate-200">{sess.peering?.linkLocal || 'N/A'}</span>
-                      </div>
-                      {sess.peering?.ipv4 && (
-                        <div>
-                          <span className="text-slate-500 block text-[10px]">IPv4</span>
-                          <span className="text-emerald-400">{sess.peering.ipv4}</span>
-                        </div>
-                      )}
-                      {sess.peering?.ipv6Ula && (
-                        <div>
-                          <span className="text-slate-500 block text-[10px]">IPv6 ULA</span>
-                          <span className="text-purple-400 truncate block">{sess.peering.ipv6Ula}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                            {/* Column 4: PEERPORT (Node WireGuard Port) */}
+                            <td className="py-3.5 px-3">
+                              <span className="font-mono font-semibold text-cyan-300">
+                                {hostPort}
+                              </span>
+                            </td>
 
-                  {/* Bottom Meta */}
-                  <div className="text-[10px] text-slate-500 font-mono flex items-center justify-between border-t border-white/5 pt-2">
-                    <span>Created: {new Date(sess.createdAt).toLocaleDateString()}</span>
-                    <span className="flex items-center gap-2">
-                      {sess.runtime?.latestHandshake && sess.runtime.latestHandshake > 0 ? (
-                        <span className="text-emerald-400 font-medium">WG Up</span>
-                      ) : (
-                        <span className="text-slate-500">WG Idle</span>
-                      )}
-                      <span>&middot;</span>
-                      <span>MP-BGP ENH</span>
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+                            {/* Column 5: LISTENPORT (Local Client Port) */}
+                            <td className="py-3.5 px-3">
+                              <span className="font-mono font-semibold text-slate-300">
+                                {peerPort}
+                              </span>
+                            </td>
+
+                            {/* Column 6: Tunnel Addresses (LLA + IPv4) */}
+                            <td className="py-3.5 px-3">
+                              <div className="font-mono text-[11px] flex flex-col gap-0.5">
+                                <span className="text-slate-300 truncate max-w-[200px]" title={sess.peering?.linkLocal || 'N/A'}>
+                                  {sess.peering?.linkLocal || 'N/A'}
+                                </span>
+                                <div className="flex items-center gap-2 text-[10px]">
+                                  {sess.peering?.ipv4 && (
+                                    <span className="text-emerald-400">{sess.peering.ipv4}</span>
+                                  )}
+                                  {sess.peering?.ipv6Ula && (
+                                    <span className="text-purple-400/80 truncate max-w-[120px]" title={sess.peering.ipv6Ula}>
+                                      {sess.peering.ipv6Ula}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Column 7: Status & Handshake */}
+                            <td className="py-3.5 px-3 text-center">
+                              <div className="inline-flex flex-col items-center gap-1">
+                                <span
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-medium ${badge.badgeClass}`}
+                                >
+                                  <span className={`w-1.5 h-1.5 rounded-full ${badge.dotClass}`} />
+                                  <span>{badge.label}</span>
+                                </span>
+                                <span className="text-[9px] font-mono text-slate-500">
+                                  {sess.runtime?.latestHandshake && sess.runtime.latestHandshake > 0 ? (
+                                    <span className="text-emerald-400 font-medium">WG Up</span>
+                                  ) : (
+                                    <span>WG Idle</span>
+                                  )}
+                                </span>
+                              </div>
+                            </td>
+
+                            {/* Column 8: Action Buttons */}
+                            <td className="py-3.5 pl-2 pr-4 text-right" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center justify-end gap-1.5">
+                                {onEditSession && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onEditSession(sess)}
+                                    className="p-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 transition-colors cursor-pointer"
+                                    title="Edit or Re-submit Session"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setSessionToDelete(sess)}
+                                  className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-colors cursor-pointer"
+                                  title="Revoke Peering Session"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* Expandable Technical Details Drawer */}
+                          {isExpanded && (
+                            <tr className="bg-cyan-950/10 border-b border-cyan-500/20">
+                              <td colSpan={8} className="p-4 sm:p-5">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-mono bg-black/60 p-4 rounded-xl border border-white/5 shadow-inner">
+                                  {/* Col 1: Keys & Endpoint */}
+                                  <div className="space-y-2">
+                                    <div>
+                                      <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans">
+                                        WireGuard Public Key
+                                      </span>
+                                      <div className="flex items-center gap-1.5 text-slate-300 font-mono text-[11px] truncate mt-0.5">
+                                        <span className="truncate">{sess.peering?.publicKey || 'N/A'}</span>
+                                        {sess.peering?.publicKey && (
+                                          <button
+                                            type="button"
+                                            onClick={() => copyToClipboard(sess.peering.publicKey, 'WG PubKey')}
+                                            className="p-1 hover:text-cyan-400 text-slate-500 transition-colors cursor-pointer shrink-0"
+                                            title="Copy Public Key"
+                                          >
+                                            <Copy className="w-3 h-3" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans">
+                                        WireGuard Endpoint
+                                      </span>
+                                      <span className="text-slate-300 font-mono text-[11px] block mt-0.5">
+                                        {sess.peering?.endpoint || 'Roaming / Dynamic (0.0.0.0)'}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Col 2: Addresses */}
+                                  <div className="space-y-2">
+                                    <div>
+                                      <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans">
+                                        Link-Local IPv6 (LLA)
+                                      </span>
+                                      <span className="text-slate-200 font-mono text-[11px] block mt-0.5">
+                                        {sess.peering?.linkLocal || 'N/A'}
+                                      </span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <div>
+                                        <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans">
+                                          DN42 IPv4
+                                        </span>
+                                        <span className="text-emerald-400 font-mono text-[11px] block mt-0.5">
+                                          {sess.peering?.ipv4 || 'None'}
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans">
+                                          IPv6 ULA
+                                        </span>
+                                        <span className="text-purple-400 font-mono text-[11px] truncate block mt-0.5" title={sess.peering?.ipv6Ula}>
+                                          {sess.peering?.ipv6Ula || 'None'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Col 3: Parameters & Diagnostics */}
+                                  <div className="space-y-2">
+                                    <div className="grid grid-cols-3 gap-2">
+                                      <div>
+                                        <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans">
+                                          MTU
+                                        </span>
+                                        <span className="text-slate-300 block mt-0.5">{sess.peering?.mtu || 1420}</span>
+                                      </div>
+                                      <div>
+                                        <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans">
+                                          Protocol
+                                        </span>
+                                        <span className="text-cyan-400 block mt-0.5">MP-BGP ENH</span>
+                                      </div>
+                                      <div>
+                                        <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans">
+                                          Created
+                                        </span>
+                                        <span className="text-slate-400 text-[10px] block mt-0.5">
+                                          {new Date(sess.createdAt).toLocaleDateString()}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {sess.runtime?.bgpInfo && sess.runtime.bgpInfo !== sess.runtime.bgpState && (
+                                      <div
+                                        className="text-[10px] text-amber-400/90 font-mono bg-amber-500/10 px-2.5 py-1.5 rounded-lg border border-amber-500/20 truncate"
+                                        title={sess.runtime.bgpInfo}
+                                      >
+                                        Diagnostic: {sess.runtime.bgpInfo}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
 
