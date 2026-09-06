@@ -381,12 +381,19 @@ export class SessionService {
 
     let reportedPeers = [];
     let bgpSessions = [];
+    let reportedPorts = [];
     if (Array.isArray(reportedData)) {
       reportedPeers = reportedData;
       bgpSessions = Array.isArray(optionalBgpSessions) ? optionalBgpSessions : [];
     } else if (reportedData && typeof reportedData === 'object') {
       reportedPeers = Array.isArray(reportedData.peers) ? reportedData.peers : [];
       bgpSessions = Array.isArray(reportedData.bgpSessions) ? reportedData.bgpSessions : [];
+      reportedPorts = Array.isArray(reportedData.ports) ? reportedData.ports : [];
+    }
+
+    const portByIface = new Map();
+    for (const p of reportedPorts) {
+      if (p.name && p.port) portByIface.set(p.name.toLowerCase(), p.port);
     }
 
     // 1. WireGuard Telemetry Correlation (Pubkey driven) for existing sessions
@@ -402,6 +409,23 @@ export class SessionService {
           session.peering = session.peering || {};
           session.peering.interface = peer.interface;
         }
+
+        // Backfill hostPort/listenPort if not present or discovered
+        const ifaceName = peer.interface || session.peering?.interface || session.id;
+        const resolvedPort = peer.listenPort || (ifaceName ? portByIface.get(ifaceName.toLowerCase()) : null);
+        if (resolvedPort) {
+          session.assigned = session.assigned || {};
+          if (!session.assigned.hostPort) {
+            session.assigned.hostPort = resolvedPort;
+            updated = true;
+          }
+          session.peering = session.peering || {};
+          if (!session.peering.listenPort) {
+            session.peering.listenPort = resolvedPort;
+            updated = true;
+          }
+        }
+
         if (session.source === 'discovered' && peer.allowedIps) {
           session.peering = session.peering || {};
           const parsed = parseAllowedIps(peer.allowedIps);
@@ -497,6 +521,8 @@ export class SessionService {
       }
 
       const now = new Date().toISOString();
+      const ifaceName = peer.interface || discId;
+      const resolvedListenPort = peer.listenPort || (ifaceName ? portByIface.get(ifaceName.toLowerCase()) : null) || null;
       const newDiscSession = {
         id: discId,
         source: 'discovered',
@@ -514,14 +540,14 @@ export class SessionService {
           ipv4: parsedAddrs.ipv4 || '',
           ipv6Ula: parsedAddrs.ipv6Ula || '',
           linkLocal: parsedAddrs.linkLocal || '',
-          listenPort: null,
+          listenPort: resolvedListenPort,
           clientPort: null,
           interface: peer.interface || '',
           allowedIps: peer.allowedIps || '',
           mtu: 1420
         },
         assigned: {
-          hostPort: null,
+          hostPort: resolvedListenPort,
           interface: peer.interface || ''
         },
         runtime: {
@@ -649,5 +675,9 @@ export class SessionService {
     if (updated) {
       await this.saveSessions(sessions);
     }
+
+    try {
+      await PortLedgerService.syncDiscoveredPorts(nodeId, sessions);
+    } catch {}
   }
 }

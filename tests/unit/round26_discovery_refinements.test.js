@@ -252,17 +252,18 @@ test_peer  BGP      ---        up     12:00:00  Established
     assert.equal(nonWg.asn, 4242427777);
   });
 
-  await t.test('6. CLI peer ls displays exact 5 columns, port 0 fallback, and no [auto] prefix', () => {
+  await t.test('6. CLI peer ls displays dual ports (PEERPORT and LISTENPORT), port 0 fallback, and no [auto] prefix', () => {
     const peerScript = fs.readFileSync(path.resolve('cli/cli-src/bin/peer'), 'utf8');
 
-    // 1. Header has exact 5 columns
+    // 1. Header has dual ports (user perspective: PEERPORT then LISTENPORT)
     assert.ok(
-      peerScript.includes('"NODE" "SESSION ID" "ASN" "PORT" "STATUS"'),
-      'CLI must have exactly 5 columns: NODE, SESSION ID, ASN, PORT, STATUS'
+      peerScript.includes('"NODE" "SESSION ID" "ASN" "PEERPORT" "LISTENPORT" "STATUS"'),
+      'CLI must have dual ports: NODE, SESSION ID, ASN, PEERPORT, LISTENPORT, STATUS'
     );
 
-    // 2. Port fallback logic: if ep_port and hostPort missing, displays 0
-    assert.ok(peerScript.includes('disp_port="0"'), 'Unreadable port must fallback to 0');
+    // 2. Port fallback logic: if port missing, displays 0
+    assert.ok(peerScript.includes('disp_lport="0"'), 'Unreadable listenport must fallback to 0');
+    assert.ok(peerScript.includes('disp_pport="0"'), 'Unreadable peerport must fallback to 0');
 
     // 3. No [auto] prefix in session ID
     assert.ok(!peerScript.includes('disp_id="[auto]'), 'Session ID must not have [auto] prefix');
@@ -315,6 +316,48 @@ test_peer  BGP      ---        up     12:00:00  Established
     assert.equal(upgraded.peering.publicKey, pubKey);
     assert.ok(upgraded.assigned.hostPort >= 20000, 'Host port must be allocated by portal');
     assert.equal(upgraded.status, 'pending', 'Newly submitted portal session enters pending or active');
+  });
+
+  await t.test('8. Port ledger correctly records WireGuard listenport for both portal and discovered peers', async () => {
+    fs.writeFileSync(sessionsFile, JSON.stringify([]), 'utf8');
+    fs.writeFileSync(ledgerFile, JSON.stringify({}), 'utf8');
+
+    const pubKey = 'LedgerKeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
+    const discReport = {
+      ports: [{ port: 23143, name: 'dn42_afn_hk', source: 'wg' }],
+      peers: [{
+        interface: 'dn42_afn_hk',
+        publicKey: pubKey,
+        endpoint: '', // roaming peer with 0 endpoint port
+        allowedIps: '172.20.150.99/32, fe80::99/64',
+        latestHandshake: 1725509999
+      }],
+      bgpSessions: [{
+        name: 'dn42_afn_hk',
+        neighborAddress: 'fe80::99',
+        asn: 4242422213,
+        cleanAsn: 4242422213,
+        bgpState: 'Connect'
+      }]
+    };
+
+    await SessionService.updateRuntimePeers(testNodeId, discReport);
+
+    // Verify session received hostPort and listenPort
+    const sessions = await SessionService.getSessions();
+    const afnSession = sessions.find(s => s.id === 'dn42_afn_hk');
+    assert.ok(afnSession);
+    assert.equal(afnSession.assigned.hostPort, 23143, 'Discovered session must receive listenport from wg ports');
+    assert.equal(afnSession.peering.listenPort, 23143);
+
+    // Verify port ledger recorded the listenport
+    const { PortLedgerService } = await import('../../server/services/portLedgerService.js');
+    const nodePorts = await PortLedgerService.getNodePorts(testNodeId);
+    const ledgerEntry = nodePorts.find(p => p.port === 23143);
+    assert.ok(ledgerEntry, 'Port ledger MUST record listenport 23143');
+    assert.equal(ledgerEntry.interfaceName, 'dn42_afn_hk');
+    assert.equal(ledgerEntry.sessionId, 'dn42_afn_hk');
+    assert.equal(ledgerEntry.asn, 4242422213);
   });
 });
 

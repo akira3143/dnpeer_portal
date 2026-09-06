@@ -277,6 +277,7 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredSessions.map((sess) => {
               const hostPort = sess.assigned?.hostPort || sess.peering?.listenPort || 0;
+              const peerPort = (sess.peering?.endpoint && sess.peering.endpoint.includes(':') ? sess.peering.endpoint.split(':').pop() : null) || sess.assigned?.clientPort || sess.peering?.clientPort || 0;
               const badge = getStatusBadge(sess);
 
               return (
@@ -338,8 +339,12 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                     {/* Parameters Grid */}
                     <div className="grid grid-cols-2 gap-2 text-[11px] font-mono p-3 rounded-xl bg-black/50 border border-white/5">
                       <div>
-                        <span className="text-slate-500 block text-[10px]">Host Port</span>
+                        <span className="text-slate-500 block text-[10px]">Listen Port (Node)</span>
                         <span className="text-cyan-300 font-semibold">{hostPort}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[10px]">Peer Port</span>
+                        <span className="text-cyan-300 font-semibold">{peerPort}</span>
                       </div>
                       <div>
                         <span className="text-slate-500 block text-[10px]">MTU</span>

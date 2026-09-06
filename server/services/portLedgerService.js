@@ -167,21 +167,79 @@ export class PortLedgerService {
     // Merge wg listen-ports
     for (const wp of ports) {
       const portNum = parseInt(wp.port, 10);
-      if (!isNaN(portNum) && !existingPortNumbers.has(portNum)) {
-        merged.push({
-          port: portNum,
-          type: 'in_use',
-          source: 'wireguard_probe',
-          interfaceName: wp.name || 'wg0',
-          lockedAt: new Date().toISOString(),
-          description: `Active WireGuard interface ${wp.name || ''}`
-        });
-        existingPortNumbers.add(portNum);
+      if (!isNaN(portNum)) {
+        const existingEntry = merged.find(p => p.port === portNum);
+        if (existingEntry) {
+          if (!existingEntry.interfaceName && wp.name) {
+            existingEntry.interfaceName = wp.name;
+          }
+        } else {
+          merged.push({
+            port: portNum,
+            type: 'in_use',
+            source: 'wireguard_probe',
+            interfaceName: wp.name || 'wg0',
+            lockedAt: new Date().toISOString(),
+            description: `Active WireGuard interface ${wp.name || ''}`
+          });
+          existingPortNumbers.add(portNum);
+        }
       }
     }
 
     ledger[nodeId] = merged;
     await this.saveLedger(ledger);
     return merged;
+  }
+
+  /**
+   * Ensure sessions on this node with hostPort/listenPort are properly tracked in port_ledger.json
+   */
+  static async syncDiscoveredPorts(nodeId, sessions = []) {
+    const ledger = await this.getLedger();
+    if (!Array.isArray(ledger[nodeId])) {
+      ledger[nodeId] = [];
+    }
+    const nodeSessions = sessions.filter(s => s.nodeId === nodeId);
+    let modified = false;
+
+    for (const s of nodeSessions) {
+      const portNum = parseInt(s.assigned?.hostPort || s.peering?.listenPort, 10);
+      if (isNaN(portNum) || portNum <= 0) continue;
+
+      const existingEntry = ledger[nodeId].find(p => p.port === portNum);
+      const iface = s.assigned?.interface || s.peering?.interface || s.id;
+      if (existingEntry) {
+        if (!existingEntry.sessionId && s.id) {
+          existingEntry.sessionId = s.id;
+          modified = true;
+        }
+        if (!existingEntry.asn && s.asn) {
+          existingEntry.asn = s.asn;
+          modified = true;
+        }
+        if (!existingEntry.interfaceName && iface) {
+          existingEntry.interfaceName = iface;
+          modified = true;
+        }
+      } else {
+        ledger[nodeId].push({
+          port: portNum,
+          type: 'in_use',
+          source: s.source === 'discovered' ? 'wireguard_probe' : 'peering_session',
+          sessionId: s.id,
+          asn: s.asn || null,
+          interfaceName: iface,
+          lockedAt: s.createdAt || new Date().toISOString(),
+          description: `WireGuard interface ${iface} (ASN ${s.asn || 'unknown'})`
+        });
+        modified = true;
+      }
+    }
+
+    if (modified) {
+      await this.saveLedger(ledger);
+    }
+    return ledger[nodeId];
   }
 }

@@ -23,6 +23,8 @@ export function parseWgDump(dumpOutput) {
   const peers = [];
   if (!dumpOutput || typeof dumpOutput !== 'string') return { ports, peers };
 
+  const ifacePortMap = {};
+
   for (const line of dumpOutput.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -32,6 +34,7 @@ export function parseWgDump(dumpOutput) {
       const port = parseInt(parts[3], 10);
       if (!isNaN(port) && port > 0) {
         ports.push({ port, name: iface, source: 'wg' });
+        ifacePortMap[iface] = port;
       }
     } else if (parts.length >= 8) {
       const iface = parts[0];
@@ -49,16 +52,25 @@ export function parseWgDump(dumpOutput) {
           allowedIps,
           latestHandshake,
           rxBytes,
-          txBytes
+          txBytes,
+          listenPort: ifacePortMap[iface] || null
         });
       }
     }
   }
+
+  // Backfill listenPort for peers encountered before interface line
+  for (const peer of peers) {
+    if ((!peer.listenPort || peer.listenPort === 0) && ifacePortMap[peer.interface]) {
+      peer.listenPort = ifacePortMap[peer.interface];
+    }
+  }
+
   return { ports, peers };
 }
 
 /**
- * Parse WireGuard .conf files in wgDir to extract AllowedIPs and Endpoint for each peer.
+ * Parse WireGuard .conf files in wgDir to extract AllowedIPs, Endpoint, and ListenPort for each peer.
  * Fail-safe: returns empty object on any read/parse error.
  */
 export function parseWireguardConfigs(wgDir = '/etc/wireguard') {
@@ -73,22 +85,36 @@ export function parseWireguardConfigs(wgDir = '/etc/wireguard') {
       try {
         const content = fs.readFileSync(fullPath, 'utf8');
         let currentPeer = null;
+        let currentIfaceListenPort = null;
+        let inInterface = false;
+
         for (const line of content.split('\n')) {
           const trimmed = line.trim();
           if (!trimmed || trimmed.startsWith('#')) continue;
-          if (/^\[peer\]/i.test(trimmed)) {
-            currentPeer = {};
-            continue;
-          }
-          if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+          if (/^\[interface\]/i.test(trimmed)) {
+            inInterface = true;
             currentPeer = null;
             continue;
           }
-          if (currentPeer) {
-            const eqIdx = trimmed.indexOf('=');
-            if (eqIdx !== -1) {
-              const key = trimmed.slice(0, eqIdx).trim().toLowerCase();
-              const val = trimmed.slice(eqIdx + 1).trim();
+          if (/^\[peer\]/i.test(trimmed)) {
+            inInterface = false;
+            currentPeer = { listenPort: currentIfaceListenPort };
+            continue;
+          }
+          if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+            inInterface = false;
+            currentPeer = null;
+            continue;
+          }
+
+          const eqIdx = trimmed.indexOf('=');
+          if (eqIdx !== -1) {
+            const key = trimmed.slice(0, eqIdx).trim().toLowerCase();
+            const val = trimmed.slice(eqIdx + 1).trim();
+            if (inInterface && key === 'listenport') {
+              const lp = parseInt(val, 10);
+              if (!isNaN(lp) && lp > 0) currentIfaceListenPort = lp;
+            } else if (currentPeer) {
               if (key === 'publickey') {
                 currentPeer.publicKey = val;
                 configPeers[val] = currentPeer;
@@ -444,6 +470,9 @@ export async function collectAndReport(options = {}) {
     }
     if (!peer.endpoint && configPeers[peer.publicKey]?.endpoint) {
       peer.endpoint = configPeers[peer.publicKey].endpoint;
+    }
+    if ((!peer.listenPort || peer.listenPort === 0) && configPeers[peer.publicKey]?.listenPort) {
+      peer.listenPort = configPeers[peer.publicKey].listenPort;
     }
   }
 

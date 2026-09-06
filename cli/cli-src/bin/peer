@@ -610,18 +610,20 @@ do_ls() {
   ensure_nodes || true
 
   echo ""
-  printf "%-26s %-24s %-14s %-8s %s\n" "NODE" "SESSION ID" "ASN" "PORT" "STATUS"
-  printf "\033[90m------------------------------------------------------------------------------------\033[0m\n"
+  printf "%-14s %-24s %-14s %-12s %-12s %s\n" "NODE" "SESSION ID" "ASN" "PEERPORT" "LISTENPORT" "STATUS"
+  printf "\033[90m------------------------------------------------------------------------------------------\033[0m\n"
 
   echo "$resp" | sed 's/},{/}\n{/g' | grep '"id"' | while IFS= read -r line; do
     id=${line#*\"id\":\"}; id=${id%%\"*}
     asn=${line#*\"asn\":}; asn=${asn%%,*}; asn=${asn%%\}*}
     node=${line#*\"nodeId\":\"}; node=${node%%\"*}
-    port=${line#*\"hostPort\":}; port=${port%%,*}; port=${port%%\}*}
+    host_port=${line#*\"hostPort\":}; host_port=${host_port%%,*}; host_port=${host_port%%\}*}
+    listen_port=${line#*\"listenPort\":}; listen_port=${listen_port%%,*}; listen_port=${listen_port%%\}*}
+    client_port=${line#*\"clientPort\":}; client_port=${client_port%%,*}; client_port=${client_port%%\}*}
     status=${line#*\"status\":\"}; status=${status%%\"*}
     stage=${line#*\"stageText\":\"}; [ "$stage" = "$line" ] && stage="$status"; stage=${stage%%\"*}
 
-    # 1. Node column shows node ID (compact); name lookup dropped per user preference
+    # 1. Node column shows node ID (compact)
     node_name="$node"
 
     # 2. Session ID (discovered session uses tunnel interface name, no [auto] prefix)
@@ -634,24 +636,34 @@ do_ls() {
       disp_asn="AS$asn"
     fi
 
-    # 4. Port: parse from endpoint; if not available, fallback to hostPort; if still unreadable, display 0
+    # 4. PEERPORT (user's peering partner / AkiLab node WireGuard listen port: assigned.hostPort or peering.listenPort)
+    disp_pport=""
+    if [ -n "$host_port" ] && [ "$host_port" != "null" ] && [ "$host_port" != "$line" ] && echo "$host_port" | grep -q '^[0-9][0-9]*$' && [ "$host_port" -gt 0 ]; then
+      disp_pport="$host_port"
+    elif [ -n "$listen_port" ] && [ "$listen_port" != "null" ] && [ "$listen_port" != "$line" ] && echo "$listen_port" | grep -q '^[0-9][0-9]*$' && [ "$listen_port" -gt 0 ]; then
+      disp_pport="$listen_port"
+    else
+      disp_pport="0"
+    fi
+
+    # 5. LISTENPORT (user's local listen port: remote endpoint port or clientPort; roaming/missing is 0)
     ep=${line#*\"endpoint\":\"}; ep=${ep%%\"*}
-    disp_port=""
+    disp_lport=""
     if [ -n "$ep" ] && [ "$ep" != "$line" ] && echo "$ep" | grep -q ':'; then
       ep_port=${ep##*:}
       if echo "$ep_port" | grep -q '^[0-9][0-9]*$' && [ "$ep_port" -gt 0 ]; then
-        disp_port="$ep_port"
+        disp_lport="$ep_port"
       fi
     fi
-    if [ -z "$disp_port" ]; then
-      if [ -n "$port" ] && [ "$port" != "null" ] && [ "$port" != "$line" ] && echo "$port" | grep -q '^[0-9][0-9]*$' && [ "$port" -gt 0 ]; then
-        disp_port="$port"
+    if [ -z "$disp_lport" ]; then
+      if [ -n "$client_port" ] && [ "$client_port" != "null" ] && [ "$client_port" != "$line" ] && echo "$client_port" | grep -q '^[0-9][0-9]*$' && [ "$client_port" -gt 0 ]; then
+        disp_lport="$client_port"
       else
-        disp_port="0"
+        disp_lport="0"
       fi
     fi
 
-    # 5. Status: BGP truth progression (Established/Connect/Idle/pending)
+    # 6. Status: BGP truth progression (Established/Connect/Idle/pending)
     color="\033[0m"
     case "$stage" in
       *Established*|*active*)
@@ -664,7 +676,7 @@ do_ls() {
         color="\033[90m" ;;
     esac
 
-    printf "%-26s %-24s %-14s %-8s %b%s\033[0m\n" "$node_name" "$disp_id" "$disp_asn" "$disp_port" "$color" "$stage"
+    printf "%-14s %-24s %-14s %-12s %-12s %b%s\033[0m\n" "$node_name" "$disp_id" "$disp_asn" "$disp_pport" "$disp_lport" "$color" "$stage"
   done
   echo ""
   echo -e "\033[90mTip: Run 'peer edit' to update an existing session; 'peer new' for a new one.\033[0m"

@@ -12,6 +12,8 @@ export function parseWgDump(dumpOutput) {
   const peers = [];
   if (!dumpOutput || typeof dumpOutput !== 'string') return { ports, peers };
 
+  const ifacePortMap = {};
+
   for (const line of dumpOutput.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -22,6 +24,7 @@ export function parseWgDump(dumpOutput) {
       const port = parseInt(parts[3], 10);
       if (!isNaN(port) && port > 0) {
         ports.push({ port, name: iface, source: 'wg' });
+        ifacePortMap[iface] = port;
       }
     } else if (parts.length >= 8) {
       // Peer line: <iface> <pubkey> <preshared> <endpoint> <allowedips> <handshake> <rx> <tx> [keepalive]
@@ -40,11 +43,19 @@ export function parseWgDump(dumpOutput) {
           allowedIps,
           latestHandshake,
           rxBytes,
-          txBytes
+          txBytes,
+          listenPort: ifacePortMap[iface] || null
         });
       }
     }
   }
+
+  for (const peer of peers) {
+    if ((!peer.listenPort || peer.listenPort === 0) && ifacePortMap[peer.interface]) {
+      peer.listenPort = ifacePortMap[peer.interface];
+    }
+  }
+
   return { ports, peers };
 }
 
@@ -85,7 +96,7 @@ export class ScannerService {
     const mergedPorts = await PortLedgerService.mergeProbeReport(nodeId, { ports, systemPorts });
 
     // 3. Update session runtime peers and BGP states
-    await SessionService.updateRuntimePeers(nodeId, { peers, bgpSessions });
+    await SessionService.updateRuntimePeers(nodeId, { peers, bgpSessions, ports });
 
     return {
       nodeId,
@@ -171,7 +182,7 @@ export class ScannerService {
 
     // Merge ports and update sessions
     const mergedPorts = await PortLedgerService.mergeProbeReport(masterNodeId, { ports, systemPorts });
-    await SessionService.updateRuntimePeers(masterNodeId, { peers, bgpSessions });
+    await SessionService.updateRuntimePeers(masterNodeId, { peers, bgpSessions, ports });
 
     return {
       success: true,
