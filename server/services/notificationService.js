@@ -24,11 +24,27 @@ export class NotificationService {
       let snippet = session.assigned?.serverWireguardSnippet;
       if (!snippet) {
         const pubKey = session.peering?.publicKey || '';
-        const peerAllowedIps = [];
-        if (session.peering?.ipv4) peerAllowedIps.push(`${session.peering.ipv4.replace(/\/.*$/, '')}/32`);
-        if (session.peering?.ipv6Ula) peerAllowedIps.push(`${session.peering.ipv6Ula.replace(/\/.*$/, '')}/128`);
-        if (session.peering?.linkLocal) peerAllowedIps.push(`${session.peering.linkLocal.replace(/\/.*$/, '')}/128`);
-        if (peerAllowedIps.length === 0) peerAllowedIps.push('fe80::/128');
+        const nodeV4 = node.tunnelIpv4?.replace(/\/.*$/, '') || '';
+        const nodeUla = node.tunnelIpv6ULA?.replace(/\/.*$/, '') || '';
+        const clientV4 = session.peering?.ipv4?.replace(/\/.*$/, '') || '';
+        const clientUla = session.peering?.ipv6Ula?.replace(/\/.*$/, '') || '';
+
+        const serverPostUpLines = [];
+        if (clientV4 && nodeV4) {
+          serverPostUpLines.push(`PostUp = ip addr del dev %i ${nodeV4}/32`);
+          serverPostUpLines.push(`PostUp = ip addr add dev %i ${nodeV4}/32 peer ${clientV4}/32`);
+        }
+        if (clientUla && nodeUla) {
+          serverPostUpLines.push(`PostUp = ip addr del dev %i ${nodeUla}/128`);
+          serverPostUpLines.push(`PostUp = ip addr add dev %i ${nodeUla}/128 peer ${clientUla}/128`);
+        }
+        const serverPostUpBlock = serverPostUpLines.length > 0 ? serverPostUpLines.join('\n') + '\n' : '';
+
+        const serverAddresses = [];
+        if (node.tunnelIpv4) serverAddresses.push(`${node.tunnelIpv4.replace(/\/.*$/, '')}/32`);
+        if (node.tunnelIpv6ULA) serverAddresses.push(`${node.tunnelIpv6ULA.replace(/\/.*$/, '')}/128`);
+        if (node.tunnelIpv6LLA) serverAddresses.push(`${node.tunnelIpv6LLA.replace(/\/.*$/, '')}/64`);
+        const serverAddressLine = serverAddresses.join(', ') || 'fe80::3143/64';
 
         let epLine = '';
         if (session.peering?.endpoint) {
@@ -37,11 +53,13 @@ export class NotificationService {
         }
         snippet = `[Interface]
 PrivateKey = <SERVER_PRIVATE_KEY>
-ListenPort = ${hostPort}
+Address = ${serverAddressLine}
+${serverPostUpBlock}ListenPort = ${hostPort}
+MTU = ${session.peering?.mtu || 1420}
 
 [Peer]
 PublicKey = ${pubKey}
-${epLine}AllowedIPs = ${peerAllowedIps.join(', ')}
+${epLine}AllowedIPs = 172.16.0.0/12, 10.0.0.0/8, fd00::/8, fe80::/10
 PersistentKeepalive = 25
 `;
       }

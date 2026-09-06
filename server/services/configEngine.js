@@ -87,11 +87,31 @@ PersistentKeepalive = 25
 `;
 
     // 6. Server-side WireGuard snippet for Administrator (no '#' comments inside body)
-    const peerAllowedIps = [];
-    if (clientIpv4) peerAllowedIps.push(`${clientIpv4.replace(/\/.*$/, '')}/32`);
-    if (clientIpv6Ula) peerAllowedIps.push(`${clientIpv6Ula.replace(/\/.*$/, '')}/128`);
-    if (clientLinkLocal) peerAllowedIps.push(`${clientLinkLocal.replace(/\/.*$/, '')}/128`);
-    if (peerAllowedIps.length === 0) peerAllowedIps.push('fe80::/128');
+    const serverPostUpLines = [];
+    if (clientIpv4 && node.tunnelIpv4) {
+      const cleanV4 = clientIpv4.replace(/\/.*$/, '');
+      const nodeV4 = node.tunnelIpv4.replace(/\/.*$/, '');
+      if (cleanV4 && nodeV4) {
+        serverPostUpLines.push(`PostUp = ip addr del dev %i ${nodeV4}/32`);
+        serverPostUpLines.push(`PostUp = ip addr add dev %i ${nodeV4}/32 peer ${cleanV4}/32`);
+      }
+    }
+    if (clientIpv6Ula && node.tunnelIpv6ULA) {
+      const cleanUla = clientIpv6Ula.replace(/\/.*$/, '');
+      const nodeUla = node.tunnelIpv6ULA.replace(/\/.*$/, '');
+      if (cleanUla && nodeUla) {
+        serverPostUpLines.push(`PostUp = ip addr del dev %i ${nodeUla}/128`);
+        serverPostUpLines.push(`PostUp = ip addr add dev %i ${nodeUla}/128 peer ${cleanUla}/128`);
+      }
+    }
+    const serverPostUpBlock = serverPostUpLines.length > 0 ? serverPostUpLines.join('\n') + '\n' : '';
+
+    const serverAllowedIpsList = [
+      '172.16.0.0/12',
+      '10.0.0.0/8',
+      'fd00::/8',
+      'fe80::/10'
+    ];
 
     let serverEndpointLine = '';
     if (clientEndpoint) {
@@ -109,12 +129,12 @@ PersistentKeepalive = 25
     const serverWireguardSnippet = `[Interface]
 PrivateKey = <SERVER_PRIVATE_KEY>
 Address = ${serverAddressLine}
-ListenPort = ${hostPort}
+${serverPostUpBlock}ListenPort = ${hostPort}
 MTU = ${mtu}
 
 [Peer]
 PublicKey = ${clientPublicKey}
-${serverEndpointLine}AllowedIPs = ${peerAllowedIps.join(', ')}
+${serverEndpointLine}AllowedIPs = ${serverAllowedIpsList.join(', ')}
 PersistentKeepalive = 25
 `;
 
