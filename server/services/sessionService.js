@@ -23,13 +23,29 @@ export function parseAllowedIps(allowedIpsStr = '') {
 
   const parts = allowedIpsStr.split(/[,;\s]+/).map(p => p.trim()).filter(Boolean);
   for (const part of parts) {
-    const cleanIp = part.replace(/\/\d+$/, '');
-    if (/^(?:172\.(?:2[0-9]|3[0-1])|10\.)/.test(cleanIp) || /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(cleanIp)) {
+    const slashIdx = part.indexOf('/');
+    const prefixLen = slashIdx !== -1 ? parseInt(part.slice(slashIdx + 1), 10) : null;
+    const cleanIp = part.replace(/\/\d+$/, '').replace(/%[a-zA-Z0-9_-]+$/, '').trim();
+
+    // Skip route summaries and non-host network prefixes
+    if (cleanIp === 'fe80::' || cleanIp.toLowerCase() === 'fd00::' || cleanIp === '172.16.0.0' || cleanIp === '10.0.0.0') {
+      continue;
+    }
+    if (prefixLen !== null && prefixLen < 28 && !cleanIp.includes(':')) {
+      continue;
+    }
+    if (prefixLen !== null && prefixLen <= 32 && cleanIp.includes(':') && !/^fe80:/i.test(cleanIp)) {
+      continue;
+    }
+
+    if (/^(?:172\.(?:2[0-9]|3[0-1])|10\.)/.test(cleanIp) && !cleanIp.endsWith('.0')) {
+      if (!result.ipv4) result.ipv4 = cleanIp;
+    } else if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(cleanIp) && !cleanIp.endsWith('.0')) {
       if (!result.ipv4) result.ipv4 = cleanIp;
     } else if (/^fe80:/i.test(cleanIp)) {
-      if (!result.linkLocal) result.linkLocal = cleanIp;
+      if (!result.linkLocal && cleanIp.toLowerCase() !== 'fe80::') result.linkLocal = cleanIp;
     } else if (/^fd[0-9a-fA-F:]+/i.test(cleanIp)) {
-      if (!result.ipv6Ula) result.ipv6Ula = cleanIp;
+      if (!result.ipv6Ula && cleanIp.toLowerCase() !== 'fd00::') result.ipv6Ula = cleanIp;
     }
   }
   return result;
@@ -173,7 +189,13 @@ export class SessionService {
   static async _commitSession({ norm, rawPayload, targetNode, config, registryInfo }) {
     // 3. Check for existing session on the same node for this ASN or matching WireGuard pubkey
     const sessions = await this.getSessions();
-    let existingIndex = sessions.findIndex(s => s.asn === norm.asn && s.nodeId === norm.nodeId);
+    let existingIndex = -1;
+    if (rawPayload.id) {
+      existingIndex = sessions.findIndex(s => s.id === rawPayload.id);
+    }
+    if (existingIndex === -1) {
+      existingIndex = sessions.findIndex(s => s.asn === norm.asn && s.nodeId === norm.nodeId);
+    }
     if (existingIndex === -1 && norm.publicKey) {
       existingIndex = sessions.findIndex(s => s.nodeId === norm.nodeId && s.peering?.publicKey === norm.publicKey);
     }
@@ -445,6 +467,22 @@ export class SessionService {
           updated = true;
         }
       }
+
+      // Clean invalid placeholder route summaries from existing sessions
+      if (s.peering) {
+        if (s.peering.linkLocal === 'fe80::') {
+          s.peering.linkLocal = '';
+          updated = true;
+        }
+        if (s.peering.ipv4 === '172.16.0.0' || s.peering.ipv4 === '10.0.0.0') {
+          s.peering.ipv4 = '';
+          updated = true;
+        }
+        if (s.peering.ipv6Ula?.toLowerCase() === 'fd00::') {
+          s.peering.ipv6Ula = '';
+          updated = true;
+        }
+      }
     }
 
     let reportedPeers = [];
@@ -700,6 +738,28 @@ export class SessionService {
 
         if (bgp) {
           matchedBgpNames.add(bgp.name);
+          if (bgp.neighborAddress) {
+            const cleanAddr = bgp.neighborAddress.replace(/%[a-zA-Z0-9_-]+$/, '').trim();
+            if (cleanAddr) {
+              session.peering = session.peering || {};
+              if (/^fe80:/i.test(cleanAddr) && cleanAddr.toLowerCase() !== 'fe80::') {
+                if (!session.peering.linkLocal || session.peering.linkLocal === 'fe80::') {
+                  session.peering.linkLocal = cleanAddr;
+                  updated = true;
+                }
+              } else if (/^(?:172\.(?:2[0-9]|3[0-1])|10\.)/.test(cleanAddr) && cleanAddr !== '172.16.0.0' && cleanAddr !== '10.0.0.0' && !cleanAddr.endsWith('.0')) {
+                if (!session.peering.ipv4 || session.peering.ipv4 === '172.16.0.0' || session.peering.ipv4 === '10.0.0.0') {
+                  session.peering.ipv4 = cleanAddr;
+                  updated = true;
+                }
+              } else if (/^fd[0-9a-fA-F:]+/i.test(cleanAddr) && cleanAddr.toLowerCase() !== 'fd00::') {
+                if (!session.peering.ipv6Ula || session.peering.ipv6Ula.toLowerCase() === 'fd00::') {
+                  session.peering.ipv6Ula = cleanAddr;
+                  updated = true;
+                }
+              }
+            }
+          }
           // BGP state transparent pass-through
           session.runtime.bgpState = bgp.bgpState;
           session.runtime.bgpInfo = bgp.info;
@@ -785,6 +845,25 @@ export class SessionService {
           if (!existingSession.asn && (bgp.cleanAsn || bgp.asn)) {
             existingSession.asn = bgp.cleanAsn || bgp.asn;
             existingSession.asName = `AS${existingSession.asn}`;
+          }
+          if (bgp.neighborAddress) {
+            const cleanAddr = bgp.neighborAddress.replace(/%[a-zA-Z0-9_-]+$/, '').trim();
+            if (cleanAddr) {
+              existingSession.peering = existingSession.peering || {};
+              if (/^fe80:/i.test(cleanAddr) && cleanAddr.toLowerCase() !== 'fe80::') {
+                if (!existingSession.peering.linkLocal || existingSession.peering.linkLocal === 'fe80::') {
+                  existingSession.peering.linkLocal = cleanAddr;
+                }
+              } else if (/^(?:172\.(?:2[0-9]|3[0-1])|10\.)/.test(cleanAddr) && cleanAddr !== '172.16.0.0' && cleanAddr !== '10.0.0.0' && !cleanAddr.endsWith('.0')) {
+                if (!existingSession.peering.ipv4 || existingSession.peering.ipv4 === '172.16.0.0' || existingSession.peering.ipv4 === '10.0.0.0') {
+                  existingSession.peering.ipv4 = cleanAddr;
+                }
+              } else if (/^fd[0-9a-fA-F:]+/i.test(cleanAddr) && cleanAddr.toLowerCase() !== 'fd00::') {
+                if (!existingSession.peering.ipv6Ula || existingSession.peering.ipv6Ula.toLowerCase() === 'fd00::') {
+                  existingSession.peering.ipv6Ula = cleanAddr;
+                }
+              }
+            }
           }
           updated = true;
           continue;

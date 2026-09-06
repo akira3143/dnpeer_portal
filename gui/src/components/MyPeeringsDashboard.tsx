@@ -193,7 +193,7 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
           <div>
             <div className="flex items-center gap-2 text-cyan-400 text-xs font-mono tracking-widest uppercase mb-1">
               <Activity className="w-4 h-4" />
-              <span>Session Management &middot; <span className="text-slate-400 font-sans">我的互联会话</span></span>
+              <span>Session Management</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight font-sans flex items-center gap-3">
               <span>My Active Peering Sessions</span>
@@ -296,13 +296,13 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-white/10 bg-white/[0.02] text-slate-400 text-[11px] font-sans font-medium uppercase tracking-wider select-none">
-                      <th className="py-3.5 pl-4 pr-2 w-[180px]">NODE &middot; <span className="text-slate-600 font-normal">节点</span></th>
-                      <th className="py-3.5 px-3 w-[180px]">SESSION ID &middot; <span className="text-slate-600 font-normal">会话</span></th>
+                      <th className="py-3.5 pl-4 pr-2 w-[180px]">NODE</th>
+                      <th className="py-3.5 px-3 w-[180px]">SESSION ID</th>
                       <th className="py-3.5 px-3 w-[120px]">ASN</th>
-                      <th className="py-3.5 px-3 w-[110px]">PEERPORT &middot; <span className="text-slate-600 font-normal">对端</span></th>
-                      <th className="py-3.5 px-3 w-[110px]">LISTENPORT &middot; <span className="text-slate-600 font-normal">本地</span></th>
-                      <th className="py-3.5 px-3">TUNNEL IP &middot; <span className="text-slate-600 font-normal">互联地址</span></th>
-                      <th className="py-3.5 px-3 text-center w-[160px]">STATUS &middot; <span className="text-slate-600 font-normal">状态</span></th>
+                      <th className="py-3.5 px-3 w-[110px]">PEERPORT</th>
+                      <th className="py-3.5 px-3 w-[110px]">LISTENPORT</th>
+                      <th className="py-3.5 px-3">TUNNEL IP</th>
+                      <th className="py-3.5 px-3 text-center w-[160px]">STATUS</th>
                       <th className="py-3.5 pl-2 pr-4 text-right w-[100px]">ACTION</th>
                     </tr>
                   </thead>
@@ -312,6 +312,10 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                       const peerPort = (sess.peering?.endpoint && sess.peering.endpoint.includes(':') ? sess.peering.endpoint.split(':').pop() : null) || sess.assigned?.clientPort || sess.peering?.clientPort || 0;
                       const badge = getStatusBadge(sess);
                       const isExpanded = expandedSessions.has(sess.id);
+
+                      const cleanLla = sess.peering?.linkLocal && sess.peering.linkLocal.toLowerCase() !== 'fe80::' && !sess.peering.linkLocal.endsWith('::') ? sess.peering.linkLocal : '';
+                      const cleanIpv4 = sess.peering?.ipv4 && sess.peering.ipv4 !== '172.16.0.0' && sess.peering.ipv4 !== '10.0.0.0' && !sess.peering.ipv4.endsWith('.0') ? sess.peering.ipv4 : '';
+                      const cleanUla = sess.peering?.ipv6Ula && sess.peering.ipv6Ula.toLowerCase() !== 'fd00::' && !sess.peering.ipv6Ula.endsWith('::') ? sess.peering.ipv6Ula : '';
 
                       return (
                         <React.Fragment key={sess.id}>
@@ -351,9 +355,16 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
 
                             {/* Column 2: Session ID */}
                             <td className="py-3.5 px-3">
-                              <span className="font-mono text-cyan-400/90 font-medium">
-                                {sess.id}
-                              </span>
+                              <div className="flex flex-col">
+                                <span className="font-mono text-cyan-400/90 font-medium">
+                                  {sess.id}
+                                </span>
+                                {sess.peering?.interface && sess.peering.interface !== sess.id && (
+                                  <span className="text-[10px] font-mono text-slate-500 truncate" title={`Local interface: ${sess.peering.interface}`}>
+                                    {sess.peering.interface}
+                                  </span>
+                                )}
+                              </div>
                             </td>
 
                             {/* Column 3: ASN */}
@@ -382,16 +393,24 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                             {/* Column 6: Tunnel Addresses (LLA + IPv4) */}
                             <td className="py-3.5 px-3">
                               <div className="font-mono text-[11px] flex flex-col gap-0.5">
-                                <span className="text-slate-300 truncate max-w-[200px]" title={sess.peering?.linkLocal || 'N/A'}>
-                                  {sess.peering?.linkLocal || 'N/A'}
-                                </span>
+                                {cleanLla ? (
+                                  <span className="text-slate-300 truncate max-w-[200px]" title={cleanLla}>
+                                    {cleanLla}
+                                  </span>
+                                ) : cleanIpv4 ? (
+                                  <span className="text-slate-300 truncate max-w-[200px]" title={cleanIpv4}>
+                                    {cleanIpv4}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-500">N/A</span>
+                                )}
                                 <div className="flex items-center gap-2 text-[10px]">
-                                  {sess.peering?.ipv4 && (
-                                    <span className="text-emerald-400">{sess.peering.ipv4}</span>
+                                  {cleanLla && cleanIpv4 && (
+                                    <span className="text-emerald-400">{cleanIpv4}</span>
                                   )}
-                                  {sess.peering?.ipv6Ula && (
-                                    <span className="text-purple-400/80 truncate max-w-[120px]" title={sess.peering.ipv6Ula}>
-                                      {sess.peering.ipv6Ula}
+                                  {cleanUla && (
+                                    <span className="text-purple-400/80 truncate max-w-[120px]" title={cleanUla}>
+                                      {cleanUla}
                                     </span>
                                   )}
                                 </div>
@@ -484,7 +503,7 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                                         Link-Local IPv6 (LLA)
                                       </span>
                                       <span className="text-slate-200 font-mono text-[11px] block mt-0.5">
-                                        {sess.peering?.linkLocal || 'N/A'}
+                                        {cleanLla || 'N/A'}
                                       </span>
                                     </div>
                                     <div className="grid grid-cols-2 gap-2">
@@ -493,15 +512,15 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                                           DN42 IPv4
                                         </span>
                                         <span className="text-emerald-400 font-mono text-[11px] block mt-0.5">
-                                          {sess.peering?.ipv4 || 'None'}
+                                          {cleanIpv4 || 'None'}
                                         </span>
                                       </div>
                                       <div>
                                         <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans">
                                           IPv6 ULA
                                         </span>
-                                        <span className="text-purple-400 font-mono text-[11px] truncate block mt-0.5" title={sess.peering?.ipv6Ula}>
-                                          {sess.peering?.ipv6Ula || 'None'}
+                                        <span className="text-purple-400 font-mono text-[11px] truncate block mt-0.5" title={cleanUla}>
+                                          {cleanUla || 'None'}
                                         </span>
                                       </div>
                                     </div>

@@ -1,6 +1,7 @@
 import { SessionService } from '../services/sessionService.js';
 import { successEnvelope, errorEnvelope } from '../utils/envelope.js';
 import { normalizeAsn } from '../utils/validator.js';
+import { getActiveConfig } from '../storage/configLoader.js';
 
 export class PeeringController {
   static async submitPeering(body, user) {
@@ -14,8 +15,14 @@ export class PeeringController {
 
     const payloadAsn = normalizeAsn(body.asn);
     const userAsn = normalizeAsn(user.asn);
+    const config = getActiveConfig();
+    const isAdminEditing = Boolean(body.id && (
+      user.role === 'admin' ||
+      (Array.isArray(config.admins) && config.admins.includes(userAsn)) ||
+      (config.network?.asnNumber && userAsn === config.network?.asnNumber)
+    ));
 
-    if (!payloadAsn || !userAsn || payloadAsn !== userAsn) {
+    if (!isAdminEditing && (!payloadAsn || !userAsn || payloadAsn !== userAsn)) {
       return errorEnvelope('Cannot submit peering application for another ASN', null, 403);
     }
 

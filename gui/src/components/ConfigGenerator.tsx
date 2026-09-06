@@ -94,12 +94,46 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
         setSelectedNodeId(editingSession.nodeId);
       }
       setWgPublicKey(editingSession.peering?.publicKey || '');
-      setLinkLocal(editingSession.peering?.linkLocal || (user?.asn ? formatDefaultLinkLocal(user.asn) : ''));
-      setIpv6Ula(editingSession.peering?.ipv6Ula || '');
-      setIpv4(editingSession.peering?.ipv4 || '');
-      setEndpoint(editingSession.peering?.endpoint || '');
-      setPeerPort(String(editingSession.peering?.listenPort || 'auto'));
-      setListenPort(String(editingSession.peering?.clientPort || 'auto'));
+
+      const targetAsn = editingSession.asn || user?.asn;
+      const rawLla = editingSession.peering?.linkLocal || '';
+      const cleanLla = (rawLla && rawLla.toLowerCase() !== 'fe80::')
+        ? rawLla
+        : (targetAsn ? formatDefaultLinkLocal(targetAsn) : '');
+      setLinkLocal(cleanLla);
+
+      const rawUla = editingSession.peering?.ipv6Ula || '';
+      const cleanUla = rawUla.toLowerCase() === 'fd00::' ? '' : rawUla;
+      setIpv6Ula(cleanUla);
+
+      const rawIpv4 = editingSession.peering?.ipv4 || '';
+      const cleanIpv4 = (rawIpv4 === '172.16.0.0' || rawIpv4 === '10.0.0.0' || rawIpv4.endsWith('.0')) ? '' : rawIpv4;
+      setIpv4(cleanIpv4);
+
+      // Parse endpoint into clean host and port
+      let epHost = editingSession.peering?.endpoint || '';
+      let epPort = '';
+      if (epHost) {
+        const v6Match = epHost.match(/^\[([^\]]+)\](?::(\d+))?$/);
+        if (v6Match) {
+          epHost = v6Match[1];
+          if (v6Match[2]) epPort = v6Match[2];
+        } else if (epHost.includes(':') && epHost.lastIndexOf(':') === epHost.indexOf(':')) {
+          const parts = epHost.split(':');
+          epHost = parts[0];
+          epPort = parts[1];
+        }
+      }
+      setEndpoint(epHost);
+
+      const assignedHostPort = editingSession.assigned?.hostPort;
+      const peeringListenPort = editingSession.peering?.listenPort;
+      setPeerPort(String(assignedHostPort || peeringListenPort || 'auto'));
+
+      const assignedClientPort = editingSession.assigned?.clientPort;
+      const peeringClientPort = editingSession.peering?.clientPort;
+      setListenPort(String(assignedClientPort || peeringClientPort || epPort || 'auto'));
+
       setMtu(editingSession.peering?.mtu || 1420);
       setSubmitResult(null);
       setFieldErrors({});
@@ -172,11 +206,12 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
     setGeneralError('');
 
     try {
-      const payload = {
-        asn: user.asn,
+      const targetAsn = editingSession ? (editingSession.asn || user.asn) : user.asn;
+      const payload: any = {
+        asn: targetAsn,
         nodeId: selectedNodeId,
         publicKey: wgPublicKey.trim(),
-        linkLocal: linkLocal.trim() || formatDefaultLinkLocal(user.asn),
+        linkLocal: linkLocal.trim() || formatDefaultLinkLocal(targetAsn),
         ipv4: ipv4.trim(),
         ipv6Ula: ipv6Ula.trim(),
         endpoint: endpoint.trim(),
@@ -185,6 +220,10 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
         mtu: parseInt(String(mtu), 10) || 1420,
         bgpMode: 'mpbgp_enh'
       };
+
+      if (editingSession?.id) {
+        payload.id = editingSession.id;
+      }
 
       const res = await ApiClient.submitPeering(payload);
 
@@ -248,7 +287,7 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
 
             <div className="space-y-2">
               <h2 className="text-2xl font-bold text-white tracking-tight font-sans">
-                Authentication Required &middot; <span className="text-slate-400 font-normal text-lg">需身份验证</span>
+                Authentication Required
               </h2>
               <p className="text-slate-400 text-sm max-w-md mx-auto leading-relaxed font-sans">
                 To request automated BGP peering with AkiLab Global PoP Nodes, please verify your DN42 ASN ownership via SSH signature or sign in with your account password.
@@ -260,7 +299,7 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
               className="btn-primary inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold shadow-lg shadow-cyan-500/25 cursor-pointer"
             >
               <LogIn className="w-4 h-4" />
-              <span>Sign In to Request Peering &middot; <span className="text-cyan-100 font-normal text-xs">登录并发起互联</span></span>
+              <span>Sign In to Request Peering</span>
             </button>
           </div>
         </div>
@@ -288,7 +327,7 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
               onClick={handleClearForm}
               className="px-2.5 py-1 rounded-lg text-xs font-sans font-medium bg-white/10 hover:bg-white/20 text-slate-200 border border-white/15 transition-colors cursor-pointer shrink-0"
             >
-              Cancel Edit &middot; 取消编辑
+              Cancel Edit
             </button>
           </div>
         )}
@@ -375,7 +414,7 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
                 <h3 className="font-bold text-white text-sm sm:text-base font-sans tracking-wide">
-                  Peering Parameters &middot; <span className="text-slate-400 font-normal text-xs">互联参数</span>
+                  Peering Parameters
                 </h3>
               </div>
 
@@ -399,7 +438,7 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between px-1">
                   <label className="text-slate-300 font-medium">
-                    Target Node &middot; <span className="text-slate-500 text-[11px]">目标节点</span>
+                    Target Node
                   </label>
                   <span className="text-[11px] font-mono text-cyan-400">{selectedNode.region?.toUpperCase()} &middot; {selectedNode.city}</span>
                 </div>
@@ -440,7 +479,7 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
                 <div className="flex items-center justify-between px-1">
                   <div className="flex items-center gap-1.5">
                     <label className="text-slate-300 font-medium">
-                      Your ASN &middot; <span className="text-slate-500 text-[11px]">本端自治域号</span>
+                      Your ASN
                     </label>
                     <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-emerald-950/80 border border-emerald-500/40 text-[9px] font-mono text-emerald-300">
                       <ShieldCheck className="w-2.5 h-2.5" />
@@ -457,7 +496,7 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
                   <input
                     type="text"
                     translate="no"
-                    value={user.asn}
+                    value={editingSession ? (editingSession.asn || user.asn) : user.asn}
                     readOnly
                     placeholder="424242xxxx"
                     className="notranslate flex-1 px-3 py-3 bg-transparent border-0 font-mono text-xs focus:outline-none placeholder:text-slate-600 text-emerald-300 font-bold cursor-not-allowed select-all"
@@ -470,7 +509,7 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between px-1">
                   <label className="block text-slate-300 font-medium">
-                    WireGuard Public Key <span className="text-cyan-400">*</span> &middot; <span className="text-slate-500 text-[11px]">客户端公钥</span>
+                    WireGuard Public Key <span className="text-cyan-400">*</span>
                   </label>
                   <span className="text-slate-500 text-[10px] font-mono">44-char base64</span>
                 </div>
@@ -500,7 +539,7 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between px-1">
                   <label className="text-slate-300 font-medium">
-                    Link-Local IPv6 (LLA) &middot; <span className="text-slate-500 text-[11px]">链路本地地址</span>
+                    Link-Local IPv6 (LLA)
                   </label>
                   <span className="text-[10px] font-mono text-cyan-400">(fe80::/64)</span>
                 </div>
@@ -530,7 +569,7 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <label className="block text-slate-300 font-medium pl-1">
-                    IPv6 ULA (Optional) &middot; <span className="text-slate-500 text-[11px]">互联 ULA</span>
+                    IPv6 ULA (Optional)
                   </label>
                   <input
                     type="text"
@@ -557,7 +596,7 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between px-1">
                     <label className="text-slate-300 font-medium">
-                      DN42 IPv4 (Optional) &middot; <span className="text-slate-500 text-[11px]">互联 IPv4</span>
+                      DN42 IPv4 (Optional)
                     </label>
                   </div>
                   <input
@@ -587,7 +626,7 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between px-1">
                   <label className="text-slate-300 font-medium">
-                    WireGuard Endpoint Host &middot; <span className="text-slate-500 text-[11px]">对端接入点</span>
+                    WireGuard Endpoint Host
                   </label>
                   <span className="text-[10px] font-mono text-slate-400">(Optional, leave blank if behind NAT)</span>
                 </div>
@@ -619,7 +658,7 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between px-1">
                     <label className="text-slate-300 font-medium">
-                      PeerPort &middot; <span className="text-slate-500 text-[11px]">对端监听端口</span>
+                      PeerPort
                     </label>
                     <span className="text-[10px] font-mono text-slate-400">Default: auto</span>
                   </div>
@@ -648,7 +687,7 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between px-1">
                     <label className="text-slate-300 font-medium">
-                      ListenPort &middot; <span className="text-slate-500 text-[11px]">本端监听端口</span>
+                      ListenPort
                     </label>
                     <span className="text-[10px] font-mono text-slate-400">Default: auto</span>
                   </div>
@@ -679,7 +718,7 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between px-1">
                   <label className="block text-slate-300 font-medium">
-                    WireGuard MTU &middot; <span className="text-slate-500 text-[11px]">隧道 MTU</span>
+                    WireGuard MTU
                   </label>
                   <span className="text-[10px] font-mono text-slate-400">Default: 1420</span>
                 </div>
@@ -713,12 +752,12 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
                   ) : editingSession ? (
                     <>
                       <Send className="w-4 h-4" />
-                      <span>Update Peering Session &middot; <span className="text-cyan-100 font-normal text-xs">更新互联配置</span></span>
+                      <span>Update Peering Session</span>
                     </>
                   ) : (
                     <>
                       <Send className="w-4 h-4" />
-                      <span>Submit Peering Application &middot; <span className="text-cyan-100 font-normal text-xs">提交互联申请</span></span>
+                      <span>Submit Peering Application</span>
                     </>
                   )}
                 </button>
@@ -781,7 +820,7 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
                   <div className="flex items-center justify-between text-xs font-sans">
                     <div className="flex items-center gap-2 text-emerald-400 font-bold">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                      <span>Peering Application Approved &middot; <span className="text-emerald-300 font-normal">互联申请已成功提交</span></span>
+                      <span>Peering Application Approved</span>
                     </div>
                     <span className="font-mono text-[11px] text-slate-300">
                       Session ID: <strong className="text-white">{submitResult.sessionId}</strong>

@@ -68,6 +68,7 @@ export interface PeeringSession {
   createdAt: string;
   updatedAt: string;
   peering: {
+    interface?: string;
     publicKey: string;
     endpoint?: string;
     ipv4?: string;
@@ -80,6 +81,7 @@ export interface PeeringSession {
     bgpMode: string;
   };
   assigned: {
+    interface?: string;
     hostPort: number;
     isShifted: boolean;
     clientPort?: number;

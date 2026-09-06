@@ -58,7 +58,7 @@ export const NodeGrid: React.FC<NodeGridProps> = ({ nodes, onSelectNode }) => {
           <div>
             <div className="flex items-center gap-2 text-cyan-400 text-xs font-mono tracking-widest uppercase mb-1">
               <Layers className="w-4 h-4" />
-              <span>PoP Infrastructure &middot; <span className="text-slate-400 font-sans">全球边缘节点</span></span>
+              <span>PoP Infrastructure</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight font-sans">
               Global Edge Nodes
@@ -95,11 +95,11 @@ export const NodeGrid: React.FC<NodeGridProps> = ({ nodes, onSelectNode }) => {
               
               {/* Table Header */}
               <div className="grid grid-cols-[3fr_1.2fr_2.5fr_1fr_1.2fr] items-center px-6 py-3.5 bg-white/[0.02] border-b border-white/[0.06] text-slate-400 text-[11px] uppercase tracking-widest font-sans select-none font-medium">
-                <div className="pl-2">NODE &middot; <span className="text-slate-600 font-normal">节点</span></div>
-                <div className="text-center">STATUS &middot; <span className="text-slate-600 font-normal">状态</span></div>
-                <div className="text-left pl-2">ENDPOINT &middot; <span className="text-slate-600 font-normal">接入端点</span></div>
+                <div className="pl-2">NODE</div>
+                <div className="text-center">STATUS</div>
+                <div className="text-left pl-2">ENDPOINT</div>
                 <div className="text-center">MTU</div>
-                <div className="text-right pr-2">ACTION &middot; <span className="text-slate-600 font-normal">操作</span></div>
+                <div className="text-right pr-2">ACTION</div>
               </div>
 
               {/* Table Body Rows */}
