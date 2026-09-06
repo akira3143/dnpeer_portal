@@ -426,13 +426,18 @@ export class SessionService {
           }
         }
 
-        if (session.source === 'discovered' && peer.allowedIps) {
+        if (peer.allowedIps) {
           session.peering = session.peering || {};
-          const parsed = parseAllowedIps(peer.allowedIps);
-          if (!session.peering.ipv4 && parsed.ipv4) session.peering.ipv4 = parsed.ipv4;
-          if (!session.peering.ipv6Ula && parsed.ipv6Ula) session.peering.ipv6Ula = parsed.ipv6Ula;
-          if (!session.peering.linkLocal && parsed.linkLocal) session.peering.linkLocal = parsed.linkLocal;
-          session.peering.allowedIps = peer.allowedIps;
+          if (session.source === 'discovered') {
+            const parsed = parseAllowedIps(peer.allowedIps);
+            if (!session.peering.ipv4 && parsed.ipv4) session.peering.ipv4 = parsed.ipv4;
+            if (!session.peering.ipv6Ula && parsed.ipv6Ula) session.peering.ipv6Ula = parsed.ipv6Ula;
+            if (!session.peering.linkLocal && parsed.linkLocal) session.peering.linkLocal = parsed.linkLocal;
+          }
+          if (session.peering.allowedIps !== peer.allowedIps) {
+            session.peering.allowedIps = peer.allowedIps;
+            updated = true;
+          }
         }
         updated = true;
       }
@@ -574,8 +579,15 @@ export class SessionService {
 
         let bgp = null;
 
-        // Bridge A: Match by BGP Neighbor IP <-> WG AllowedIPs
-        const sessionAllowedList = (session.peering?.allowedIps || '')
+        // Bridge A: Match by BGP Neighbor IP <-> WG AllowedIPs / Peering IP addresses
+        const candidateIps = [
+          session.peering?.allowedIps,
+          session.peering?.linkLocal,
+          session.peering?.ipv4,
+          session.peering?.ipv6Ula
+        ].filter(Boolean).join(', ');
+
+        const sessionAllowedList = candidateIps
           .split(/[,;\s]+/)
           .map(ip => ip.replace(/\/\d+$/, '').replace(/%[a-zA-Z0-9_-]+$/, '').trim().toLowerCase())
           .filter(Boolean);

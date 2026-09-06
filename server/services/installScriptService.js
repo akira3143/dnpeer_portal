@@ -41,7 +41,18 @@ MASTER_URL="${url}"
 echo "[1/5] Updating package cache and installing prerequisites..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y -q || true
-apt-get install -y -q curl nodejs wireguard-tools iproute2 || true
+apt-get install -y -q curl wireguard-tools iproute2 || true
+
+# Ensure Node.js >= 18 is installed for native fetch and AbortSignal support
+NODE_MAJOR=0
+if command -v node >/dev/null 2>&1; then
+  NODE_MAJOR=$(node -v 2>/dev/null | tr -d 'v' | cut -d'.' -f1)
+fi
+if [ -z "\${NODE_MAJOR}" ] || [ "\${NODE_MAJOR}" -lt 18 ]; then
+  echo "    Node.js is missing or < v18 (detected v\${NODE_MAJOR:-0}). Installing Node.js 20 LTS..."
+  curl -fsSL https://deb.nodesource.com/setup_20.x | bash - || true
+  apt-get install -y -q nodejs || true
+fi
 
 # 2. Setup bird-lgproxy (prebuilt Go binary, no apt dependency)
 echo "[2/5] Setting up bird-lgproxy (Go binary)..."
@@ -104,7 +115,8 @@ chmod 600 /etc/default/dn42-probe
 
 # 4. Setup systemd service, timer, and path
 echo "[4/5] Installing systemd units (service, timer, path)..."
-cat << 'EOF' > /etc/systemd/system/dn42-probe.service
+NODE_BIN=$(command -v node || echo "/usr/bin/node")
+cat << EOF > /etc/systemd/system/dn42-probe.service
 [Unit]
 Description=AkiLab DN42 Node Probe Report Service
 After=network.target
@@ -118,7 +130,7 @@ Environment="CLAIM_NODE_ID="
 Environment="CLAIM_TOKEN="
 Environment="NODE_ID="
 Environment="NODE_TOKEN="
-ExecStart=/usr/bin/node /opt/dn42-probe/probe-agent.js
+ExecStart=\${NODE_BIN} /opt/dn42-probe/probe-agent.js
 EOF
 
 cat << 'EOF' > /etc/systemd/system/dn42-probe.timer

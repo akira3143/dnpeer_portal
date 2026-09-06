@@ -359,5 +359,56 @@ test_peer  BGP      ---        up     12:00:00  Established
     assert.equal(ledgerEntry.sessionId, 'dn42_afn_hk');
     assert.equal(ledgerEntry.asn, 4242422213);
   });
+
+  await t.test('9. Portal session AllowedIPs and LinkLocal/IPv4 are included in Bridge A matching', async () => {
+    fs.writeFileSync(sessionsFile, JSON.stringify([]), 'utf8');
+
+    // Create a portal session without upfront allowedIps
+    const portalPubkey = 'PortalSessionKeyAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
+    const portalSession = {
+      id: 'portal_test_session',
+      nodeId: testNodeId,
+      asn: 4242427777,
+      source: 'portal',
+      status: 'pending',
+      peering: {
+        publicKey: portalPubkey,
+        linkLocal: 'fe80::7777',
+        ipv4: '172.20.77.1',
+        listenPort: 27777,
+        peerPort: 27778
+      }
+    };
+    fs.writeFileSync(sessionsFile, JSON.stringify([portalSession]), 'utf8');
+
+    // Probe report has WG peer with allowedIps and BGP session with matching neighborAddress
+    const report = {
+      peers: [{
+        interface: 'dn42_portal_test',
+        publicKey: portalPubkey,
+        allowedIps: '172.20.77.1/32, fe80::7777/64',
+        latestHandshake: 1725509999,
+        listenPort: 27777
+      }],
+      bgpSessions: [{
+        name: 'bgp_portal_test',
+        neighborAddress: 'fe80::7777%dn42_portal_test',
+        asn: 4242427777,
+        bgpState: 'Established'
+      }]
+    };
+
+    await SessionService.updateRuntimePeers(testNodeId, report);
+
+    const sessions = await SessionService.getSessions();
+    const updated = sessions.find(s => s.id === 'portal_test_session');
+    assert.ok(updated);
+    // Verified: session.peering.allowedIps is backfilled from WireGuard peer
+    assert.equal(updated.peering.allowedIps, '172.20.77.1/32, fe80::7777/64');
+    // Verified: Bridge A successfully matched by linkLocal IP address
+    assert.equal(updated.runtime.bgpState, 'Established');
+    assert.equal(updated.status, 'active');
+  });
 });
+
 

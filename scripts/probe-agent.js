@@ -257,6 +257,60 @@ export function parseBgpProtocols(bgpOutput) {
   return sessions;
 }
 
+function runCmd(cmd, options = {}) {
+  try {
+    return execSync(cmd, { encoding: 'utf8', timeout: 5000, ...options }).trim();
+  } catch (err) {
+    return '';
+  }
+}
+
+/**
+ * Universal HTTP request helper: uses global fetch if available,
+ * with safe AbortSignal timeout, and falls back to system curl on older Node.js runtimes.
+ */
+async function httpFetch(url, { method = 'GET', headers = {}, body = null, timeout = 5000 } = {}) {
+  if (typeof fetch === 'function') {
+    const timeoutSignal = (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function')
+      ? AbortSignal.timeout(timeout)
+      : undefined;
+
+    const res = await fetch(url, {
+      method,
+      headers,
+      body: body ? (typeof body === 'string' ? body : JSON.stringify(body)) : undefined,
+      signal: timeoutSignal
+    });
+
+    const contentType = res.headers.get('content-type') || '';
+    let data;
+    if (contentType.includes('application/json')) {
+      data = await res.json();
+    } else {
+      const text = await res.text();
+      try { data = JSON.parse(text); } catch { data = text; }
+    }
+    return { ok: res.ok, status: res.status, data };
+  }
+
+  // Fallback for Node < 18 without global fetch: use curl
+  const headerArgs = Object.entries(headers).map(([k, v]) => `-H ${JSON.stringify(`${k}: ${v}`)}`).join(' ');
+  const maxSec = Math.ceil(timeout / 1000);
+  let curlCmd = `curl -s -S --max-time ${maxSec} -X ${method} ${headerArgs} "${url}"`;
+  let input = undefined;
+  if (body) {
+    curlCmd += ' -d @-';
+    input = typeof body === 'string' ? body : JSON.stringify(body);
+  }
+  const raw = runCmd(curlCmd, { input, timeout: timeout + 1000 });
+  if (!raw) {
+    return { ok: false, status: 500, data: null, error: 'curl returned empty response' };
+  }
+  let data;
+  try { data = JSON.parse(raw); } catch { data = raw; }
+  return { ok: true, status: 200, data };
+}
+
 /**
  * Query BGP session details via local bird-lgproxy (127.0.0.1:5000)
  * Uses show protocols all to capture neighbor IPs and states.
@@ -267,36 +321,19 @@ export async function queryLocalLgProxy(lgProxyUrl = 'http://127.0.0.1:5000') {
     const url = new URL('/bird', lgProxyUrl);
     url.searchParams.set('q', 'show protocols all');
 
-    const res = await fetch(url.toString(), {
+    const res = await httpFetch(url.toString(), {
       headers: { 'Accept': 'application/json, text/plain;q=0.9, */*;q=0.8' },
-      signal: AbortSignal.timeout(3000)
+      timeout: 3000
     });
 
-    if (res.ok) {
-      const contentType = res.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        const data = await res.json();
-        return data.output || data.result || (typeof data === 'string' ? data : '');
-      } else {
-        const text = await res.text();
-        try {
-          const data = JSON.parse(text);
-          return data.output || data.result || (typeof data === 'string' ? data : text);
-        } catch {
-          return text;
-        }
+    if (res && res.ok && res.data) {
+      if (typeof res.data === 'object') {
+        return res.data.output || res.data.result || '';
       }
+      return String(res.data);
     }
   } catch {}
   return '';
-}
-
-function runCmd(cmd, options = {}) {
-  try {
-    return execSync(cmd, { encoding: 'utf8', timeout: 5000, ...options }).trim();
-  } catch (err) {
-    return '';
-  }
 }
 
 /**
@@ -378,21 +415,22 @@ export async function resolveIdentity({ masterUrl, authToken, stateFile, tokenFi
   console.log(`[Probe-Agent] Auto-claiming node identity "${targetClaimNodeId}" from ${registerUrl} with ${candidatePublicKeys.length} derived key(s)...`);
 
   try {
-    const res = await fetch(registerUrl, {
+    const res = await httpFetch(registerUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${targetClaimToken}`
       },
-      body: JSON.stringify({
+      body: {
         nodeId: targetClaimNodeId,
         token: targetClaimToken,
         publicKeys: candidatePublicKeys
-      })
+      },
+      timeout: 10000
     });
 
-    const body = await res.json();
-    if (res.ok && body.success && body.data?.nodeId) {
+    const body = res?.data || {};
+    if (res?.ok && body.success && body.data?.nodeId) {
       const claimedNodeId = body.data.nodeId;
       console.log(`[Probe-Agent] ✓ Successfully claimed node identity: ${claimedNodeId} (matched key: ${body.data.matchedPublicKey})`);
 
@@ -500,17 +538,18 @@ export async function collectAndReport(options = {}) {
   console.log(`[Probe-Agent] Reporting to ${targetUrl}...`);
 
   try {
-    const res = await fetch(targetUrl, {
+    const res = await httpFetch(targetUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify(payload)
+      body: payload,
+      timeout: 10000
     });
 
-    const body = await res.json();
-    if (res.ok && body.success) {
+    const body = res?.data || {};
+    if (res?.ok && body.success) {
       console.log(`[Probe-Agent] Report successful. Ports: ${ports.length + systemPorts.length}, Peers: ${peers.length}, BGP: ${bgpSessions.length}`);
       return { success: true, data: body.data };
     } else {
