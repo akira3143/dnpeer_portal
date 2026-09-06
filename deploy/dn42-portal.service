@@ -11,6 +11,15 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+# Security & User:
+# By default runs as root because master node synchronization requires `wg show all dump`
+# and `ss -ulnp` to inspect WireGuard sockets and kernel interface states.
+# To run as a non-root system user (e.g. User=dn42portal), ensure the following are enabled:
+#   User=dn42portal
+#   Group=dn42portal
+#   SupplementaryGroups=wireguard bird
+#   CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+#   AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
 User=root
 WorkingDirectory=/opt/dn42-portal
 ExecStart=/usr/bin/node server/index.js
@@ -25,6 +34,7 @@ EnvironmentFile=-/opt/dn42-portal/.env
 
 # Security limits
 LimitNOFILE=65536
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 
 [Install]

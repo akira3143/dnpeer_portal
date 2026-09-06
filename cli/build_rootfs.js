@@ -161,7 +161,8 @@ function walk(dir, relPath = '.') {
       chunks.push(header, nameBuf, Buffer.alloc(padLen));
       walk(fullPath, entryRel);
     } else {
-      const mode = 0o100755;
+      const isExecutable = entryRel.startsWith('bin/') || entryRel.startsWith('sbin/') || entryRel.startsWith('usr/bin/') || entryRel === 'init';
+      const mode = isExecutable ? 0o100755 : 0o100644;
       const fileData = fs.readFileSync(fullPath);
       const header = writeCpioHeader(mode, fileData.length, entryRel);
       const nameBuf = Buffer.from(entryRel + '\0', 'utf-8');

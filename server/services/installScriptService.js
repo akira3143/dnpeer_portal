@@ -64,15 +64,33 @@ case "$(uname -m)" in
   *) LG_ARCH="amd64" ;;
 esac
 LG_URL="https://github.com/xddxdd/bird-lg-go/releases/download/v1.4.8/bird-lgproxy-go-v1.4.8-linux-\${LG_ARCH}.tar.gz"
+case "\${LG_ARCH}" in
+  amd64) LG_SHA256="f2b1d937a41c5d068e7095fcd87bfadec3efbaedc19654e30049256afb296fbe" ;;
+  arm64) LG_SHA256="7316e1d914fdbd308a27ce0bbc7e0a3bca604e7e49ef4cbe1c2beb8167c83c91" ;;
+  arm)   LG_SHA256="d0f9c0245f9b580ce3b4764448324f55976cf295801cdabf70c7f884525c9fcd" ;;
+  386)   LG_SHA256="f829da03f743526ef9478df531269c37e1733dbe01ee6274089a75585b1a2ee8" ;;
+  *)     LG_SHA256="" ;;
+esac
+
 LG_TMP=$(mktemp -d)
 if curl -fsSL "\${LG_URL}" -o "\${LG_TMP}/lg.tar.gz" 2>/dev/null; then
-  tar -xzf "\${LG_TMP}/lg.tar.gz" -C "\${LG_TMP}"
-  LG_BIN=$(find "\${LG_TMP}" -maxdepth 2 -type f \\( -name "bird-lgproxy-go" -o -name "bird-lgproxy" -o -name "lgproxy-go" \\) | head -n 1)
-  if [ -n "\${LG_BIN}" ]; then
-    install -m 755 "\${LG_BIN}" /usr/local/bin/bird-lgproxy
-    echo "    bird-lgproxy installed from Go release."
+  if [ -n "\${LG_SHA256}" ]; then
+    ACTUAL_HASH=$(sha256sum "\${LG_TMP}/lg.tar.gz" 2>/dev/null | awk '{print \$1}')
+    if [ "\${ACTUAL_HASH}" != "\${LG_SHA256}" ]; then
+      echo "    Warning: SHA256 checksum mismatch for bird-lgproxy. Aborting installation."
+      rm -rf "\${LG_TMP}"
+      LG_TMP=""
+    fi
   fi
-  rm -rf "\${LG_TMP}"
+  if [ -n "\${LG_TMP}" ]; then
+    tar -xzf "\${LG_TMP}/lg.tar.gz" -C "\${LG_TMP}"
+    LG_BIN=$(find "\${LG_TMP}" -maxdepth 2 -type f \\( -name "bird-lgproxy-go" -o -name "bird-lgproxy" -o -name "lgproxy-go" \\) | head -n 1)
+    if [ -n "\${LG_BIN}" ]; then
+      install -m 755 "\${LG_BIN}" /usr/local/bin/bird-lgproxy
+      echo "    bird-lgproxy installed from Go release (verified SHA256)."
+    fi
+    rm -rf "\${LG_TMP}"
+  fi
 else
   echo "Notice: bird-lgproxy download failed; LG-based BGP queries will be unavailable."
 fi

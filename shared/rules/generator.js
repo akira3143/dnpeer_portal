@@ -116,7 +116,10 @@ export function validateEndpoint(val, isOptional = true) {
   if (clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('wg://')) {
     return { valid: false, error: 'Do not include http:// or protocol prefix in endpoint' };
   }
-  if (clean.includes(':') && !clean.includes('::')) {
+  if (!clean.startsWith('[') && clean.indexOf(':') !== -1 && clean.indexOf(':') === clean.lastIndexOf(':')) {
+    return { valid: false, error: 'Do not include port in endpoint hostname' };
+  }
+  if (clean.startsWith('[') && /\]:[0-9]+$/.test(clean)) {
     return { valid: false, error: 'Do not include port in endpoint hostname' };
   }
   if (!ENDPOINT_REGEX.test(clean)) {
@@ -260,14 +263,21 @@ validate_ipv4() {
   _o1="\${_ip%%.*}"; _rest="\${_ip#*.}"
   _o2="\${_rest%%.*}"; _rest="\${_rest#*.}"
   _o3="\${_rest%%.*}"; _o4="\${_rest#*.}"
+  _clean_octets=""
   for _o in "$_o1" "$_o2" "$_o3" "$_o4"; do
     case "$_o" in
       ''|*[!0-9]*) return 1 ;;
     esac
+    while [ "\${_o#0}" != "$_o" ] && [ "$_o" != "0" ]; do
+      _o="\${_o#0}"
+    done
     if [ "$_o" -lt 0 ] || [ "$_o" -gt 255 ]; then
       return 1
     fi
+    _clean_octets="\$_clean_octets \$_o"
   done
+  set -- \$_clean_octets
+  _o1="\$1"; _o2="\$2"; _o3="\$3"; _o4="\$4"
   if [ "$_o1" -eq 172 ] && [ "$_o2" -ge 20 ] && [ "$_o2" -le 23 ]; then
     return 0
   fi
@@ -284,6 +294,23 @@ validate_endpoint() {
   [ -z "$_val" ] && return 0
   case "$_val" in
     http://*|https://*|wg://*) return 1 ;;
+    *:*:*)
+      # IPv6 address (bare or bracketed)
+      case "$_val" in
+        \\[*\\]:*) return 1 ;;
+        \\[*\\])
+          _inner="\${_val#\\[}"
+          _inner="\${_inner%\\]}"
+          case "$_inner" in
+            *[!0-9a-fA-F:]*) return 1 ;;
+            *) return 0 ;;
+          esac
+          ;;
+        *\\[*|*\\]*) return 1 ;;
+        *[!0-9a-fA-F:]*) return 1 ;;
+        *) return 0 ;;
+      esac
+      ;;
     *:*) return 1 ;;
     *[!A-Za-z0-9.-]*) return 1 ;;
     .*|-*|*.-|*.|*-) return 1 ;;
@@ -477,7 +504,10 @@ export function validateEndpoint(val, isOptional = true) {
   if (clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('wg://')) {
     return { valid: false, error: 'Do not include http:// or protocol prefix in endpoint' };
   }
-  if (clean.includes(':') && !clean.includes('::')) {
+  if (!clean.startsWith('[') && clean.indexOf(':') !== -1 && clean.indexOf(':') === clean.lastIndexOf(':')) {
+    return { valid: false, error: 'Do not include port in endpoint hostname' };
+  }
+  if (clean.startsWith('[') && /\]:[0-9]+$/.test(clean)) {
     return { valid: false, error: 'Do not include port in endpoint hostname' };
   }
   if (!ENDPOINT_REGEX.test(clean)) {

@@ -160,8 +160,34 @@ run_edit_flow() {
   [ -z "$pfill_listen_port" ] && pfill_listen_port="auto"
   [ -z "$pfill_mtu" ] && pfill_mtu="1420"
 
-  cp -f "$template_file" "$draft_file"
-  sed -i -e "s|__NODE__|$sel_nid|g" -e "s|__LLA__|$pfill_lla|g" -e "s|__IPV4__|$pfill_ipv4|g" -e "s|__ULA__|$pfill_ula|g" -e "s|__PUBKEY__|$pfill_pubkey|g" -e "s|__ENDPOINT__|$pfill_ep|g" -e "s|__PEER_PORT__|$pfill_peer_port|g" -e "s|__LISTEN_PORT__|$pfill_listen_port|g" -e "s|__MTU__|$pfill_mtu|g" -e "s|__ASN__|$clean_asn|g" -e "s|__DEFAULT_PORT__|$default_peer_port|g" "$draft_file"
+  # Safe literal substitution without regex or delimiter collisions
+  awk -v node="$sel_nid" -v lla="$pfill_lla" -v ipv4="$pfill_ipv4" \
+      -v ula="$pfill_ula" -v pubkey="$pfill_pubkey" -v ep="$pfill_ep" \
+      -v pport="$pfill_peer_port" -v lport="$pfill_listen_port" \
+      -v mtu="$pfill_mtu" -v asn="$clean_asn" -v defport="$default_peer_port" '
+    function safe_replace(str, target, repl,   pos, res) {
+      res = ""
+      while ((pos = index(str, target)) > 0) {
+        res = res substr(str, 1, pos - 1) repl
+        str = substr(str, pos + length(target))
+      }
+      return res str
+    }
+    {
+      line = $0
+      line = safe_replace(line, "__NODE__", node)
+      line = safe_replace(line, "__LLA__", lla)
+      line = safe_replace(line, "__IPV4__", ipv4)
+      line = safe_replace(line, "__ULA__", ula)
+      line = safe_replace(line, "__PUBKEY__", pubkey)
+      line = safe_replace(line, "__ENDPOINT__", ep)
+      line = safe_replace(line, "__PEER_PORT__", pport)
+      line = safe_replace(line, "__LISTEN_PORT__", lport)
+      line = safe_replace(line, "__MTU__", mtu)
+      line = safe_replace(line, "__ASN__", asn)
+      line = safe_replace(line, "__DEFAULT_PORT__", defport)
+      print line
+    }' "$template_file" > "$draft_file"
 
   # Initial baseline values for untouched comparison
   init_node="$sel_nid"

@@ -36,8 +36,7 @@ export const RULES = {
 
   endpoint: {
     name: 'Peer Endpoint Hostname / IP',
-    description: 'Public hostname or IP address without protocol or port',
-    regexStr: '^(?:(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])$',
+    regexStr: '^(?:(?:(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])|(?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4}|(?:::|::[0-9a-fA-F:]+|[0-9a-fA-F:]+::[0-9a-fA-F:]*)|(?:\\[[0-9a-fA-F:]+\\]))$',
     example: 'peer.example.dn42',
     errorMessage: 'Endpoint must be a valid hostname or IP (no http:// or :port)'
   },

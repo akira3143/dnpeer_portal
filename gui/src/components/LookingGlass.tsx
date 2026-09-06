@@ -59,6 +59,20 @@ export const LookingGlass: React.FC<LookingGlassProps> = ({ nodes, networkMeta: 
     setIsLoading(true);
     setQueryError('');
 
+    if (qtype === 'route') {
+      const trimmed = targetInput.trim();
+      if (!trimmed) {
+        setQueryError('Please specify an IP, CIDR subnet, or ASN for route lookup');
+        setOutput('error: Please specify an IP, CIDR subnet, or ASN (e.g. 172.20.0.0/16 or 4242423143)');
+        return;
+      }
+      if (!/^[a-zA-Z0-9.:/_\-\s]+$/.test(trimmed)) {
+        setQueryError('Target contains invalid characters');
+        setOutput('error: Target contains invalid characters. Please use a valid IP, CIDR prefix, or ASN.');
+        return;
+      }
+    }
+
     try {
       const targetParam = qtype === 'route' ? targetInput.trim() : undefined;
       const res = await ApiClient.queryLookingGlass(selectedNodeId, qtype, targetParam);

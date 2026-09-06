@@ -29,6 +29,14 @@ esac
 
 DOWNLOAD_URL="https://github.com/xddxdd/bird-lg-go/releases/download/v${VERSION}/bird-lgproxy-go-v${VERSION}-linux-${ARCH}.tar.gz"
 
+case "$ARCH" in
+  amd64) EXPECTED_SHA256="f2b1d937a41c5d068e7095fcd87bfadec3efbaedc19654e30049256afb296fbe" ;;
+  arm64) EXPECTED_SHA256="7316e1d914fdbd308a27ce0bbc7e0a3bca604e7e49ef4cbe1c2beb8167c83c91" ;;
+  arm)   EXPECTED_SHA256="d0f9c0245f9b580ce3b4764448324f55976cf295801cdabf70c7f884525c9fcd" ;;
+  386)   EXPECTED_SHA256="f829da03f743526ef9478df531269c37e1733dbe01ee6274089a75585b1a2ee8" ;;
+  *)     EXPECTED_SHA256="" ;;
+esac
+
 echo "==============================================================================="
 echo "       AkiLab DN42 Looking Glass Proxy Deployer (Go binary)"
 echo "==============================================================================="
@@ -43,6 +51,18 @@ if command -v curl >/dev/null 2>&1; then
 else
   wget -q "$DOWNLOAD_URL" -O "$TMPDIR_DL/lgproxy.tar.gz"
 fi
+
+if [ -n "$EXPECTED_SHA256" ]; then
+  echo "    Verifying SHA256 checksum..."
+  ACTUAL_SHA256=$(sha256sum "$TMPDIR_DL/lgproxy.tar.gz" 2>/dev/null | awk '{print $1}')
+  if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+    echo "[ERROR] SHA256 verification failed for bird-lgproxy-go! (Expected: $EXPECTED_SHA256, got: $ACTUAL_SHA256)" >&2
+    rm -rf "$TMPDIR_DL"
+    exit 1
+  fi
+  echo "    Integrity verified."
+fi
+
 tar -xzf "$TMPDIR_DL/lgproxy.tar.gz" -C "$TMPDIR_DL"
 
 # Locate the extracted binary inside the tarball
@@ -67,6 +87,9 @@ Wants=bird.service
 
 [Service]
 Type=simple
+# Optional: run as user bird if /run/bird/bird.ctl permissions allow
+# User=bird
+# Group=bird
 ExecStart=/usr/local/bin/bird-lgproxy --listen ${LISTEN_ADDR}:${LISTEN_PORT} --bird /run/bird/bird.ctl
 Restart=always
 RestartSec=5s

@@ -23,6 +23,7 @@ echo "Stopping and disabling $SERVICE_NAME..."
 systemctl disable --now "$SERVICE_NAME" 2>/dev/null || true
 
 rm -f "/etc/systemd/system/$SERVICE_NAME.service"
+rm -f "/usr/local/bin/dnp"
 systemctl daemon-reload
 
 if [ "$PURGE" -eq 1 ]; then

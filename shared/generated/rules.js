@@ -32,8 +32,7 @@ export const RULES = {
   },
   "endpoint": {
     "name": "Peer Endpoint Hostname / IP",
-    "description": "Public hostname or IP address without protocol or port",
-    "regexStr": "^(?:(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])$",
+    "regexStr": "^(?:(?:(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])|(?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4}|(?:::|::[0-9a-fA-F:]+|[0-9a-fA-F:]+::[0-9a-fA-F:]*)|(?:\\[[0-9a-fA-F:]+\\]))$",
     "example": "peer.example.dn42",
     "errorMessage": "Endpoint must be a valid hostname or IP (no http:// or :port)"
   },
@@ -85,7 +84,7 @@ export const RULES = {
 export const ASN_REGEX = new RegExp("^(424242[0-9]{4}|6451[2-9]|645[2-9][0-9]|64[6-9][0-9]{2}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-4])$");
 export const PUBLIC_KEY_REGEX = new RegExp("^[A-Za-z0-9+/]{43}=$");
 export const IPV4_REGEX = new RegExp("^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\\/(?:[0-9]|[12][0-9]|3[0-2]))?$");
-export const ENDPOINT_REGEX = new RegExp("^(?:(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])$");
+export const ENDPOINT_REGEX = new RegExp("^(?:(?:(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])|(?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4}|(?:::|::[0-9a-fA-F:]+|[0-9a-fA-F:]+::[0-9a-fA-F:]*)|(?:\\[[0-9a-fA-F:]+\\]))$");
 export const IPV6_ULA_REGEX = new RegExp("^fd[0-9a-fA-F]{2}:[0-9a-fA-F:]+(?:\\/(?:[0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?$");
 export const LINK_LOCAL_REGEX = new RegExp("^(?:fe80|FE80):(?::|(?:(?::[0-9a-fA-F]{1,4}){1,7})|(?:(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4})|(?:(?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4})|(?:[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4}){0,6}::(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}))(?:\\/(?:[0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?$");
 
@@ -169,7 +168,10 @@ export function validateEndpoint(val, isOptional = true) {
   if (clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('wg://')) {
     return { valid: false, error: 'Do not include http:// or protocol prefix in endpoint' };
   }
-  if (clean.includes(':') && !clean.includes('::')) {
+  if (!clean.startsWith('[') && clean.indexOf(':') !== -1 && clean.indexOf(':') === clean.lastIndexOf(':')) {
+    return { valid: false, error: 'Do not include port in endpoint hostname' };
+  }
+  if (clean.startsWith('[') && /]:[0-9]+$/.test(clean)) {
     return { valid: false, error: 'Do not include port in endpoint hostname' };
   }
   if (!ENDPOINT_REGEX.test(clean)) {

@@ -380,61 +380,63 @@ export class SessionService {
    * Delete peering session & release port
    */
   static async deleteSession(sessionId, requesterAsn, isAdmin = false) {
-    const sessions = await this.getSessions();
-    let sessionIndex = sessions.findIndex(s => s.id === sessionId);
-    if (sessionIndex === -1) {
-      sessionIndex = sessions.findIndex(s =>
-        s.peering?.interface === sessionId || s.assigned?.interface === sessionId
-      );
-    }
+    return this.withSessionCommitLock(async () => {
+      const sessions = await this.getSessions();
+      let sessionIndex = sessions.findIndex(s => s.id === sessionId);
+      if (sessionIndex === -1) {
+        sessionIndex = sessions.findIndex(s =>
+          s.peering?.interface === sessionId || s.assigned?.interface === sessionId
+        );
+      }
 
-    if (sessionIndex === -1) {
-      return { success: false, message: 'Session not found' };
-    }
+      if (sessionIndex === -1) {
+        return { success: false, message: 'Session not found' };
+      }
 
-    const session = sessions[sessionIndex];
-    if (!isAdmin && session.asn !== requesterAsn) {
-      return { success: false, message: 'Unauthorized to delete this session' };
-    }
+      const session = sessions[sessionIndex];
+      if (!isAdmin && session.asn !== requesterAsn) {
+        return { success: false, message: 'Unauthorized to delete this session' };
+      }
 
-    // Release port in ledger
-    await PortLedgerService.releaseSessionPort(session.nodeId, session.id);
-    if (session.peering?.interface) {
-      await PortLedgerService.releaseSessionPort(session.nodeId, session.peering.interface);
-    }
+      // Release port in ledger
+      await PortLedgerService.releaseSessionPort(session.nodeId, session.id);
+      if (session.peering?.interface) {
+        await PortLedgerService.releaseSessionPort(session.nodeId, session.peering.interface);
+      }
 
-    // Record tombstone if session has a WireGuard public key or ID (prevents probe resurrection)
-    if (session.peering?.publicKey) {
-      await this.addIgnoredPeer(
-        session.nodeId,
-        session.peering.publicKey,
-        session.source === 'discovered' ? 'discovered_deleted' : 'session_deleted'
-      );
-    }
-    if (session.id) {
-      await this.addIgnoredPeer(
-        session.nodeId,
-        session.id,
-        session.source === 'discovered' ? 'discovered_deleted' : 'session_deleted'
-      );
-    }
-    if (session.peering?.interface) {
-      await this.addIgnoredPeer(
-        session.nodeId,
-        session.peering.interface,
-        session.source === 'discovered' ? 'discovered_deleted' : 'session_deleted'
-      );
-    }
+      // Record tombstone if session has a WireGuard public key or ID (prevents probe resurrection)
+      if (session.peering?.publicKey) {
+        await this.addIgnoredPeer(
+          session.nodeId,
+          session.peering.publicKey,
+          session.source === 'discovered' ? 'discovered_deleted' : 'session_deleted'
+        );
+      }
+      if (session.id) {
+        await this.addIgnoredPeer(
+          session.nodeId,
+          session.id,
+          session.source === 'discovered' ? 'discovered_deleted' : 'session_deleted'
+        );
+      }
+      if (session.peering?.interface) {
+        await this.addIgnoredPeer(
+          session.nodeId,
+          session.peering.interface,
+          session.source === 'discovered' ? 'discovered_deleted' : 'session_deleted'
+        );
+      }
 
-    sessions.splice(sessionIndex, 1);
-    await this.saveSessions(sessions);
+      sessions.splice(sessionIndex, 1);
+      await this.saveSessions(sessions);
 
-    // Fire async Telegram deletion notification only for portal-managed sessions
-    if (session.source !== 'discovered') {
-      NotificationService.notifySessionDeletion(session).catch(() => {});
-    }
+      // Fire async Telegram deletion notification only for portal-managed sessions
+      if (session.source !== 'discovered') {
+        NotificationService.notifySessionDeletion(session).catch(() => {});
+      }
 
-    return { success: true, message: `Session ${sessionId} removed successfully` };
+      return { success: true, message: `Session ${sessionId} removed successfully` };
+    });
   }
 
   /**
@@ -442,8 +444,9 @@ export class SessionService {
    * Includes Round 25 auto-discovery for stock pre-existing peers (source: 'discovered').
    */
   static async updateRuntimePeers(nodeId, reportedData = [], optionalBgpSessions = []) {
-    const sessions = await this.getSessions();
-    let updated = false;
+    return this.withSessionCommitLock(async () => {
+      const sessions = await this.getSessions();
+      let updated = false;
 
     // Migration: ensure all discovered sessions have canonical peer_<name>_<node> IDs
     // while preserving their interface names in peering.interface / assigned.interface
@@ -992,5 +995,6 @@ export class SessionService {
     try {
       await PortLedgerService.syncDiscoveredPorts(nodeId, sessions);
     } catch {}
+    });
   }
 }

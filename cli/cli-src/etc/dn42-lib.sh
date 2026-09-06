@@ -81,10 +81,9 @@ api_delete() {
 json_field() {
   echo "$1" | awk -v field="$2" '
   {
-    target = "\"" field "\":\""
-    idx = index($0, target)
-    if (idx > 0) {
-      rest = substr($0, idx + length(target))
+    pat = "\"" field "\"[ \t]*:[ \t]*\""
+    if (match($0, pat)) {
+      rest = substr($0, RSTART + RLENGTH)
       out = ""
       for (i = 1; i <= length(rest); i++) {
         c = substr(rest, i, 1)
@@ -99,16 +98,15 @@ json_field() {
       }
       print out
     } else {
-      # numeric value fallback: "field":123 or "field": 123
-      target = "\"" field "\":"
-      idx = index($0, target)
-      if (idx > 0) {
-        rest = substr($0, idx + length(target))
+      # numeric or boolean value fallback: "field": 123 or "field": true
+      pat_val = "\"" field "\"[ \t]*:"
+      if (match($0, pat_val)) {
+        rest = substr($0, RSTART + RLENGTH)
         sub(/^[ \t]+/, "", rest)
         out = ""
         for (i = 1; i <= length(rest); i++) {
           c = substr(rest, i, 1)
-          if (c ~ /[0-9]/) out = out c; else break
+          if (c ~ /[0-9a-zA-Z_-]/) out = out c; else break
         }
         print out
       }

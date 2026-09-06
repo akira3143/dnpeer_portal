@@ -158,6 +158,8 @@ export function parseSsOutput(ssOutput, existingPorts = []) {
   if (!ssOutput || typeof ssOutput !== 'string') return systemPorts;
 
   for (const line of ssOutput.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('tcp')) continue; // UDP only: WireGuard only conflicts with UDP sockets
     const match = line.match(/:(\d{4,5})\s/);
     if (match) {
       const portNum = parseInt(match[1], 10);
@@ -591,8 +593,8 @@ export async function collectAndReport(options = {}) {
     }
   }
 
-  // 2. Collect Non-WG System Ports: ss -tulnp
-  const ssOutput = options.mockSsOutput !== undefined ? options.mockSsOutput : runCmd('ss -tulnp');
+  // 2. Collect Non-WG System Ports: ss -ulnp (UDP only)
+  const ssOutput = options.mockSsOutput !== undefined ? options.mockSsOutput : runCmd('ss -ulnp');
   const systemPorts = parseSsOutput(ssOutput, ports);
 
   // 3. Collect BGP Session States via local lgproxy (127.0.0.1:5000)

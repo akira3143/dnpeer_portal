@@ -65,6 +65,8 @@ export function parseSsOutput(ssOutput, existingPorts = []) {
   if (!ssOutput || typeof ssOutput !== 'string') return systemPorts;
 
   for (const line of ssOutput.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('tcp')) continue; // UDP only: WireGuard only conflicts with UDP sockets
     const match = line.match(/:(\d{4,5})\s/);
     if (match) {
       const portNum = parseInt(match[1], 10);
@@ -130,7 +132,7 @@ export class ScannerService {
 
     if (ssOutput === undefined) {
       try {
-        ssOutput = execSync('ss -tulnp', { encoding: 'utf8', timeout: 5000 }).trim();
+        ssOutput = execSync('ss -ulnp', { encoding: 'utf8', timeout: 5000 }).trim();
       } catch {
         ssOutput = '';
       }

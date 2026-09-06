@@ -134,6 +134,7 @@ if [ ! -s "$AUTH_FILE" ]; then
     }};
     fs.writeFileSync(process.argv[1], JSON.stringify(users, null, 2) + "\n");
   ' "$AUTH_FILE"
+  chmod 600 "$AUTH_FILE"
   echo "    Admin account created for AS$ADMIN_ASN."
 else
   echo "[6/7] auth_users.json already exists, skipping."
