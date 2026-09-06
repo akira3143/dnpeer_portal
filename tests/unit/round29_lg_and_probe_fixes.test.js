@@ -85,39 +85,69 @@ dn42_peer1 BGP        master4    up     10:00:00      Established
   });
 
   await t.test('4. LookingGlassService falls back to cached probe BGP snapshot when lgproxy is unreachable', async () => {
-    // Record snapshot for HK-1
+    const { getActiveConfig } = await import('../../server/storage/configLoader.js');
+    const config = getActiveConfig();
+    const testNode = {
+      id: 'TEST-UNREACHABLE-NODE',
+      name: 'Unreachable Node',
+      lgProxyUrl: 'http://127.0.0.1:59999',
+      endpointDomain: 'unreachable.invalid',
+      tunnelIpv4: '172.20.254.254'
+    };
+    config.nodes.push(testNode);
+
     const rawBgp = `
 BIRD 2.15.1 ready.
 Name       Proto      Table      State  Since         Info
-dn42_hk    BGP        master4    up     12:00:00      Established
+dn42_test  BGP        master4    up     12:00:00      Established
     `.trim();
 
-    StatusTracker.recordBgpSnapshot('HK-1', {
+    StatusTracker.recordBgpSnapshot('TEST-UNREACHABLE-NODE', {
       rawBgpOutput: rawBgp,
-      bgpSessions: [{ name: 'dn42_hk', bgpState: 'Established' }]
+      bgpSessions: [{ name: 'dn42_test', bgpState: 'Established' }]
     });
 
-    // Query HK-1 for bgp summary (lgProxyUrl on HK-1 is an unreachable test address or mock)
-    const res = await LookingGlassService.query({ nodeId: 'HK-1', command: 'bgp' });
-    assert.equal(res.success, true, 'Should succeed via probe cache fallback');
-    assert.equal(res.nodeId, 'HK-1');
-    assert.equal(res.output, rawBgp);
-    assert.equal(res.source, 'probe_cache');
+    try {
+      const res = await LookingGlassService.query({ nodeId: 'TEST-UNREACHABLE-NODE', command: 'bgp' });
+      assert.equal(res.success, true, 'Should succeed via probe cache fallback');
+      assert.equal(res.nodeId, 'TEST-UNREACHABLE-NODE');
+      assert.equal(res.output, rawBgp);
+      assert.equal(res.source, 'probe_cache');
+    } finally {
+      const idx = config.nodes.indexOf(testNode);
+      if (idx !== -1) config.nodes.splice(idx, 1);
+    }
   });
 
   await t.test('5. LookingGlassService formats BIRD table from bgpSessions if rawBgpOutput is empty', async () => {
-    StatusTracker.recordBgpSnapshot('US-LA1', {
+    const { getActiveConfig } = await import('../../server/storage/configLoader.js');
+    const config = getActiveConfig();
+    const testNode = {
+      id: 'TEST-UNREACHABLE-NODE2',
+      name: 'Unreachable Node 2',
+      lgProxyUrl: 'http://127.0.0.1:59999',
+      endpointDomain: 'unreachable2.invalid',
+      tunnelIpv4: '172.20.254.253'
+    };
+    config.nodes.push(testNode);
+
+    StatusTracker.recordBgpSnapshot('TEST-UNREACHABLE-NODE2', {
       rawBgpOutput: '',
       bgpSessions: [
         { name: 'dn42_la1', bgpState: 'Established', table: 'master4', since: '14:00:00' }
       ]
     });
 
-    const res = await LookingGlassService.query({ nodeId: 'US-LA1', command: 'protocols' });
-    assert.equal(res.success, true);
-    assert.match(res.output, /dn42_la1/);
-    assert.match(res.output, /BGP/);
-    assert.match(res.output, /Established/);
+    try {
+      const res = await LookingGlassService.query({ nodeId: 'TEST-UNREACHABLE-NODE2', command: 'protocols' });
+      assert.equal(res.success, true);
+      assert.match(res.output, /dn42_la1/);
+      assert.match(res.output, /BGP/);
+      assert.match(res.output, /Established/);
+    } finally {
+      const idx = config.nodes.indexOf(testNode);
+      if (idx !== -1) config.nodes.splice(idx, 1);
+    }
   });
 
   await t.test('6. CLI lg script avoids obsolete hardcoded node names and uses is_known_node', () => {

@@ -89,22 +89,32 @@ export class LookingGlassService {
       };
     }
 
-    // Determine target lgProxyUrl with intelligent fallbacks
-    let targetLgUrl = (node.lgProxyUrl || '').trim();
-    if (!targetLgUrl) {
-      const isLocalMaster = Boolean(config.nodes && config.nodes[0] && config.nodes[0].id.toLowerCase() === node.id.toLowerCase());
-      if (isLocalMaster) {
-        targetLgUrl = 'http://127.0.0.1:5000';
-      } else if (node.tunnelIpv4) {
-        targetLgUrl = `http://${node.tunnelIpv4}:5000`;
-      } else if (node.endpointDomain) {
-        targetLgUrl = `http://${node.endpointDomain}:5000`;
+    // Determine candidate target URLs (explicit config, public endpoint domain, DN42 tunnel IP)
+    const candidateUrls = [];
+    const explicitUrl = (node.lgProxyUrl || '').trim();
+    if (explicitUrl) {
+      candidateUrls.push(explicitUrl);
+    }
+    const isLocalMaster = Boolean(config.nodes && config.nodes[0] && config.nodes[0].id.toLowerCase() === node.id.toLowerCase());
+    if (isLocalMaster) {
+      if (!candidateUrls.includes('http://127.0.0.1:5000')) {
+        candidateUrls.push('http://127.0.0.1:5000');
+      }
+    } else {
+      // For remote nodes: also include public endpointDomain so queries work over public IP when DN42/UDP is disrupted
+      if (node.endpointDomain) {
+        const domainUrl = `http://${node.endpointDomain}:5000`;
+        if (!candidateUrls.includes(domainUrl)) candidateUrls.push(domainUrl);
+      }
+      if (node.tunnelIpv4) {
+        const tunnelUrl = `http://${node.tunnelIpv4}:5000`;
+        if (!candidateUrls.includes(tunnelUrl)) candidateUrls.push(tunnelUrl);
       }
     }
 
     const isBgpQuery = (cleanCmd === 'protocols' || cleanCmd === 'summary' || cleanCmd === 'status');
 
-    if (!targetLgUrl) {
+    if (candidateUrls.length === 0) {
       if (isBgpQuery) {
         const fallback = this.getProbeBgpFallback(node.id, cleanCmd, cleanTarget);
         if (fallback) return fallback;
@@ -115,61 +125,62 @@ export class LookingGlassService {
       };
     }
 
-    try {
-      // bird-lgproxy (Go/Python) API: /bird?q=<full birdc command>, /traceroute?q=<target>
-      let lgPath = '/bird';
-      let qValue = `show ${cleanCmd}${cleanTarget ? ' ' + cleanTarget : ''}`;
-      if (cleanCmd === 'traceroute') {
-        lgPath = '/traceroute';
-        qValue = cleanTarget || '';
-      }
-      const url = new URL(lgPath, targetLgUrl);
-      url.searchParams.set('q', qValue);
+    let lastError = null;
+    const attemptedUrls = [];
 
-      const response = await fetch(url.toString(), {
-        headers: { 'Accept': 'text/plain, application/json' },
-        signal: AbortSignal.timeout(4000)
-      });
-
-      if (response.ok) {
-        const raw = await response.text();
-        let data = raw;
-        try {
-          const parsed = JSON.parse(raw);
-          if (parsed && typeof parsed === 'object') {
-            data = parsed.output || parsed.result || JSON.stringify(parsed);
-          }
-        } catch {
-          // plain text output, use as-is
+    // Attempt candidates in order (e.g. public endpoint, then DN42 tunnel IP)
+    for (const targetLgUrl of candidateUrls) {
+      attemptedUrls.push(targetLgUrl);
+      try {
+        let lgPath = '/bird';
+        let qValue = `show ${cleanCmd}${cleanTarget ? ' ' + cleanTarget : ''}`;
+        if (cleanCmd === 'traceroute') {
+          lgPath = '/traceroute';
+          qValue = cleanTarget || '';
         }
-        return {
-          success: true,
-          nodeId: node.id,
-          command: cleanCmd,
-          target: cleanTarget,
-          output: data
-        };
-      }
+        const url = new URL(lgPath, targetLgUrl);
+        url.searchParams.set('q', qValue);
 
-      if (isBgpQuery) {
-        const fallback = this.getProbeBgpFallback(node.id, cleanCmd, cleanTarget);
-        if (fallback) return fallback;
-      }
+        const response = await fetch(url.toString(), {
+          headers: { 'Accept': 'text/plain, application/json' },
+          signal: AbortSignal.timeout(2500)
+        });
 
-      return {
-        success: false,
-        error: `lgproxy returned HTTP ${response.status} for node ${node.id}`
-      };
-    } catch (err) {
-      if (isBgpQuery) {
-        const fallback = this.getProbeBgpFallback(node.id, cleanCmd, cleanTarget);
-        if (fallback) return fallback;
-      }
+        if (response.ok) {
+          const raw = await response.text();
+          let data = raw;
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+              data = parsed.output || parsed.result || JSON.stringify(parsed);
+            }
+          } catch {
+            // plain text output, use as-is
+          }
+          return {
+            success: true,
+            nodeId: node.id,
+            command: cleanCmd,
+            target: cleanTarget,
+            output: data
+          };
+        }
 
-      return {
-        success: false,
-        error: `lgproxy unreachable at ${targetLgUrl} for node ${node.id}: ${err.message || 'connection failed'}`
-      };
+        lastError = new Error(`HTTP ${response.status}`);
+      } catch (err) {
+        lastError = err;
+      }
     }
+
+    // If all direct endpoints fail, check probe snapshot for BGP queries
+    if (isBgpQuery) {
+      const fallback = this.getProbeBgpFallback(node.id, cleanCmd, cleanTarget);
+      if (fallback) return fallback;
+    }
+
+    return {
+      success: false,
+      error: `lgproxy unreachable at ${attemptedUrls.join(', ')} for node ${node.id}: ${lastError?.message || 'connection failed'}`
+    };
   }
 }
