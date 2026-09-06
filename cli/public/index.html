@@ -150,13 +150,14 @@
         return true; // 放行！^C 进入终端中断当前输入
       }
 
-      // (C) Ctrl+V / Ctrl+Shift+V / Shift+Insert: 拦截按键本身，交由 paste 事件单路径处理（防双份粘贴）
+      // (C) Ctrl+V / Ctrl+Shift+V / Shift+Insert / Cmd+V: 拦截按键本身，交由 paste 事件单路径处理（防双份粘贴与未审阅回车）
       if (
         (event.ctrlKey && (event.key === 'v' || event.key === 'V')) ||
         (event.ctrlKey && event.shiftKey && (event.key === 'v' || event.key === 'V')) ||
-        (event.shiftKey && event.key === 'Insert')
+        (event.shiftKey && event.key === 'Insert') ||
+        (event.metaKey && (event.key === 'v' || event.key === 'V'))
       ) {
-        return false; // 彻底拦截按键事件，防止 xterm 注入原始字符
+        return false; // 彻底拦截按键事件，交由 paste 捕获监听器统一处理
       }
 
       // (D) 彻底放行 F 区功能键 (F1 ~ F12) 与浏览器原生快捷键 (F5/Ctrl+F5刷新、F12控制台、F11全屏、Ctrl+R等)
@@ -180,20 +181,42 @@
 
     const terminalElement = document.getElementById("terminal");
 
-    // 2. 浏览器原生 paste 事件监听器（单一可信粘贴路径）
-    window.addEventListener("paste", (e) => {
+    // 2. 浏览器原生 paste 事件捕获监听器（单一可信粘贴路径：捕获阶段抢先拦截，剥离尾部换行防误触执行）
+    const handlePaste = (e) => {
       e.preventDefault();
+      e.stopImmediatePropagation();
       const clipboardData = e.clipboardData || window.clipboardData;
       const text = clipboardData ? clipboardData.getData('text') : '';
-      if (text && window.sendTerminalInput) {
+      if (text) {
         const sanitized = sanitizePasteText(text);
         if (sanitized) {
-          window.sendTerminalInput(sanitized);
+          term.paste(sanitized);
         }
       }
-    });
+    };
 
-    // 3. 鼠标右键：彻底砍除所有行为（不粘贴、不复制、不弹菜单）
+    window.addEventListener("paste", handlePaste, true);
+    if (term.textarea) {
+      term.textarea.addEventListener("paste", handlePaste, true);
+    }
+
+    // 3. 拖拽放置文本防误触执行
+    terminalElement.addEventListener("dragover", (e) => {
+      e.preventDefault();
+    });
+    terminalElement.addEventListener("drop", (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const text = e.dataTransfer ? e.dataTransfer.getData('text') : '';
+      if (text) {
+        const sanitized = sanitizePasteText(text);
+        if (sanitized) {
+          term.paste(sanitized);
+        }
+      }
+    }, true);
+
+    // 4. 鼠标右键：彻底砍除所有行为（不粘贴、不复制、不弹菜单）
     terminalElement.addEventListener("contextmenu", (e) => {
       e.preventDefault();
     });
