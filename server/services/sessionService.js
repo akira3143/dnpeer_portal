@@ -74,21 +74,21 @@ export class SessionService {
     return FileStore.writeJson(filePath, list);
   }
 
-  static async isPeerIgnored(nodeId, publicKey) {
-    if (!publicKey || !nodeId) return false;
+  static async isPeerIgnored(nodeId, keyOrId) {
+    if (!keyOrId || !nodeId) return false;
     const list = await this.getIgnoredPeers();
-    const normKey = publicKey.trim();
-    return list.some(item => item.nodeId === nodeId && item.publicKey === normKey);
+    const norm = String(keyOrId).trim();
+    return list.some(item => item.nodeId === nodeId && (item.publicKey === norm || item.id === norm || item.sessionId === norm));
   }
 
-  static async addIgnoredPeer(nodeId, publicKey, reason = 'removed_by_user') {
-    if (!publicKey || !nodeId) return false;
+  static async addIgnoredPeer(nodeId, keyOrId, reason = 'removed_by_user') {
+    if (!keyOrId || !nodeId) return false;
     const list = await this.getIgnoredPeers();
-    const normKey = publicKey.trim();
-    if (!list.some(item => item.nodeId === nodeId && item.publicKey === normKey)) {
+    const norm = String(keyOrId).trim();
+    if (!list.some(item => item.nodeId === nodeId && (item.publicKey === norm || item.id === norm || item.sessionId === norm))) {
       list.push({
         nodeId,
-        publicKey: normKey,
+        publicKey: norm,
         ignoredAt: new Date().toISOString(),
         reason
       });
@@ -103,12 +103,11 @@ export class SessionService {
   }
 
   static async getSessionsByAsn(asn, isAdmin = false) {
-    const cleanAsn = parseInt(String(asn).replace(/^AS/i, ''), 10);
     const sessions = await this.getSessions();
-    if (isAdmin) {
-      return sessions;
-    }
-    return sessions.filter(s => s.asn === cleanAsn);
+    const filtered = isAdmin
+      ? [...sessions]
+      : sessions.filter(s => s.asn === parseInt(asn, 10));
+    return filtered.sort((a, b) => String(a.nodeId || '').localeCompare(String(b.nodeId || '')));
   }
 
   /**
@@ -351,11 +350,18 @@ export class SessionService {
     // Release port in ledger
     await PortLedgerService.releaseSessionPort(session.nodeId, sessionId);
 
-    // Record tombstone if session has a WireGuard public key (prevents probe resurrection)
+    // Record tombstone if session has a WireGuard public key or ID (prevents probe resurrection)
     if (session.peering?.publicKey) {
       await this.addIgnoredPeer(
         session.nodeId,
         session.peering.publicKey,
+        session.source === 'discovered' ? 'discovered_deleted' : 'session_deleted'
+      );
+    }
+    if (session.id) {
+      await this.addIgnoredPeer(
+        session.nodeId,
+        session.id,
         session.source === 'discovered' ? 'discovered_deleted' : 'session_deleted'
       );
     }
@@ -571,6 +577,7 @@ export class SessionService {
     }
 
     // 3. BGP Connectivity Correlation (Node + ASN driven) - Single source of truth for session status
+    const matchedBgpNames = new Set();
     if (bgpSessions && bgpSessions.length > 0) {
       const nodeSessions = sessions.filter(s => s.nodeId === nodeId);
       for (const session of nodeSessions) {
@@ -638,6 +645,7 @@ export class SessionService {
         }
 
         if (bgp) {
+          matchedBgpNames.add(bgp.name);
           // BGP state transparent pass-through
           session.runtime.bgpState = bgp.bgpState;
           session.runtime.bgpInfo = bgp.info;
@@ -681,6 +689,135 @@ export class SessionService {
           }
           updated = true;
         }
+      }
+
+      // 4. Pure BGP (Non-WireGuard / IXP / Ethernet) Stock Peer Auto-Discovery
+      for (const bgp of bgpSessions) {
+        if (!bgp || !bgp.name) continue;
+        if (matchedBgpNames.has(bgp.name)) continue;
+
+        // Check if there is already a session for this BGP protocol on this node
+        const existingSession = sessions.find(s =>
+          s.nodeId === nodeId && (
+            s.id === bgp.name ||
+            s.peering?.interface === bgp.name ||
+            s.assigned?.interface === bgp.name
+          )
+        );
+
+        if (existingSession) {
+          existingSession.runtime = existingSession.runtime || {};
+          existingSession.runtime.bgpState = bgp.bgpState || 'Pending';
+          existingSession.runtime.bgpInfo = bgp.info;
+          existingSession.runtime.bgpProtocolName = bgp.name;
+          const normState = (bgp.bgpState || '').toLowerCase();
+          if (normState === 'established') {
+            existingSession.status = 'active';
+            existingSession.runtime.stage = 3;
+            existingSession.runtime.stageText = 'BGP Established';
+          } else if (normState === 'connect') {
+            existingSession.status = 'connect';
+            existingSession.runtime.stage = 2;
+            existingSession.runtime.stageText = 'BGP Connect';
+          } else if (normState === 'active') {
+            existingSession.status = 'connect';
+            existingSession.runtime.stage = 2;
+            existingSession.runtime.stageText = 'BGP Active';
+          } else if (normState === 'idle') {
+            existingSession.status = 'idle';
+            existingSession.runtime.stage = 1;
+            existingSession.runtime.stageText = 'BGP Idle';
+          }
+          if (!existingSession.asn && (bgp.cleanAsn || bgp.asn)) {
+            existingSession.asn = bgp.cleanAsn || bgp.asn;
+            existingSession.asName = `AS${existingSession.asn}`;
+          }
+          updated = true;
+          continue;
+        }
+
+        // Check tombstone: if ignored, skip
+        if (await this.isPeerIgnored(nodeId, bgp.name)) {
+          continue;
+        }
+
+        // Extract IP and ASN
+        const cleanAddr = bgp.neighborAddress ? bgp.neighborAddress.replace(/%[a-zA-Z0-9_-]+$/, '') : '';
+        const parsedIp = parseAllowedIps(cleanAddr);
+        const targetAsn = bgp.cleanAsn || bgp.asn || null;
+        const now = new Date().toISOString();
+        const normState = (bgp.bgpState || '').toLowerCase();
+
+        let discId = bgp.name;
+        let counter = 1;
+        while (sessions.some(s => s.id === discId)) {
+          discId = `${bgp.name}_${counter++}`;
+        }
+
+        let stage = 1;
+        let stageText = 'pending';
+        let status = 'pending';
+
+        if (normState === 'established') {
+          status = 'active';
+          stage = 3;
+          stageText = 'BGP Established';
+        } else if (normState === 'connect') {
+          status = 'connect';
+          stage = 2;
+          stageText = 'BGP Connect';
+        } else if (normState === 'active') {
+          status = 'connect';
+          stage = 2;
+          stageText = 'BGP Active';
+        } else if (normState === 'idle') {
+          status = 'idle';
+          stage = 1;
+          stageText = 'BGP Idle';
+        }
+
+        const newBgpDiscSession = {
+          id: discId,
+          source: 'discovered',
+          asn: targetAsn,
+          asName: targetAsn ? `AS${targetAsn}` : 'Unknown Peer',
+          mnt: '',
+          nodeId: nodeId,
+          status,
+          createdAt: now,
+          updatedAt: now,
+          contact: '',
+          peering: {
+            publicKey: '',
+            endpoint: '',
+            ipv4: parsedIp.ipv4 || '',
+            ipv6Ula: parsedIp.ipv6Ula || '',
+            linkLocal: parsedIp.linkLocal || '',
+            listenPort: 0,
+            clientPort: null,
+            interface: bgp.name,
+            allowedIps: cleanAddr,
+            mtu: 1500
+          },
+          assigned: {
+            hostPort: 0,
+            interface: bgp.name
+          },
+          runtime: {
+            stage,
+            stageText,
+            latestHandshake: 0,
+            endpoint: '',
+            rxBytes: 0,
+            txBytes: 0,
+            bgpState: bgp.bgpState || 'Pending',
+            bgpInfo: bgp.info,
+            bgpProtocolName: bgp.name
+          }
+        };
+
+        sessions.push(newBgpDiscSession);
+        updated = true;
       }
     }
 

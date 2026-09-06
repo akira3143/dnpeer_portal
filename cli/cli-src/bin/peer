@@ -613,6 +613,7 @@ do_ls() {
   printf "%-14s %-24s %-14s %-12s %-12s %s\n" "NODE" "SESSION ID" "ASN" "PEERPORT" "LISTENPORT" "STATUS"
   printf "\033[90m------------------------------------------------------------------------------------------\033[0m\n"
 
+  last_node=""
   echo "$resp" | sed 's/},{/}\n{/g' | grep '"id"' | while IFS= read -r line; do
     id=${line#*\"id\":\"}; id=${id%%\"*}
     asn=${line#*\"asn\":}; asn=${asn%%,*}; asn=${asn%%\}*}
@@ -625,6 +626,11 @@ do_ls() {
 
     # 1. Node column shows node ID (compact)
     node_name="$node"
+
+    if [ -n "$last_node" ] && [ "$node_name" != "$last_node" ]; then
+      printf "\033[90m------------------------------------------------------------------------------------------\033[0m\n"
+    fi
+    last_node="$node_name"
 
     # 2. Session ID (discovered session uses tunnel interface name, no [auto] prefix)
     disp_id="$id"

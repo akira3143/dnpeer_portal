@@ -409,6 +409,68 @@ test_peer  BGP      ---        up     12:00:00  Established
     assert.equal(updated.runtime.bgpState, 'Established');
     assert.equal(updated.status, 'active');
   });
+
+  await t.test('10. Pure BGP (non-WireGuard, e.g. TYIX) session auto-discovery and tombstoning', async () => {
+    fs.writeFileSync(sessionsFile, JSON.stringify([]), 'utf8');
+
+    // Report with 0 WireGuard peers, but 2 pure BGP sessions (e.g. TYIX exchange peers)
+    const pureBgpReport = {
+      peers: [], // No WireGuard interfaces
+      bgpSessions: [
+        {
+          name: 'ibgp_tyix_jp7',
+          neighborAddress: '172.20.10.2',
+          asn: 4242423143,
+          cleanAsn: 4242423143,
+          bgpState: 'Established'
+        },
+        {
+          name: 'tyix_peer2289',
+          neighborAddress: 'fe80::2289%tyix',
+          asn: 4242422289,
+          cleanAsn: 4242422289,
+          bgpState: 'Established'
+        }
+      ]
+    };
+
+    await SessionService.updateRuntimePeers(testNodeId, pureBgpReport);
+
+    const sessions = await SessionService.getSessions();
+    assert.equal(sessions.length, 2, 'Must discover 2 pure BGP sessions');
+
+    const ibgp = sessions.find(s => s.id === 'ibgp_tyix_jp7');
+    assert.ok(ibgp, 'ibgp_tyix_jp7 must be discovered');
+    assert.equal(ibgp.asn, 4242423143);
+    assert.equal(ibgp.status, 'active');
+    assert.equal(ibgp.runtime.bgpState, 'Established');
+    assert.equal(ibgp.peering.listenPort, 0, 'Non-WG port must be 0');
+    assert.equal(ibgp.assigned.hostPort, 0);
+
+    const tyix2289 = sessions.find(s => s.id === 'tyix_peer2289');
+    assert.ok(tyix2289, 'tyix_peer2289 must be discovered');
+    assert.equal(tyix2289.asn, 4242422289);
+    assert.equal(tyix2289.status, 'active');
+
+    // Test deletion and tombstoning
+    const delRes = await SessionService.deleteSession('ibgp_tyix_jp7', 4242423143, true);
+    assert.equal(delRes.success, true);
+
+    // Re-running updateRuntimePeers must NOT resurrect the deleted session
+    await SessionService.updateRuntimePeers(testNodeId, pureBgpReport);
+    const afterSessions = await SessionService.getSessions();
+    assert.equal(afterSessions.length, 1, 'Tombstoned pure BGP session must not be resurrected');
+    assert.ok(!afterSessions.some(s => s.id === 'ibgp_tyix_jp7'));
+  });
+
+  await t.test('11. CLI peer ls includes node divider logic between different nodes', () => {
+    const peerScript = fs.readFileSync(path.resolve('cli/cli-src/bin/peer'), 'utf8');
+    assert.ok(
+      peerScript.includes('if [ -n "$last_node" ] && [ "$node_name" != "$last_node" ]; then'),
+      'peer ls must contain node boundary divider logic'
+    );
+  });
 });
+
 
 
