@@ -204,6 +204,9 @@ export class ScannerService {
       };
     }
 
+    // Record master host heartbeat
+    StatusTracker.recordHeartbeat(masterNodeId);
+
     // Merge ports and update sessions
     const mergedPorts = await PortLedgerService.mergeProbeReport(masterNodeId, { ports, systemPorts });
     await SessionService.updateRuntimePeers(masterNodeId, { peers, bgpSessions, ports });

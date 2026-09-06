@@ -22,9 +22,27 @@ export const NodeGrid: React.FC<NodeGridProps> = ({ nodes, onSelectNode }) => {
       try {
         const res = await fetch('/api/probe/status');
         if (res.ok) {
-          const data = await res.json();
-          if (data.success && data.probes && mounted) {
-            setProbeStatuses(data.probes);
+          const json = await res.json();
+          const probes: Record<string, { online: boolean }> = {
+            ...(json.data?.probes || {}),
+            ...(json.probes || {})
+          };
+          if (Array.isArray(json.data?.nodes)) {
+            for (const n of json.data.nodes) {
+              if (n.nodeId) {
+                if (!probes[n.nodeId]) probes[n.nodeId] = { online: Boolean(n.online) };
+                probes[n.nodeId.toLowerCase()] = { online: Boolean(n.online) };
+                probes[n.nodeId.toLowerCase().replace(/[^a-z0-9]/g, '')] = { online: Boolean(n.online) };
+              }
+              if (n.code) {
+                if (!probes[n.code]) probes[n.code] = { online: Boolean(n.online) };
+                probes[n.code.toLowerCase()] = { online: Boolean(n.online) };
+                probes[n.code.toLowerCase().replace(/[^a-z0-9]/g, '')] = { online: Boolean(n.online) };
+              }
+            }
+          }
+          if (mounted && Object.keys(probes).length > 0) {
+            setProbeStatuses(probes);
           }
         }
       } catch {}

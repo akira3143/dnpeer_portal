@@ -87,10 +87,16 @@ class StatusTrackerService {
     this.ensureLoaded();
 
     const now = timestamp || new Date().toISOString();
-    this.heartbeats.set(nodeId.trim(), {
+    const cleanId = nodeId.trim();
+    this.heartbeats.set(cleanId, {
       lastSeen: now,
       online: true
     });
+
+    const lower = cleanId.toLowerCase();
+    this.heartbeats.set(lower, { lastSeen: now, online: true });
+    this.heartbeats.set(lower.replace(/[^a-z0-9]/g, ''), { lastSeen: now, online: true });
+
     this.scheduleSave();
   }
 
@@ -105,7 +111,24 @@ class StatusTrackerService {
     }
     this.ensureLoaded();
 
-    const record = this.heartbeats.get(nodeId.trim());
+    const norm = String(nodeId).trim();
+    let record = this.heartbeats.get(norm);
+    if (!record) {
+      const lower = norm.toLowerCase();
+      record = this.heartbeats.get(lower) || this.heartbeats.get(lower.replace(/[^a-z0-9]/g, ''));
+    }
+    if (!record) {
+      const lower = norm.toLowerCase();
+      const stripped = lower.replace(/[^a-z0-9]/g, '');
+      for (const [k, v] of this.heartbeats.entries()) {
+        const kLower = k.toLowerCase();
+        if (kLower === lower || kLower.replace(/[^a-z0-9]/g, '') === stripped) {
+          record = v;
+          break;
+        }
+      }
+    }
+
     if (!record || !record.lastSeen) {
       return { online: false, lastSeen: null, status: 'offline' };
     }
@@ -144,8 +167,19 @@ class StatusTrackerService {
     for (const node of nodes) {
       const status = this.getNodeStatus(node.id);
       probes[node.id] = status;
+      if (node.id) {
+        probes[node.id.toLowerCase()] = status;
+        probes[node.id.toLowerCase().replace(/[^a-z0-9]/g, '')] = status;
+      }
       if (node.code) {
         probes[node.code] = status;
+        probes[node.code.toLowerCase()] = status;
+        probes[node.code.toLowerCase().replace(/[^a-z0-9]/g, '')] = status;
+      }
+    }
+    for (const [k, v] of this.heartbeats.entries()) {
+      if (!probes[k]) {
+        probes[k] = this.getNodeStatus(k);
       }
     }
     return probes;

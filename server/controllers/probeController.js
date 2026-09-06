@@ -105,10 +105,15 @@ export class ProbeController {
 
     const probes = StatusTracker.getProbesMap(config.nodes || []);
 
-    return successEnvelope({
+    const resp = successEnvelope({
       nodes,
       probes,
       timestamp: new Date().toISOString()
     }, 200);
+
+    // Provide top-level convenience properties
+    resp.probes = probes;
+    resp.nodes = nodes;
+    return resp;
   }
 }
