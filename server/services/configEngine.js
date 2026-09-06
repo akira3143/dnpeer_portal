@@ -1,5 +1,31 @@
 import { getActiveConfig } from '../storage/configLoader.js';
 
+/**
+ * Cleanly format WireGuard Endpoint with bracketed IPv6 and port deduplication
+ */
+export function formatWireguardEndpoint(host, defaultPort) {
+  if (!host || typeof host !== 'string') return '';
+  const trimmed = host.trim();
+  if (!trimmed) return '';
+
+  let cleanHost = trimmed;
+  let cleanPort = defaultPort;
+
+  const v6BracketPort = trimmed.match(/^\[([^\]]+)\](?::(\d+))?$/);
+  if (v6BracketPort) {
+    cleanHost = `[${v6BracketPort[1]}]`;
+    if (v6BracketPort[2]) cleanPort = parseInt(v6BracketPort[2], 10);
+  } else if (trimmed.includes(':') && trimmed.indexOf(':') === trimmed.lastIndexOf(':')) {
+    const parts = trimmed.split(':');
+    cleanHost = parts[0];
+    cleanPort = parseInt(parts[1], 10);
+  } else if (trimmed.includes(':')) {
+    cleanHost = `[${trimmed.replace(/[\[\]]/g, '')}]`;
+  }
+
+  return cleanPort ? `${cleanHost}:${cleanPort}` : cleanHost;
+}
+
 export class ConfigEngine {
   /**
    * Assemble WireGuard configuration products (client wireguard, server wireguard snippet)
@@ -65,13 +91,15 @@ export class ConfigEngine {
     }
     const clientListenPortLine = `ListenPort = ${clientPortNum}\n`;
 
-    // 4. Server WG AllowedIPs
+    // 4. Server WG AllowedIPs for Client WireGuard
     const serverAllowedIps = [
-      '10.0.0.0/8',
       '172.16.0.0/12',
+      '10.0.0.0/8',
       'fd00::/8',
-      'fe80::/64'
+      'fe80::/10'
     ];
+
+    const serverEndpointFormatted = formatWireguardEndpoint(node.endpointDomain || 'jp1.akilab.dn42', hostPort);
 
     // 5. Client WireGuard Configuration (no '#' comments inside body)
     const clientWireguard = `[Interface]
@@ -81,7 +109,7 @@ ${postUpBlock}${clientListenPortLine}MTU = ${mtu}
 
 [Peer]
 PublicKey = ${node.wgPublicKey || '<SERVER_WG_PUBLIC_KEY>'}
-Endpoint = ${node.endpointDomain || 'jp1.akilab.dn42'}:${hostPort}
+Endpoint = ${serverEndpointFormatted}
 AllowedIPs = ${serverAllowedIps.join(', ')}
 PersistentKeepalive = 25
 `;
@@ -114,8 +142,8 @@ PersistentKeepalive = 25
     ];
 
     let serverEndpointLine = '';
-    if (clientEndpoint) {
-      serverEndpointLine = `Endpoint = ${clientEndpoint}:${clientPortNum}\n`;
+    if (clientEndpoint && typeof clientEndpoint === 'string' && clientEndpoint.trim()) {
+      serverEndpointLine = `Endpoint = ${formatWireguardEndpoint(clientEndpoint, clientPortNum)}\n`;
     } else {
       serverEndpointLine = '# Endpoint: not provided by peer (roaming) - fill in when they expose one\n';
     }
@@ -141,7 +169,7 @@ PersistentKeepalive = 25
     return {
       hostPort,
       clientPort: clientPortNum,
-      serverEndpoint: `${node.endpointDomain || 'jp1.akilab.dn42'}:${hostPort}`,
+      serverEndpoint: serverEndpointFormatted,
       serverPublicKey: node.wgPublicKey || '',
       serverIpv4: node.tunnelIpv4 || '',
       serverIpv6Ula: node.tunnelIpv6ULA || '',

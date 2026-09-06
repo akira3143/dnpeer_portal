@@ -1,5 +1,6 @@
 import { ENV } from '../config.js';
 import { getActiveConfig } from '../storage/configLoader.js';
+import { formatWireguardEndpoint } from './configEngine.js';
 
 export class NotificationService {
   /**
@@ -47,9 +48,9 @@ export class NotificationService {
         const serverAddressLine = serverAddresses.join(', ') || 'fe80::3143/64';
 
         let epLine = '';
-        if (session.peering?.endpoint) {
+        if (session.peering?.endpoint && typeof session.peering.endpoint === 'string' && session.peering.endpoint.trim()) {
           const cp = session.assigned?.clientPort || session.peering?.clientPort;
-          epLine = cp ? `Endpoint = ${session.peering.endpoint}:${cp}\n` : `Endpoint = ${session.peering.endpoint}\n`;
+          epLine = `Endpoint = ${formatWireguardEndpoint(session.peering.endpoint, cp)}\n`;
         }
         snippet = `[Interface]
 PrivateKey = <SERVER_PRIVATE_KEY>

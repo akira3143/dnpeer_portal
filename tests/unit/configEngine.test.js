@@ -37,7 +37,7 @@ describe('ConfigEngine Unit Tests', () => {
 
     // Peer section
     assert.ok(config.clientWireguard.includes('[Peer]'));
-    assert.ok(config.clientWireguard.includes('AllowedIPs = 10.0.0.0/8, 172.16.0.0/12, fd00::/8, fe80::/64'));
+    assert.ok(config.clientWireguard.includes('AllowedIPs = 172.16.0.0/12, 10.0.0.0/8, fd00::/8, fe80::/10'));
     assert.ok(config.clientWireguard.includes('PersistentKeepalive = 25'));
 
     // No comments inside config body (U11)
@@ -76,5 +76,40 @@ describe('ConfigEngine Unit Tests', () => {
     // Server snippet still maintains full standard DN42 AllowedIPs even with only LLA
     assert.ok(config.serverWireguardSnippet.includes('AllowedIPs = 172.16.0.0/12, 10.0.0.0/8, fd00::/8, fe80::/10'));
     assert.ok(!config.serverWireguardSnippet.includes('PostUp'), 'Server WG snippet must NOT contain PostUp when no IPv4/ULA provided');
+  });
+
+  test('formatWireguardEndpoint correctly handles IPv6 brackets, deduplicates ports and formats roaming', () => {
+    // Bare IPv6
+    const cfgV6 = ConfigEngine.generateFullConfig({
+      asn: '4242423143',
+      nodeId: node.id,
+      clientPublicKey: 'yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=',
+      clientEndpoint: '2400:8902::1',
+      clientPort: 23143,
+      hostPort: 22670
+    });
+    assert.ok(cfgV6.serverWireguardSnippet.includes('Endpoint = [2400:8902::1]:23143'));
+
+    // Embedded port in endpoint
+    const cfgPort = ConfigEngine.generateFullConfig({
+      asn: '4242423143',
+      nodeId: node.id,
+      clientPublicKey: 'yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=',
+      clientEndpoint: 'peer.example.dn42:51820',
+      clientPort: 23143,
+      hostPort: 22670
+    });
+    assert.ok(cfgPort.serverWireguardSnippet.includes('Endpoint = peer.example.dn42:51820'));
+
+    // Roaming peer (empty endpoint)
+    const cfgRoaming = ConfigEngine.generateFullConfig({
+      asn: '4242423143',
+      nodeId: node.id,
+      clientPublicKey: 'yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E=',
+      clientEndpoint: '',
+      clientPort: 23143,
+      hostPort: 22670
+    });
+    assert.ok(cfgRoaming.serverWireguardSnippet.includes('# Endpoint: not provided by peer (roaming)'));
   });
 });
