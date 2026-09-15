@@ -447,6 +447,8 @@ export class SessionService {
     return this.withSessionCommitLock(async () => {
       const sessions = await this.getSessions();
       let updated = false;
+      const activeCfg = typeof getActiveConfig === 'function' ? getActiveConfig() : null;
+      const ourAsn = activeCfg?.network?.asnNumber || 4242423143;
 
     // Migration: ensure all discovered sessions have canonical peer_<name>_<node> IDs
     // while preserving their interface names in peering.interface / assigned.interface
@@ -647,6 +649,58 @@ export class SessionService {
       const rawIface = (peer.interface && peer.interface !== '(none)') ? peer.interface : (matchedBgp?.name || '');
       const cleanName = extractCleanPeerName(rawIface, nodeTag) || (matchedAsn ? `as${matchedAsn}` : 'stock');
       const baseId = `peer_${cleanName}_${nodeTag}`;
+      const resolvedListenPort = peer.listenPort || (rawIface ? portByIface.get(rawIface.toLowerCase()) : null) || null;
+
+      // Check if this peer was already registered as a pure-BGP placeholder without a public key
+      const placeholderIndex = sessions.findIndex(s =>
+        s.nodeId === nodeId &&
+        s.source === 'discovered' &&
+        (!s.peering?.publicKey || s.peering.publicKey === '') &&
+        (
+          s.id === baseId ||
+          (rawIface && (
+            (s.peering?.interface && s.peering.interface.toLowerCase() === rawIface.toLowerCase()) ||
+            (s.assigned?.interface && s.assigned.interface.toLowerCase() === rawIface.toLowerCase()) ||
+            s.peering?.interface === `dn42_${rawIface.toLowerCase()}` ||
+            rawIface.toLowerCase() === `dn42_${s.peering?.interface?.toLowerCase()}`
+          ))
+        )
+      );
+
+      if (placeholderIndex !== -1) {
+        // Upgrade the placeholder pure BGP session into a full WireGuard session with its canonical ID
+        const existingSession = sessions[placeholderIndex];
+        existingSession.id = baseId;
+        existingSession.peering = existingSession.peering || {};
+        existingSession.peering.publicKey = peer.publicKey;
+        if (peer.endpoint) existingSession.peering.endpoint = peer.endpoint;
+        if (parsedAddrs.ipv4) existingSession.peering.ipv4 = parsedAddrs.ipv4;
+        if (parsedAddrs.ipv6Ula) existingSession.peering.ipv6Ula = parsedAddrs.ipv6Ula;
+        if (parsedAddrs.linkLocal) existingSession.peering.linkLocal = parsedAddrs.linkLocal;
+        if (resolvedListenPort) {
+          existingSession.peering.listenPort = resolvedListenPort;
+          existingSession.assigned = existingSession.assigned || {};
+          existingSession.assigned.hostPort = resolvedListenPort;
+        }
+        if (rawIface) {
+          existingSession.peering.interface = rawIface;
+          existingSession.assigned = existingSession.assigned || {};
+          existingSession.assigned.interface = rawIface;
+        }
+        if (peer.allowedIps) existingSession.peering.allowedIps = peer.allowedIps;
+        if (peer.mtu) existingSession.peering.mtu = peer.mtu;
+        if (matchedAsn && !existingSession.asn) {
+          existingSession.asn = matchedAsn;
+          existingSession.asName = `AS${matchedAsn}`;
+        }
+        existingSession.runtime = existingSession.runtime || {};
+        existingSession.runtime.latestHandshake = peer.latestHandshake || 0;
+        existingSession.runtime.rxBytes = peer.rxBytes || 0;
+        existingSession.runtime.txBytes = peer.txBytes || 0;
+        existingSession.updatedAt = new Date().toISOString();
+        updated = true;
+        continue;
+      }
 
       let discId = baseId;
       let counter = 1;
@@ -655,7 +709,6 @@ export class SessionService {
       }
 
       const now = new Date().toISOString();
-      const resolvedListenPort = peer.listenPort || (rawIface ? portByIface.get(rawIface.toLowerCase()) : null) || null;
       const newDiscSession = {
         id: discId,
         source: 'discovered',
@@ -730,33 +783,38 @@ export class SessionService {
           });
         }
 
-        // Bridge B: Match by session ASN
+        // Bridge B: Match by interface name (Higher priority than ASN, prevents iBGP cross-contamination)
+        if (!bgp && (session.peering?.interface || session.assigned?.interface)) {
+          const iface = (session.peering?.interface || session.assigned?.interface).toLowerCase();
+          const cleanIface = extractCleanPeerName(iface);
+          bgp = bgpSessions.find(b => {
+            if (!b.name) return false;
+            const bName = b.name.toLowerCase();
+            if (bName === iface || bName === `dn42_${iface}` || iface === `dn42_${bName}`) return true;
+            if (cleanIface && extractCleanPeerName(bName) === cleanIface) return true;
+            return false;
+          });
+        }
+
+        // Bridge C: Match by session ASN naming convention or eBGP ASN
         if (!bgp && sessionAsn) {
           bgp = bgpSessions.find(b => {
-            if (b.asn && sessionAsn) {
-              if (b.asn === sessionAsn) return true;
-              if (b.cleanAsn === sessionAsn) return true;
-              if (sessionAsn % 10000 === b.asn) return true;
-              if (sessionAsn % 100000 === b.asn) return true;
-            }
+            // Naming convention: protocol name explicitly includes full ASN or tail 4 digits (e.g. dn42_3143, as4242423143)
             if (b.name && sessionAsn) {
               const strAsn = String(sessionAsn);
               const strTail = String(sessionAsn % 10000);
               if (b.name.includes(strAsn) || b.name.includes(strTail)) return true;
             }
+            // Blind numeric ASN match: eBGP ONLY (external peers), NEVER for our internal iBGP ASN
+            // because on our nodes all iBGP sessions share ourAsn!
+            if (sessionAsn !== ourAsn && b.asn && sessionAsn) {
+              if (b.asn === sessionAsn) return true;
+              if (b.cleanAsn === sessionAsn) return true;
+              if (sessionAsn % 10000 === b.asn) return true;
+              if (sessionAsn % 100000 === b.asn) return true;
+            }
             return false;
           });
-        }
-
-        // Bridge C: Match by interface name for discovered session
-        if (!bgp && session.source === 'discovered' && session.peering?.interface) {
-          bgp = bgpSessions.find(b =>
-            b.name && (
-              b.name.toLowerCase() === session.peering.interface.toLowerCase() ||
-              b.name.toLowerCase() === `dn42_${session.peering.interface.toLowerCase()}` ||
-              session.peering.interface.toLowerCase() === `dn42_${b.name.toLowerCase()}`
-            )
-          );
         }
 
         if (bgp && (bgp.cleanAsn || bgp.asn)) {
@@ -840,12 +898,36 @@ export class SessionService {
         if (!bgp || !bgp.name) continue;
         if (matchedBgpNames.has(bgp.name)) continue;
 
+        // Skip if a WireGuard interface exists for this BGP protocol on this node
+        if (reportedPeers.some(p => p.interface && (
+          p.interface.toLowerCase() === bgp.name.toLowerCase() ||
+          p.interface.toLowerCase() === `dn42_${bgp.name.toLowerCase()}` ||
+          bgp.name.toLowerCase() === `dn42_${p.interface.toLowerCase()}`
+        ))) {
+          continue;
+        }
+
+        const nodeTag = nodeId.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const targetAsn = bgp.cleanAsn || bgp.asn || null;
+        const cleanBgpName = extractCleanPeerName(bgp.name || '', nodeTag) || (targetAsn ? `as${targetAsn}` : 'bgp');
+        const canonicalId = `peer_${cleanBgpName}_${nodeTag}`;
+
         // Check if there is already a session for this BGP protocol on this node
         const existingSession = sessions.find(s =>
           s.nodeId === nodeId && (
             s.id === bgp.name ||
-            s.peering?.interface === bgp.name ||
-            s.assigned?.interface === bgp.name
+            s.id === canonicalId ||
+            s.id.startsWith(`${canonicalId}_`) ||
+            (s.peering?.interface && (
+              s.peering.interface.toLowerCase() === bgp.name.toLowerCase() ||
+              s.peering.interface.toLowerCase() === `dn42_${bgp.name.toLowerCase()}` ||
+              bgp.name.toLowerCase() === `dn42_${s.peering.interface.toLowerCase()}`
+            )) ||
+            (s.assigned?.interface && (
+              s.assigned.interface.toLowerCase() === bgp.name.toLowerCase() ||
+              s.assigned.interface.toLowerCase() === `dn42_${bgp.name.toLowerCase()}` ||
+              bgp.name.toLowerCase() === `dn42_${s.assigned.interface.toLowerCase()}`
+            ))
           )
         );
 
@@ -907,13 +989,9 @@ export class SessionService {
         // Extract IP and ASN
         const cleanAddr = bgp.neighborAddress ? bgp.neighborAddress.replace(/%[a-zA-Z0-9_-]+$/, '') : '';
         const parsedIp = parseAllowedIps(cleanAddr);
-        const targetAsn = bgp.cleanAsn || bgp.asn || null;
         const now = new Date().toISOString();
         const normState = (bgp.bgpState || '').toLowerCase();
-
-        const nodeTag = nodeId.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const cleanBgpName = extractCleanPeerName(bgp.name || '', nodeTag) || (targetAsn ? `as${targetAsn}` : 'bgp');
-        const baseId = `peer_${cleanBgpName}_${nodeTag}`;
+        const baseId = canonicalId;
 
         let discId = baseId;
         let counter = 1;
@@ -985,6 +1063,93 @@ export class SessionService {
 
         sessions.push(newBgpDiscSession);
         updated = true;
+      }
+    }
+
+    // 5. Ground-Truth State Reconciliation (面向物理真理源收敛与自愈)
+    for (let i = sessions.length - 1; i >= 0; i--) {
+      const s = sessions[i];
+      if (s.nodeId !== nodeId || s.source !== 'discovered') continue;
+
+      const sIface = (s.peering?.interface || s.assigned?.interface || '').toLowerCase();
+      const sCleanName = extractCleanPeerName(sIface || s.id);
+      const sProto = (s.runtime?.bgpProtocolName || sIface || '').toLowerCase();
+
+      // Entity 1: WireGuard physical entity on the server
+      const hasWgEntity = Boolean(
+        s.peering?.publicKey &&
+        reportedPeers.some(p => p.publicKey && p.publicKey === s.peering.publicKey)
+      );
+
+      // Entity 2: BIRD protocol physical entity on the server
+      const bgpEntityExists = Boolean(
+        sProto &&
+        bgpSessions.some(b => b.name && b.name.toLowerCase() === sProto)
+      );
+
+      // Check if this BIRD protocol is already claimed by another REAL WireGuard session on this node
+      const claimedByRealWg = sessions.some(r => {
+        if (r.nodeId !== nodeId || r.id === s.id || !r.peering?.publicKey) return false;
+        const rIface = (r.peering?.interface || r.assigned?.interface || '').toLowerCase();
+        const rCleanName = extractCleanPeerName(rIface || r.id);
+        const rProto = (r.runtime?.bgpProtocolName || rIface || '').toLowerCase();
+
+        // 1. Same underlying interface name (e.g. potat0_las === potat0_las or dn42_...)
+        if (sIface && rIface && (
+          sIface === rIface ||
+          sIface === `dn42_${rIface}` ||
+          rIface === `dn42_${sIface}`
+        )) {
+          return true;
+        }
+
+        // 2. Same clean peer name and identical base canonical ID with numbered suffix (_1, _2)
+        if (sCleanName && rCleanName && sCleanName === rCleanName && /^_\d+$/.test(r.id.slice(s.id.length))) {
+          return true;
+        }
+
+        // 3. Same BGP protocol name
+        if (sProto && rProto && sProto === rProto) {
+          return true;
+        }
+
+        return false;
+      });
+
+      // Prune Condition A: 0-port session without WG entity whose BIRD protocol is already claimed by a real WG session
+      // (The exact transient ghost duplicate created by timing races, e.g. potat0_las)
+      const isDuplicateGhost = (!hasWgEntity && claimedByRealWg);
+
+      // Prune Condition B: Discovered session has neither WG entity nor BIRD protocol on the server
+      // (The admin manually tore down the peer on the server via wg-quick down and deleted bird config)
+      const isServerDeleted = (!hasWgEntity && !bgpEntityExists && (!s.peering?.publicKey || s.peering.publicKey === ''));
+
+      if (isDuplicateGhost || isServerDeleted) {
+        const canonicalId = s.id;
+        sessions.splice(i, 1);
+        updated = true;
+
+        // If this ghost had displaced a real WireGuard session to a _1, _2 suffix,
+        // promote the real session back to its rightful canonical ID!
+        if (isDuplicateGhost) {
+          const displacedSession = sessions.find(r =>
+            r.nodeId === nodeId &&
+            r.id.startsWith(canonicalId + '_') &&
+            r.peering?.publicKey &&
+            (
+              (r.peering?.interface && sIface && (
+                r.peering.interface.toLowerCase() === sIface ||
+                r.peering.interface.toLowerCase() === `dn42_${sIface}` ||
+                sIface === `dn42_${r.peering.interface.toLowerCase()}`
+              )) ||
+              extractCleanPeerName(r.peering?.interface || r.id) === sCleanName
+            )
+          );
+
+          if (displacedSession && !sessions.some(other => other.id === canonicalId)) {
+            displacedSession.id = canonicalId;
+          }
+        }
       }
     }
 

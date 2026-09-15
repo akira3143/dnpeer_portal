@@ -514,6 +514,201 @@ test_peer  BGP      ---        up     12:00:00  Established
     assert.equal(hexp.id, 'peer_hexp_jp7', 'Must generate concise peer_hexp_jp7, avoiding duplicate _jp_jp_7');
     assert.equal(hexp.peering.interface, 'dn42_hexp_jp');
   });
+
+  await t.test('13. Ground-Truth State Reconciliation auto-heals duplicate ghosts and cleans up server-deleted peers', async () => {
+    fs.writeFileSync(sessionsFile, JSON.stringify([]), 'utf8');
+
+    // Step A: BGP report arrives before WireGuard handshake (pure-BGP placeholder created)
+    await SessionService.updateRuntimePeers(testNodeId, {
+      peers: [],
+      bgpSessions: [{
+        name: 'potat0_las',
+        neighborAddress: 'fe80::1816%potat0_las',
+        asn: 4242421816,
+        cleanAsn: 4242421816,
+        bgpState: 'Established'
+      }]
+    });
+
+    let sessions = await SessionService.getSessions();
+    assert.equal(sessions.length, 1);
+    const nodeTag = testNodeId.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const canonicalId = `peer_potat0_las_${nodeTag}`;
+    assert.equal(sessions[0].id, canonicalId);
+    assert.equal(sessions[0].assigned.hostPort, 0);
+    assert.equal(sessions[0].peering.publicKey, '');
+
+    // Step B: WireGuard interface appears with real public key and port (upgrade in place)
+    await SessionService.updateRuntimePeers(testNodeId, {
+      ports: [{ name: 'potat0_las', port: 21816 }],
+      peers: [{
+        interface: 'potat0_las',
+        publicKey: 'Potat0KeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+        endpoint: 'peer.potat0.dn42:23143',
+        allowedIps: '172.16.0.0/12, 10.0.0.0/8, fd00::/8, fe80::/10',
+        listenPort: 21816
+      }],
+      bgpSessions: [{
+        name: 'potat0_las',
+        neighborAddress: 'fe80::1816%potat0_las',
+        asn: 4242421816,
+        cleanAsn: 4242421816,
+        bgpState: 'Established'
+      }]
+    });
+
+    sessions = await SessionService.getSessions();
+    assert.equal(sessions.length, 1, 'Must NOT create duplicate _1 session; must upgrade in place');
+    assert.equal(sessions[0].id, canonicalId, 'Canonical ID must be preserved');
+    assert.equal(sessions[0].peering.publicKey, 'Potat0KeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=');
+    assert.equal(sessions[0].assigned.hostPort, 21816);
+    assert.equal(sessions[0].peering.listenPort, 21816);
+
+    // Step C: Auto-healing of pre-existing ghost duplicates (exact user scenario)
+    // Forcefully inject duplicate pair: ghost (port 0) and suffixed (real port 21816)
+    fs.writeFileSync(sessionsFile, JSON.stringify([
+      {
+        id: canonicalId,
+        nodeId: testNodeId,
+        source: 'discovered',
+        asn: 4242421816,
+        peering: { publicKey: '', interface: 'potat0_las', listenPort: 0 },
+        assigned: { hostPort: 0, interface: 'potat0_las' }
+      },
+      {
+        id: `${canonicalId}_1`,
+        nodeId: testNodeId,
+        source: 'discovered',
+        asn: 4242421816,
+        peering: { publicKey: 'Potat0KeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=', interface: 'potat0_las', listenPort: 21816 },
+        assigned: { hostPort: 21816, interface: 'potat0_las' }
+      }
+    ]), 'utf8');
+
+    await SessionService.updateRuntimePeers(testNodeId, {
+      ports: [{ name: 'potat0_las', port: 21816 }],
+      peers: [{
+        interface: 'potat0_las',
+        publicKey: 'Potat0KeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+        listenPort: 21816
+      }],
+      bgpSessions: [{
+        name: 'potat0_las',
+        neighborAddress: 'fe80::1816%potat0_las',
+        asn: 4242421816,
+        bgpState: 'Established'
+      }]
+    });
+
+    sessions = await SessionService.getSessions();
+    assert.equal(sessions.length, 1, 'Ground-Truth Reconciler must prune ghost 0-port session');
+    assert.equal(sessions[0].id, canonicalId, 'Real session must be promoted back to canonical ID without _1 suffix');
+    assert.equal(sessions[0].assigned.hostPort, 21816);
+
+    // Step D: Abandoned pure-BGP placeholder is pruned when BIRD protocol is deleted
+    fs.writeFileSync(sessionsFile, JSON.stringify([
+      {
+        id: 'peer_tempbgp_test',
+        nodeId: testNodeId,
+        source: 'discovered',
+        asn: 4242429999,
+        peering: { publicKey: '', interface: 'tempbgp', listenPort: 0 },
+        assigned: { hostPort: 0, interface: 'tempbgp' },
+        runtime: { bgpProtocolName: 'tempbgp' }
+      }
+    ]), 'utf8');
+
+    await SessionService.updateRuntimePeers(testNodeId, {
+      ports: [],
+      peers: [],
+      bgpSessions: [] // tempbgp removed from BIRD
+    });
+
+    sessions = await SessionService.getSessions();
+    assert.equal(sessions.length, 0, 'Abandoned 0-port pure-BGP session must be pruned when BIRD protocol is removed');
+  });
+
+  await t.test('14. Dual-stack / pure-BGP iBGP sessions sharing internal ASN are immune from misidentification or pruning', async () => {
+    fs.writeFileSync(sessionsFile, JSON.stringify([]), 'utf8');
+
+    // Simulate node HK-1 with both ibgp_jp7 (WireGuard tunnel) and ibgp_jp7_v6 (pure-BGP v6 neighbor)
+    const hkNodeId = 'HK-1';
+    await SessionService.updateRuntimePeers(hkNodeId, {
+      ports: [{ name: 'ibgp_jp7', port: 50007 }],
+      peers: [{
+        interface: 'ibgp_jp7',
+        publicKey: 'Jp7WgKeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+        endpoint: 'jp7.akilab.meme:50003',
+        listenPort: 50007,
+        allowedIps: '172.20.188.7/32, fe80::3143/64'
+      }],
+      bgpSessions: [
+        {
+          name: 'ibgp_jp7',
+          neighborAddress: 'fe80::3143%ibgp_jp7',
+          asn: 4242423143,
+          cleanAsn: 4242423143,
+          bgpState: 'Established'
+        },
+        {
+          name: 'ibgp_jp7_v6',
+          neighborAddress: 'fe80::3143%ibgp_jp7_v6',
+          asn: 4242423143,
+          cleanAsn: 4242423143,
+          bgpState: 'Established'
+        }
+      ]
+    });
+
+    const sessions = await SessionService.getSessions();
+    // Both sessions MUST coexist!
+    assert.equal(sessions.length, 2, 'Both ibgp_jp7 and ibgp_jp7_v6 must coexist despite sharing ASN 4242423143');
+
+    const jp7Wg = sessions.find(s => s.id === 'peer_jp7_hk1');
+    assert.ok(jp7Wg, 'peer_jp7_hk1 must exist');
+    assert.equal(jp7Wg.peering.interface, 'ibgp_jp7');
+    assert.equal(jp7Wg.assigned.hostPort, 50007);
+    assert.equal(jp7Wg.runtime.stageText, 'BGP Established');
+    assert.equal(jp7Wg.runtime.bgpProtocolName, 'ibgp_jp7');
+
+    const jp7V6 = sessions.find(s => s.id === 'peer_jp7_v6_hk1');
+    assert.ok(jp7V6, 'peer_jp7_v6_hk1 must exist and NOT be pruned');
+    assert.equal(jp7V6.peering.interface, 'ibgp_jp7_v6');
+    assert.equal(jp7V6.assigned.hostPort, 0);
+    assert.equal(jp7V6.runtime.stageText, 'BGP Established');
+    assert.equal(jp7V6.runtime.bgpProtocolName, 'ibgp_jp7_v6');
+
+    // Run updateRuntimePeers again to verify that subsequent reconciler passes NEVER touch peer_jp7_v6_hk1
+    await SessionService.updateRuntimePeers(hkNodeId, {
+      ports: [{ name: 'ibgp_jp7', port: 50007 }],
+      peers: [{
+        interface: 'ibgp_jp7',
+        publicKey: 'Jp7WgKeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+        endpoint: 'jp7.akilab.meme:50003',
+        listenPort: 50007,
+        allowedIps: '172.20.188.7/32, fe80::3143/64'
+      }],
+      bgpSessions: [
+        {
+          name: 'ibgp_jp7',
+          neighborAddress: 'fe80::3143%ibgp_jp7',
+          asn: 4242423143,
+          cleanAsn: 4242423143,
+          bgpState: 'Established'
+        },
+        {
+          name: 'ibgp_jp7_v6',
+          neighborAddress: 'fe80::3143%ibgp_jp7_v6',
+          asn: 4242423143,
+          cleanAsn: 4242423143,
+          bgpState: 'Established'
+        }
+      ]
+    });
+
+    const sessionsAfter = await SessionService.getSessions();
+    assert.equal(sessionsAfter.length, 2, 'Subsequent reconciliation scan must NOT prune peer_jp7_v6_hk1');
+  });
 });
 
 
