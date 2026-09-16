@@ -76,6 +76,19 @@ if [ "$cmd" = "bgp" ] || [ "$cmd" = "protocols" ]; then
   fi
 fi
 
+if [ "$cmd" = "route" ]; then
+  if [ -n "$target" ] && [ -z "$node" ] && [ "$target" != "all" ]; then
+    if is_known_node "$target"; then
+      node="$target"
+      target=""
+    fi
+  fi
+fi
+
+if [ "$cmd" = "ping" ]; then
+  cmd="ping"
+fi
+
 if [ "$cmd" = "trace" ] || [ "$cmd" = "traceroute" ]; then
   cmd="traceroute"
 fi

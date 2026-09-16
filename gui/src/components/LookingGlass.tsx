@@ -188,7 +188,13 @@ export const LookingGlass: React.FC<LookingGlassProps> = ({ nodes, networkMeta: 
                 value={targetInput}
                 disabled={qtype === 'bgp'}
                 onChange={(e) => setTargetInput(e.target.value)}
-                placeholder={qtype === 'bgp' ? 'All BGP protocols' : 'e.g. 172.20.150.1'}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleRunQuery();
+                  }
+                }}
+                placeholder={qtype === 'bgp' ? 'All BGP protocols' : 'e.g. 172.20.0.53 or AS4242421816'}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-white/10 text-white text-xs font-mono focus:border-cyan-400 focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>

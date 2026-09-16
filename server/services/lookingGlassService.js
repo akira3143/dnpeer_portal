@@ -1,6 +1,47 @@
 import { getActiveConfig } from '../storage/configLoader.js';
 import { StatusTracker } from './statusTracker.js';
 
+/**
+ * Normalizes user route target into valid BIRD 2.x query syntax.
+ * - Bare IP/CIDR (e.g. 172.20.0.53, 172.20.0.0/16, fd5c::1) -> "show route for <target>"
+ * - ASN (e.g. 4242421816, AS4242421816) -> "show route where bgp_path ~ [= * <asn> * =]"
+ * - BIRD keywords (for, where, filter, table, export, primary, all) -> "show route <target>"
+ * - Empty -> "show route"
+ */
+export function formatBirdRouteQuery(target) {
+  if (!target || !String(target).trim()) {
+    return 'show route';
+  }
+  let clean = String(target).trim();
+
+  // If user passed "for AS12345" or "for 4242421816", strip "for " so ASN handler catches it
+  if (/^for\s+(?:AS)?(\d{1,10})(\s+.*)?$/i.test(clean)) {
+    clean = clean.replace(/^for\s+/i, '');
+  }
+
+  // 1. If target is an ASN: e.g. "AS4242421816", "as4242421816", "4242421816", "AS20473"
+  const asnMatch = clean.match(/^(?:AS)?(\d{1,10})(?:\s+(all))?$/i);
+  if (asnMatch) {
+    const asn = asnMatch[1];
+    const modifier = asnMatch[2] ? ` ${asnMatch[2]}` : '';
+    return `show route where bgp_path ~ [= * ${asn} * =]${modifier}`;
+  }
+
+  // 2. If target already has BIRD keywords: for, where, filter, table, export, primary, all
+  if (/^(for|where|filter|table|export|primary|all)\b/i.test(clean)) {
+    return `show route ${clean}`;
+  }
+
+  // 3. IPv4 / IPv6 host or CIDR prefix, optionally followed by "all" or "primary":
+  // e.g. "172.20.0.53", "172.20.0.0/16", "fd5c::1", "fd5c::/48", "172.20.0.53 all"
+  if (/^[0-9a-fA-F.:/]+(?:\s+(all|primary))?$/i.test(clean)) {
+    return `show route for ${clean}`;
+  }
+
+  // 4. Fallback for any other custom syntax:
+  return `show route ${clean}`;
+}
+
 export class LookingGlassService {
   /**
    * Helper to retrieve cached BGP snapshot reported by probe agent
@@ -76,7 +117,7 @@ export class LookingGlassService {
       cleanCmd = cleanCmd.toLowerCase();
     }
 
-    if (cleanCmd === 'bgp') cleanCmd = 'protocols';
+    if (cleanCmd === 'bgp' || cleanCmd === 'summary') cleanCmd = 'protocols';
     if (cleanCmd === 'trace') cleanCmd = 'traceroute';
 
     if (process.env.MOCK_LG_OUTPUT) {
@@ -133,10 +174,17 @@ export class LookingGlassService {
       attemptedUrls.push(targetLgUrl);
       try {
         let lgPath = '/bird';
-        let qValue = `show ${cleanCmd}${cleanTarget ? ' ' + cleanTarget : ''}`;
-        if (cleanCmd === 'traceroute') {
+        let qValue = '';
+        if (cleanCmd === 'ping') {
+          lgPath = '/ping';
+          qValue = cleanTarget || '';
+        } else if (cleanCmd === 'traceroute') {
           lgPath = '/traceroute';
           qValue = cleanTarget || '';
+        } else if (cleanCmd === 'route') {
+          qValue = formatBirdRouteQuery(cleanTarget);
+        } else {
+          qValue = `show ${cleanCmd}${cleanTarget ? ' ' + cleanTarget : ''}`;
         }
         const url = new URL(lgPath, targetLgUrl);
         url.searchParams.set('q', qValue);
