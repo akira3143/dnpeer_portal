@@ -47,8 +47,12 @@ export class ConfigEngine {
     const node = config.nodes.find(n => n.id === nodeId) || config.nodes[0] || {};
     const cleanAsn = parseInt(String(asn).replace(/^AS/i, ''), 10);
 
-    // 1. Client WireGuard Address Lines: LLA /64, ULA /128, IPv4 /32
+    // 1. Client WireGuard Address Lines: LLA /64 prioritized first, then IPv4 /32, ULA /128
     const clientAddresses = [];
+    if (clientLinkLocal) {
+      const cleanLla = clientLinkLocal.replace(/\/.*$/, '');
+      if (cleanLla) clientAddresses.push(`${cleanLla}/64`);
+    }
     if (clientIpv4) {
       const cleanV4 = clientIpv4.replace(/\/.*$/, '');
       if (cleanV4) clientAddresses.push(`${cleanV4}/32`);
@@ -56,10 +60,6 @@ export class ConfigEngine {
     if (clientIpv6Ula) {
       const cleanUla = clientIpv6Ula.replace(/\/.*$/, '');
       if (cleanUla) clientAddresses.push(`${cleanUla}/128`);
-    }
-    if (clientLinkLocal) {
-      const cleanLla = clientLinkLocal.replace(/\/.*$/, '');
-      if (cleanLla) clientAddresses.push(`${cleanLla}/64`);
     }
     const clientAddressLine = clientAddresses.join(', ') || 'fe80::.../64';
 
@@ -93,19 +93,21 @@ export class ConfigEngine {
 
     // 4. Server WG AllowedIPs for Client WireGuard
     const serverAllowedIps = [
-      '172.16.0.0/12',
+      '172.20.0.0/14',
+      '172.31.0.0/16',
       '10.0.0.0/8',
       'fd00::/8',
-      'fe80::/10'
+      'fe80::/64'
     ];
 
     const serverEndpointFormatted = formatWireguardEndpoint(node.endpointDomain || 'jp1.akilab.dn42', hostPort);
 
     // 5. Client WireGuard Configuration (no '#' comments inside body)
     const clientWireguard = `[Interface]
-PrivateKey = <YOUR_PRIVATE_KEY>
 Address = ${clientAddressLine}
-${postUpBlock}${clientListenPortLine}MTU = ${mtu}
+PrivateKey = <YOUR_PRIVATE_KEY>
+${clientListenPortLine}${postUpBlock}Table = off
+MTU = ${mtu}
 
 [Peer]
 PublicKey = ${node.wgPublicKey || '<SERVER_WG_PUBLIC_KEY>'}
@@ -135,10 +137,11 @@ PersistentKeepalive = 25
     const serverPostUpBlock = serverPostUpLines.length > 0 ? serverPostUpLines.join('\n') + '\n' : '';
 
     const serverAllowedIpsList = [
-      '172.16.0.0/12',
+      '172.20.0.0/14',
+      '172.31.0.0/16',
       '10.0.0.0/8',
       'fd00::/8',
-      'fe80::/10'
+      'fe80::/64'
     ];
 
     let serverEndpointLine = '';
@@ -148,16 +151,24 @@ PersistentKeepalive = 25
       serverEndpointLine = '# Endpoint: not provided by peer (roaming) - fill in when they expose one\n';
     }
 
+    // Prioritize LLA first. Only include IPv4/ULA if peer actually configured them
     const serverAddresses = [];
-    if (node.tunnelIpv4) serverAddresses.push(`${node.tunnelIpv4.replace(/\/.*$/, '')}/32`);
-    if (node.tunnelIpv6ULA) serverAddresses.push(`${node.tunnelIpv6ULA.replace(/\/.*$/, '')}/128`);
-    if (node.tunnelIpv6LLA) serverAddresses.push(`${node.tunnelIpv6LLA.replace(/\/.*$/, '')}/64`);
-    const serverAddressLine = serverAddresses.join(', ') || 'fe80::3143/64';
+    if (node.tunnelIpv6LLA) {
+      serverAddresses.push(`${node.tunnelIpv6LLA.replace(/\/.*$/, '')}/64`);
+    }
+    if (clientIpv4 && node.tunnelIpv4) {
+      serverAddresses.push(`${node.tunnelIpv4.replace(/\/.*$/, '')}/32`);
+    }
+    if (clientIpv6Ula && node.tunnelIpv6ULA) {
+      serverAddresses.push(`${node.tunnelIpv6ULA.replace(/\/.*$/, '')}/128`);
+    }
+    const serverAddressLine = serverAddresses.join(', ') || (node.tunnelIpv6LLA ? `${node.tunnelIpv6LLA.replace(/\/.*$/, '')}/64` : 'fe80::3143/64');
 
     const serverWireguardSnippet = `[Interface]
-PrivateKey = <SERVER_PRIVATE_KEY>
 Address = ${serverAddressLine}
-${serverPostUpBlock}ListenPort = ${hostPort}
+PrivateKey = <SERVER_PRIVATE_KEY>
+ListenPort = ${hostPort}
+${serverPostUpBlock}Table = off
 MTU = ${mtu}
 
 [Peer]

@@ -37,8 +37,9 @@ describe('ConfigEngine Unit Tests', () => {
 
     // Peer section
     assert.ok(config.clientWireguard.includes('[Peer]'));
-    assert.ok(config.clientWireguard.includes('AllowedIPs = 172.16.0.0/12, 10.0.0.0/8, fd00::/8, fe80::/10'));
+    assert.ok(config.clientWireguard.includes('AllowedIPs = 172.20.0.0/14, 172.31.0.0/16, 10.0.0.0/8, fd00::/8, fe80::/64'));
     assert.ok(config.clientWireguard.includes('PersistentKeepalive = 25'));
+    assert.ok(config.clientWireguard.includes('Table = off'), 'Client WG config must include Table = off');
 
     // No comments inside config body (U11)
     const lines = config.clientWireguard.split('\n');
@@ -51,7 +52,8 @@ describe('ConfigEngine Unit Tests', () => {
     // Server WG snippet (Item 2: includes clientPort when specified)
     assert.ok(config.serverWireguardSnippet.includes('PublicKey = yA+N64x7tN/4H1XqJd+7qf3K9z1V8uT5R7o+P2w8x1E='));
     assert.ok(config.serverWireguardSnippet.includes('Endpoint = peer.example.dn42:25000'));
-    assert.ok(config.serverWireguardSnippet.includes('AllowedIPs = 172.16.0.0/12, 10.0.0.0/8, fd00::/8, fe80::/10'));
+    assert.ok(config.serverWireguardSnippet.includes('AllowedIPs = 172.20.0.0/14, 172.31.0.0/16, 10.0.0.0/8, fd00::/8, fe80::/64'));
+    assert.ok(config.serverWireguardSnippet.includes('Table = off'), 'Server WG snippet must include Table = off');
     assert.ok(config.serverWireguardSnippet.includes(`PostUp = ip addr del dev %i ${node.tunnelIpv4}/32`));
     assert.ok(config.serverWireguardSnippet.includes(`PostUp = ip addr add dev %i ${node.tunnelIpv4}/32 peer 172.20.150.100/32`));
     assert.ok(config.serverWireguardSnippet.includes(`PostUp = ip addr del dev %i ${node.tunnelIpv6ULA}/128`));
@@ -71,11 +73,16 @@ describe('ConfigEngine Unit Tests', () => {
 
     assert.equal(config.clientPort, 23143);
     assert.ok(config.clientWireguard.includes('ListenPort = 23143'), 'Client WG config must contain concrete ListenPort 23143 when clientPort is auto');
+    assert.ok(config.clientWireguard.includes('Table = off'), 'Client WG config must contain Table = off');
     assert.ok(!config.clientWireguard.includes('PostUp'), 'Client WG config must NOT contain PostUp when no IPv4/ULA provided');
     assert.ok(config.clientWireguard.includes(`Endpoint = ${node.endpointDomain}:23143`));
     // Server snippet still maintains full standard DN42 AllowedIPs even with only LLA
-    assert.ok(config.serverWireguardSnippet.includes('AllowedIPs = 172.16.0.0/12, 10.0.0.0/8, fd00::/8, fe80::/10'));
+    assert.ok(config.serverWireguardSnippet.includes('AllowedIPs = 172.20.0.0/14, 172.31.0.0/16, 10.0.0.0/8, fd00::/8, fe80::/64'));
+    assert.ok(config.serverWireguardSnippet.includes('Table = off'), 'Server WG snippet must contain Table = off');
     assert.ok(!config.serverWireguardSnippet.includes('PostUp'), 'Server WG snippet must NOT contain PostUp when no IPv4/ULA provided');
+    // LLA-only peer must ONLY configure LLA on server interface
+    assert.ok(config.serverWireguardSnippet.includes(`Address = ${node.tunnelIpv6LLA || 'fe80::3143'}/64`), 'Server interface must prioritize and only use LLA when peer has no IPv4/ULA');
+    assert.ok(!config.serverWireguardSnippet.includes(`${node.tunnelIpv4}/32`), 'Server interface must NOT include IPv4 when peer has no IPv4');
   });
 
   test('formatWireguardEndpoint correctly handles IPv6 brackets, deduplicates ports and formats roaming', () => {

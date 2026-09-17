@@ -28,7 +28,7 @@ export function parseAllowedIps(allowedIpsStr = '') {
     const cleanIp = part.replace(/\/\d+$/, '').replace(/%[a-zA-Z0-9_-]+$/, '').trim();
 
     // Skip route summaries and non-host network prefixes
-    if (cleanIp === 'fe80::' || cleanIp.toLowerCase() === 'fd00::' || cleanIp === '172.16.0.0' || cleanIp === '10.0.0.0') {
+    if (cleanIp === 'fe80::' || cleanIp.toLowerCase() === 'fd00::' || cleanIp === '172.16.0.0' || cleanIp === '172.20.0.0' || cleanIp === '172.31.0.0' || cleanIp === '10.0.0.0') {
       continue;
     }
     if (prefixLen !== null && prefixLen < 28 && !cleanIp.includes(':')) {

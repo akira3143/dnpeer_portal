@@ -41,11 +41,18 @@ export class NotificationService {
         }
         const serverPostUpBlock = serverPostUpLines.length > 0 ? serverPostUpLines.join('\n') + '\n' : '';
 
+        // Prioritize LLA first. Only include IPv4/ULA if peer actually configured them
         const serverAddresses = [];
-        if (node.tunnelIpv4) serverAddresses.push(`${node.tunnelIpv4.replace(/\/.*$/, '')}/32`);
-        if (node.tunnelIpv6ULA) serverAddresses.push(`${node.tunnelIpv6ULA.replace(/\/.*$/, '')}/128`);
-        if (node.tunnelIpv6LLA) serverAddresses.push(`${node.tunnelIpv6LLA.replace(/\/.*$/, '')}/64`);
-        const serverAddressLine = serverAddresses.join(', ') || 'fe80::3143/64';
+        if (node.tunnelIpv6LLA) {
+          serverAddresses.push(`${node.tunnelIpv6LLA.replace(/\/.*$/, '')}/64`);
+        }
+        if (clientV4 && nodeV4) {
+          serverAddresses.push(`${node.tunnelIpv4.replace(/\/.*$/, '')}/32`);
+        }
+        if (clientUla && nodeUla) {
+          serverAddresses.push(`${node.tunnelIpv6ULA.replace(/\/.*$/, '')}/128`);
+        }
+        const serverAddressLine = serverAddresses.join(', ') || (node.tunnelIpv6LLA ? `${node.tunnelIpv6LLA.replace(/\/.*$/, '')}/64` : 'fe80::3143/64');
 
         let epLine = '';
         if (session.peering?.endpoint && typeof session.peering.endpoint === 'string' && session.peering.endpoint.trim()) {
@@ -53,14 +60,15 @@ export class NotificationService {
           epLine = `Endpoint = ${formatWireguardEndpoint(session.peering.endpoint, cp)}\n`;
         }
         snippet = `[Interface]
-PrivateKey = <SERVER_PRIVATE_KEY>
 Address = ${serverAddressLine}
-${serverPostUpBlock}ListenPort = ${hostPort}
+PrivateKey = <SERVER_PRIVATE_KEY>
+ListenPort = ${hostPort}
+${serverPostUpBlock}Table = off
 MTU = ${session.peering?.mtu || 1420}
 
 [Peer]
 PublicKey = ${pubKey}
-${epLine}AllowedIPs = 172.16.0.0/12, 10.0.0.0/8, fd00::/8, fe80::/10
+${epLine}AllowedIPs = 172.20.0.0/14, 172.31.0.0/16, 10.0.0.0/8, fd00::/8, fe80::/64
 PersistentKeepalive = 25
 `;
       }
