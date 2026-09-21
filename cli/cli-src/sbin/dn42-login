@@ -224,7 +224,7 @@ do_ssh_login() {
     printf "\033[33msignature\033[0m: "
     sig=""
     while true; do
-      if ! read -r -t 3 line; then
+      if ! read -r line; then
         if [ -n "$line" ]; then
           line=$(printf '%s' "$line" | tr -d '\r')
           if [ -z "$sig" ]; then
@@ -239,7 +239,7 @@ do_ssh_login() {
         if [ -n "$sig" ]; then break; fi
         continue
       fi
-      [ -z "$line" ] && continue
+      [ -z "$line" ] && { [ -n "$sig" ] && break || continue; }
       if [ -z "$sig" ] && { [ "$line" = "q" ] || [ "$line" = "quit" ] || [ "$line" = "abort" ]; }; then
         echo -e "\033[90mSigning cancelled.\033[0m"
         return 1

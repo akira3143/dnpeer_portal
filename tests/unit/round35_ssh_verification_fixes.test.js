@@ -11,7 +11,7 @@ const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '../..');
 
 test('Round 35: SSH Signature Verification Login & Terminal Paste Fixes', async (t) => {
-  await t.test('1. sanitizePasteText preserves terminating newline for SSH signature blocks', () => {
+  await t.test('1. sanitizePasteText strips terminating newline and trailing whitespace across all scenarios', () => {
     const indexPath = path.resolve(ROOT_DIR, 'cli/public/index.html');
     const indexContent = fs.readFileSync(indexPath, 'utf8');
 
@@ -28,18 +28,18 @@ test('Round 35: SSH Signature Verification Login & Terminal Paste Fixes', async 
     const multiCmd = 'ls -la\npwd\n';
     assert.equal(sanitizePasteText(multiCmd), 'ls -la\npwd');
 
-    // Test C: OpenSSH Armored Signature Block with trailing newline preserves trailing newline
-    const sigWithNewline = '-----BEGIN SSH SIGNATURE-----\nU1NIU0lHAAAA...\n-----END SSH SIGNATURE-----\n';
+    // Test C: OpenSSH Armored Signature Block with trailing newline strips trailing newline
+    const sigWithNewline = '-----BEGIN SSH SIGNATURE-----\nU1NIU01HAAAA...\n-----END SSH SIGNATURE-----\n';
     assert.equal(
       sanitizePasteText(sigWithNewline),
-      '-----BEGIN SSH SIGNATURE-----\nU1NIU0lHAAAA...\n-----END SSH SIGNATURE-----\n'
+      '-----BEGIN SSH SIGNATURE-----\nU1NIU01HAAAA...\n-----END SSH SIGNATURE-----'
     );
 
-    // Test D: OpenSSH Armored Signature Block WITHOUT trailing newline receives closing newline
-    const sigWithoutNewline = '-----BEGIN SSH SIGNATURE-----\nU1NIU0lHAAAA...\n-----END SSH SIGNATURE-----';
+    // Test D: OpenSSH Armored Signature Block with trailing CRLF and spaces strips trailing whitespace
+    const sigWithWhitespace = '-----BEGIN SSH SIGNATURE-----\nU1NIU01HAAAA...\n-----END SSH SIGNATURE-----\r\n   ';
     assert.equal(
-      sanitizePasteText(sigWithoutNewline),
-      '-----BEGIN SSH SIGNATURE-----\nU1NIU0lHAAAA...\n-----END SSH SIGNATURE-----\n'
+      sanitizePasteText(sigWithWhitespace),
+      '-----BEGIN SSH SIGNATURE-----\nU1NIU01HAAAA...\n-----END SSH SIGNATURE-----'
     );
 
     // Test E: index.html must not use navigator.clipboard.readText (avoids permission prompts and delayed second paste)

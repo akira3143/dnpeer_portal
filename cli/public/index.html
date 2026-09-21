@@ -115,12 +115,8 @@
 
     function sanitizePasteText(text) {
       if (!text || typeof text !== 'string') return '';
-      // SSH 签名块或块级凭据：必须保留尾部换行，确保 Linux TTY 规范行缓冲模式立即释放末行
-      if (text.includes('END SSH SIGNATURE') || text.includes('-----END ')) {
-        return text.replace(/[\r\n]+$/, '') + '\n';
-      }
-      // 普通单行或命令粘贴：剥离末尾换行防误触执行
-      return text.replace(/[\r\n]+$/, '');
+      // 剥离所有场景下粘贴内容最末尾的换行符与尾随空白，杜绝自动敲回车触发执行，必须由用户手动按 Enter 操作
+      return text.replace(/[\r\n]+[\s\r\n]*$/, '');
     }
 
     window.sendTerminalInput = (text) => {
