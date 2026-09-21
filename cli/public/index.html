@@ -163,21 +163,14 @@
         term.clearSelection();
       }
 
-      // (C) Ctrl+V / Ctrl+Shift+V / Shift+Insert / Cmd+V: 拦截按键本身，交由 paste 事件或剪贴板兜底处理
+      // (C) Ctrl+V / Ctrl+Shift+V / Shift+Insert / Cmd+V: 拦截按键本身，交由浏览器原生 paste 事件单路径处理
       if (
         (event.ctrlKey && (event.key === 'v' || event.key === 'V')) ||
         (event.ctrlKey && event.shiftKey && (event.key === 'v' || event.key === 'V')) ||
         (event.shiftKey && event.key === 'Insert') ||
         (event.metaKey && (event.key === 'v' || event.key === 'V'))
       ) {
-        // Firefox(Gecko) 在某些版本下若 keydown 返回 false 会直接取消 paste 事件
-        // 此处主动调用 navigator.clipboard.readText 作为跨端保底，结合 executePaste 防抖杜绝双重粘贴
-        if (event.type === 'keydown' && navigator.clipboard && navigator.clipboard.readText) {
-          navigator.clipboard.readText().then((text) => {
-            if (text) executePaste(text);
-          }).catch(() => {});
-        }
-        return false; // 彻底拦截按键事件，交由 paste 捕获监听器统一处理
+        return false; // 彻底拦截按键事件，交由 paste 捕获监听器统一处理（严禁调用异步 clipboard.readText 触发权限弹窗与二次延时粘贴）
       }
 
       // (D) 彻底放行 F 区功能键 (F1 ~ F12) 与浏览器原生快捷键 (F5/Ctrl+F5刷新、F12控制台、F11全屏、Ctrl+R等)

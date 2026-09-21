@@ -41,6 +41,13 @@ test('Round 35: SSH Signature Verification Login & Terminal Paste Fixes', async 
       sanitizePasteText(sigWithoutNewline),
       '-----BEGIN SSH SIGNATURE-----\nU1NIU0lHAAAA...\n-----END SSH SIGNATURE-----\n'
     );
+
+    // Test E: index.html must not use navigator.clipboard.readText (avoids permission prompts and delayed second paste)
+    assert.doesNotMatch(
+      indexContent,
+      /navigator\.clipboard\.readText/,
+      'index.html must not call navigator.clipboard.readText to avoid browser permission modals and duplicate pastes'
+    );
   });
 
   await t.test('2. readRequestBodyAsBytes extracts Uint8Array across ArrayBuffer, ReadableStream and wrappers', async () => {
