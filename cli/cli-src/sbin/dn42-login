@@ -225,6 +225,17 @@ do_ssh_login() {
     sig=""
     while true; do
       if ! read -r -t 3 line; then
+        if [ -n "$line" ]; then
+          line=$(printf '%s' "$line" | tr -d '\r')
+          if [ -z "$sig" ]; then
+            sig="$line"
+          else
+            sig="$sig\\n$line"
+          fi
+          if echo "$line" | grep -q -- "END SSH SIGNATURE"; then
+            break
+          fi
+        fi
         if [ -n "$sig" ]; then break; fi
         continue
       fi
@@ -243,6 +254,7 @@ do_ssh_login() {
         break
       fi
     done
+    flush_after_input
 
     if [ -z "$sig" ]; then
       echo -e "\033[31merror: Signature cannot be empty.\033[0m"

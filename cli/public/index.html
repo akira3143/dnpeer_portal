@@ -115,7 +115,11 @@
 
     function sanitizePasteText(text) {
       if (!text || typeof text !== 'string') return '';
-      // 剥离末尾换行，保留内部多行换行
+      // SSH 签名块或块级凭据：必须保留尾部换行，确保 Linux TTY 规范行缓冲模式立即释放末行
+      if (text.includes('END SSH SIGNATURE') || text.includes('-----END ')) {
+        return text.replace(/[\r\n]+$/, '') + '\n';
+      }
+      // 普通单行或命令粘贴：剥离末尾换行防误触执行
       return text.replace(/[\r\n]+$/, '');
     }
 
@@ -159,13 +163,20 @@
         term.clearSelection();
       }
 
-      // (C) Ctrl+V / Ctrl+Shift+V / Shift+Insert / Cmd+V: 拦截按键本身，交由 paste 事件单路径处理（防双份粘贴与未审阅回车）
+      // (C) Ctrl+V / Ctrl+Shift+V / Shift+Insert / Cmd+V: 拦截按键本身，交由 paste 事件或剪贴板兜底处理
       if (
         (event.ctrlKey && (event.key === 'v' || event.key === 'V')) ||
         (event.ctrlKey && event.shiftKey && (event.key === 'v' || event.key === 'V')) ||
         (event.shiftKey && event.key === 'Insert') ||
         (event.metaKey && (event.key === 'v' || event.key === 'V'))
       ) {
+        // Firefox(Gecko) 在某些版本下若 keydown 返回 false 会直接取消 paste 事件
+        // 此处主动调用 navigator.clipboard.readText 作为跨端保底，结合 executePaste 防抖杜绝双重粘贴
+        if (event.type === 'keydown' && navigator.clipboard && navigator.clipboard.readText) {
+          navigator.clipboard.readText().then((text) => {
+            if (text) executePaste(text);
+          }).catch(() => {});
+        }
         return false; // 彻底拦截按键事件，交由 paste 捕获监听器统一处理
       }
 
@@ -190,17 +201,31 @@
 
     const terminalElement = document.getElementById("terminal");
 
-    // 2. 浏览器原生 paste 事件捕获监听器（单一可信粘贴路径：捕获阶段抢先拦截，剥离尾部换行防误触执行）
+    // 2. 统一带防抖的执行粘贴函数（跨端兼顾 Chrome、Firefox、Safari、Edge）
+    let lastPasteTime = 0;
+    let lastPastedText = '';
+    const executePaste = (rawText) => {
+      if (!rawText || typeof rawText !== 'string') return;
+      const now = Date.now();
+      if (now - lastPasteTime < 150 && lastPastedText === rawText) {
+        return; // 防双重粘贴
+      }
+      lastPasteTime = now;
+      lastPastedText = rawText;
+      const sanitized = sanitizePasteText(rawText);
+      if (sanitized) {
+        term.paste(sanitized);
+      }
+    };
+
+    // 浏览器原生 paste 事件捕获监听器（单一可信粘贴路径：捕获阶段抢先拦截，剥离尾部换行防误触执行）
     const handlePaste = (e) => {
       e.preventDefault();
       e.stopImmediatePropagation();
       const clipboardData = e.clipboardData || window.clipboardData;
       const text = clipboardData ? clipboardData.getData('text') : '';
       if (text) {
-        const sanitized = sanitizePasteText(text);
-        if (sanitized) {
-          term.paste(sanitized);
-        }
+        executePaste(text);
       }
     };
 
@@ -218,10 +243,7 @@
       e.stopImmediatePropagation();
       const text = e.dataTransfer ? e.dataTransfer.getData('text') : '';
       if (text) {
-        const sanitized = sanitizePasteText(text);
-        if (sanitized) {
-          term.paste(sanitized);
-        }
+        executePaste(text);
       }
     }, true);
 
@@ -394,7 +416,13 @@
                   let remember = true;
                   if (args[1] && args[1].body) {
                     try {
-                      const reqPayload = typeof args[1].body === 'string' ? JSON.parse(args[1].body) : args[1].body;
+                      let bodyText = '';
+                      if (typeof args[1].body === 'string') {
+                        bodyText = args[1].body;
+                      } else if (args[1].body instanceof Uint8Array || args[1].body instanceof ArrayBuffer) {
+                        bodyText = new TextDecoder().decode(args[1].body);
+                      }
+                      const reqPayload = bodyText ? JSON.parse(bodyText) : null;
                       if (reqPayload && reqPayload.rememberMe === false) {
                         remember = false;
                       }

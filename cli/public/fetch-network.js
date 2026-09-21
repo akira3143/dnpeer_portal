@@ -122,6 +122,66 @@ function wrapBodyForAbort(body, ac) {
 // 连接断开即取消对应 fetch：ac.signal 传给 fetch，响应体被 @tcpip/http 取消时
 // 触发 abort（明文路径无独立外部 signal）。
 // ---------------------------------------------------------------------------
+// 跨浏览器健壮提取 Request Body 为 Uint8Array
+// Safari(WebKit) 与 Firefox(Gecko) 对包含 ReadableStream 的 Request 执行 request.arrayBuffer()
+// 可能抛错；Node 与 Chrome 则要求 duplex:"half"。此处提供 4 重回退兜底，
+// 彻底适配 Chromium、Firefox、Safari、Node.js 全浏览器环境，杜绝 POST 请求体丢失。
+export async function readRequestBodyAsBytes(request) {
+  if (!request || !request.body) return null;
+
+  if (request.body instanceof Uint8Array) return request.body;
+  if (request.body instanceof ArrayBuffer) return new Uint8Array(request.body);
+  if (typeof request.body === 'string') return new TextEncoder().encode(request.body);
+
+  // 1. 直接 request.arrayBuffer()
+  try {
+    const ab = await request.arrayBuffer();
+    if (ab) return new Uint8Array(ab);
+  } catch {
+    // 2. Response 包装器回退（解决 WebKit/Safari/Firefox 直接读取 Request 报错）
+    if (request.body) {
+      try {
+        const ab = await new Response(request.body).arrayBuffer();
+        if (ab) return new Uint8Array(ab);
+      } catch {}
+    }
+    // 3. request.text() 兜底
+    try {
+      const txt = await request.text();
+      if (typeof txt === 'string' && txt.length > 0) {
+        return new TextEncoder().encode(txt);
+      }
+    } catch {}
+    // 4. ReadableStream.getReader 原生流分块兜底
+    if (request.body && typeof request.body.getReader === 'function') {
+      try {
+        const reader = request.body.getReader();
+        const chunks = [];
+        let total = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value && value.byteLength > 0) {
+            chunks.push(value);
+            total += value.byteLength;
+          }
+        }
+        const out = new Uint8Array(total);
+        let offset = 0;
+        for (const chunk of chunks) {
+          out.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+        return out;
+      } catch (errStream) {
+        console.warn("[fetch-network] Failed to read request body stream:", errStream && errStream.message ? errStream.message : errStream);
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
 function makeProxyHandler(gw, scheme, port) {
   return async (request) => {
     const reqUrl = new URL(request.url); // @tcpip/http 已按 Host 头拼成 http://host/path
@@ -139,13 +199,11 @@ function makeProxyHandler(gw, scheme, port) {
       try { init.headers.set(k, v); } catch { }
     }
     if (["POST", "PUT", "PATCH"].includes(request.method) && request.body) {
-      // 先把请求体完整读出来再转发：浏览器/Node 对流请求体(body 为
-      // ReadableStream)的 fetch 支持不一致——Node(undici) 与 Chrome 都要求
-      // duplex:"half"，否则直接抛错落到 502。缓冲成字节可跨环境零歧义工作。
-      // （上传通常是表单/小数据，缓冲可接受；响应体仍保持流式。）
-      try {
-        init.body = new Uint8Array(await request.arrayBuffer());
-      } catch { /* 读不到请求体则不带 body */ }
+      // 先把请求体完整读出来再转发：缓冲成字节可跨环境零歧义工作。
+      const bodyBytes = await readRequestBodyAsBytes(request);
+      if (bodyBytes !== null && bodyBytes.length > 0) {
+        init.body = bodyBytes;
+      }
     }
 
     const fetched = await fetchWithFallback(gw, url, init);

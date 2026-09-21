@@ -49,7 +49,13 @@ function parseJsonBody(req, limitBytes = 1048576) {
       raw += chunk;
     });
     req.on('end', () => {
-      if (!raw.trim()) return resolve({});
+      if (!raw.trim()) {
+        const ct = req.headers['content-type'] || '';
+        if (ct.includes('application/json') && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
+          console.warn(`[parseJsonBody] Warning: empty payload received for ${req.method} ${req.url}`);
+        }
+        return resolve({});
+      }
       try {
         resolve(JSON.parse(raw));
       } catch (err) {

@@ -65,8 +65,12 @@ export class AuthController {
     const signature = body?.signature || body?.sshSignature || body?.sig;
 
     if (!asn || !challengeText || !signature) {
+      const missing = [];
+      if (!asn) missing.push('asn');
+      if (!challengeText) missing.push('challengeText');
+      if (!signature) missing.push('signature');
       return errorEnvelope(
-        'Missing required parameters: asn, challengeText, signature',
+        `Missing required parameter(s): ${missing.join(', ')}`,
         {
           asn: !asn ? 'ASN is required' : undefined,
           challengeText: !challengeText ? 'challengeText is required' : undefined,
