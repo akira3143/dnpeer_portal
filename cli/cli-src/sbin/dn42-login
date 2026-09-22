@@ -239,7 +239,7 @@ do_ssh_login() {
         if [ -n "$sig" ]; then break; fi
         continue
       fi
-      [ -z "$line" ] && { [ -n "$sig" ] && break || continue; }
+      [ -z "$line" ] && continue
       if [ -z "$sig" ] && { [ "$line" = "q" ] || [ "$line" = "quit" ] || [ "$line" = "abort" ]; }; then
         echo -e "\033[90mSigning cancelled.\033[0m"
         return 1

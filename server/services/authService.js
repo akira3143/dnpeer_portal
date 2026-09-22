@@ -172,7 +172,13 @@ export class AuthService {
       const allowedKeysFile = path.join(tempDir, 'allowed_signers');
 
       try {
-        fs.writeFileSync(sigFile, signatureArmored.trim(), 'utf8');
+        // Clean signature lines to prevent OpenSSH sshsig_dearmor failure due to trailing spaces or blank lines
+        const cleanedArmor = signatureArmored
+          .split(/\r?\n/)
+          .map(l => l.trim())
+          .filter(Boolean)
+          .join('\n') + '\n';
+        fs.writeFileSync(sigFile, cleanedArmor, 'utf8');
 
         const config = getActiveConfig();
         const namespace = config.network.shortName || 'akilab';

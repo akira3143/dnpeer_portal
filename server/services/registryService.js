@@ -117,7 +117,8 @@ export class RegistryService {
     const candidatePaths = [
       path.join(repoDir, 'data', 'auth', maintainerHandle),
       path.join(repoDir, 'data', 'mntner', maintainerHandle),
-      path.join(repoDir, 'data', 'person', maintainerHandle)
+      path.join(repoDir, 'data', 'person', maintainerHandle),
+      path.join(repoDir, 'data', 'role', maintainerHandle)
     ];
 
     const authKeys = [];
@@ -129,11 +130,12 @@ export class RegistryService {
           const records = parseRpslLines(content);
           for (const rec of records) {
             if (rec.key === 'auth') {
-              // Value might be "ssh-ed25519 AAA..." or multi-line
-              const parts = rec.value.split(/\r?\n/);
-              for (const part of parts) {
+              // Value might be "ssh-ed25519 AAA..." or multi-line / folded continuation
+              const fullClean = rec.value.replace(/\r?\n\s*/g, ' ').trim();
+              const candidateLines = [fullClean, ...rec.value.split(/\r?\n/)];
+              for (const part of candidateLines) {
                 const trimmed = part.trim().replace(/^auth:\s*/i, '');
-                if (/^(ssh-[a-z0-9-]+|ecdsa-[a-z0-9-]+|sk-ssh-[a-z0-9-]+|sk-ecdsa-[a-z0-9-]+)\s+[A-Za-z0-9+/=]+/i.test(trimmed)) {
+                if (/^(ssh-[a-z0-9-]+|ecdsa-[a-z0-9-]+|sk-ssh-[a-z0-9-]+(?:@openssh\.com)?|sk-ecdsa-[a-z0-9-]+(?:@openssh\.com)?)\s+[A-Za-z0-9+/=]+/i.test(trimmed)) {
                   if (!authKeys.includes(trimmed)) {
                     authKeys.push(trimmed);
                   }
