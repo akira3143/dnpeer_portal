@@ -7,7 +7,7 @@
 
 import { createStack } from "./vendor/tcpip/dist/index.js";
 import { forge } from "./vendor/forge/forge.js";
-import { createHttp } from "./vendor/tcpip-http/dist/index.js";
+import { createHttp } from "./vendor/tcpip-http/dist/index.js?v=2";
 
 function macToString(mac) {
   if (typeof mac === "string") return mac;
@@ -124,7 +124,8 @@ function wrapBodyForAbort(body, ac) {
 // ---------------------------------------------------------------------------
 // 跨浏览器健壮提取 Request Body 为 Uint8Array
 // Safari(WebKit) 与 Firefox(Gecko) 对包含 ReadableStream 的 Request 执行 request.arrayBuffer()
-// 可能抛错；Node 与 Chrome 则要求 duplex:"half"。此处提供 4 重回退兜底，
+// 可能抛错或由于 duplex:"half" 锁死流；Node 与 Chrome 则要求 duplex:"half"。
+// 此处提供 5 重回退兜底，且对每个 ArrayBuffer 进行 byteLength > 0 校验，
 // 彻底适配 Chromium、Firefox、Safari、Node.js 全浏览器环境，杜绝 POST 请求体丢失。
 export async function readRequestBodyAsBytes(request) {
   if (!request || !request.body) return null;
@@ -133,39 +134,21 @@ export async function readRequestBodyAsBytes(request) {
   if (request.body instanceof ArrayBuffer) return new Uint8Array(request.body);
   if (typeof request.body === 'string') return new TextEncoder().encode(request.body);
 
-  // 1. 直接 request.arrayBuffer()
-  try {
-    const ab = await request.arrayBuffer();
-    if (ab) return new Uint8Array(ab);
-  } catch {
-    // 2. Response 包装器回退（解决 WebKit/Safari/Firefox 直接读取 Request 报错）
-    if (request.body) {
-      try {
-        const ab = await new Response(request.body).arrayBuffer();
-        if (ab) return new Uint8Array(ab);
-      } catch {}
-    }
-    // 3. request.text() 兜底
+  // 1. 如果包含 ReadableStream.getReader，优先使用原生分块流读取（最安全，直接读取 TCP 管道字节，不触发 Request 内部锁/disturbed）
+  if (typeof request.body.getReader === 'function') {
     try {
-      const txt = await request.text();
-      if (typeof txt === 'string' && txt.length > 0) {
-        return new TextEncoder().encode(txt);
-      }
-    } catch {}
-    // 4. ReadableStream.getReader 原生流分块兜底
-    if (request.body && typeof request.body.getReader === 'function') {
-      try {
-        const reader = request.body.getReader();
-        const chunks = [];
-        let total = 0;
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (value && value.byteLength > 0) {
-            chunks.push(value);
-            total += value.byteLength;
-          }
+      const reader = request.body.getReader();
+      const chunks = [];
+      let total = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value && value.byteLength > 0) {
+          chunks.push(value);
+          total += value.byteLength;
         }
+      }
+      if (total > 0) {
         const out = new Uint8Array(total);
         let offset = 0;
         for (const chunk of chunks) {
@@ -173,12 +156,43 @@ export async function readRequestBodyAsBytes(request) {
           offset += chunk.byteLength;
         }
         return out;
-      } catch (errStream) {
-        console.warn("[fetch-network] Failed to read request body stream:", errStream && errStream.message ? errStream.message : errStream);
-        return null;
       }
+    } catch (errStream) {
+      console.warn("[fetch-network] Direct stream reader failed, falling back:", errStream && errStream.message ? errStream.message : errStream);
     }
   }
+
+  // 2. clone 后调用 arrayBuffer() 避免锁死原请求
+  try {
+    if (typeof request.clone === 'function') {
+      const cloned = request.clone();
+      const ab = await cloned.arrayBuffer();
+      if (ab && ab.byteLength > 0) return new Uint8Array(ab);
+    }
+  } catch {}
+
+  // 3. 直接 request.arrayBuffer()
+  try {
+    const ab = await request.arrayBuffer();
+    if (ab && ab.byteLength > 0) return new Uint8Array(ab);
+  } catch {}
+
+  // 4. Response 包装器回退（解决 WebKit/Safari/Firefox 直接读取 Request 报错）
+  if (request.body) {
+    try {
+      const ab = await new Response(request.body).arrayBuffer();
+      if (ab && ab.byteLength > 0) return new Uint8Array(ab);
+    } catch {}
+  }
+
+  // 5. request.text() 兜底
+  try {
+    const txt = await request.text();
+    if (typeof txt === 'string' && txt.length > 0) {
+      return new TextEncoder().encode(txt);
+    }
+  } catch {}
+
   return null;
 }
 
@@ -203,6 +217,8 @@ function makeProxyHandler(gw, scheme, port) {
       const bodyBytes = await readRequestBodyAsBytes(request);
       if (bodyBytes !== null && bodyBytes.length > 0) {
         init.body = bodyBytes;
+      } else {
+        console.error(`[fetch-network] CRITICAL: ${request.method} ${request.url} has body but readRequestBodyAsBytes returned empty/null!`);
       }
     }
 
