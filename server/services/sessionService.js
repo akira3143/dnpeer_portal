@@ -187,18 +187,61 @@ export class SessionService {
   }
 
   static async _commitSession({ norm, rawPayload, targetNode, config, registryInfo }) {
-    // 3. Check for existing session on the same node for this ASN or matching WireGuard pubkey
+    // 3. Check for existing session and validate WireGuard public key uniqueness on target node
     const sessions = await this.getSessions();
     let existingIndex = -1;
+
     if (rawPayload.id) {
+      // Explicit update mode: target session ID provided
       existingIndex = sessions.findIndex(s => s.id === rawPayload.id);
+      if (existingIndex === -1) {
+        return {
+          success: false,
+          message: `Session with ID '${rawPayload.id}' not found.`
+        };
+      }
+      // Check if updated public key conflicts with another session on the same node
+      if (norm.publicKey) {
+        const otherConflict = sessions.find(s =>
+          s.nodeId === norm.nodeId &&
+          s.id !== rawPayload.id &&
+          s.peering?.publicKey === norm.publicKey
+        );
+        if (otherConflict) {
+          return {
+            success: false,
+            fieldErrors: {
+              publicKey: `WireGuard public key is already in use by session ${otherConflict.id} on node ${norm.nodeId}.`
+            },
+            message: `WireGuard public key conflicts with existing session ${otherConflict.id} on node ${norm.nodeId}.`
+          };
+        }
+      }
+    } else {
+      // New peering mode (rawPayload.id is omitted):
+      // Strict collision check: public key must not exist on the target node
+      if (norm.publicKey) {
+        const conflict = sessions.find(s =>
+          s.nodeId === norm.nodeId &&
+          s.peering?.publicKey === norm.publicKey
+        );
+        if (conflict) {
+          // If this is an existing discovered session for the same ASN, upgrade it in-place
+          if (conflict.source === 'discovered' && conflict.asn === norm.asn) {
+            existingIndex = sessions.findIndex(s => s.id === conflict.id);
+          } else {
+            return {
+              success: false,
+              fieldErrors: {
+                publicKey: `WireGuard public key is already in use by session ${conflict.id} on node ${norm.nodeId}.`
+              },
+              message: `WireGuard public key conflicts with existing session (${conflict.id}) on node ${norm.nodeId}. To modify an existing peer, use 'peer edit'.`
+            };
+          }
+        }
+      }
     }
-    if (existingIndex === -1) {
-      existingIndex = sessions.findIndex(s => s.asn === norm.asn && s.nodeId === norm.nodeId);
-    }
-    if (existingIndex === -1 && norm.publicKey) {
-      existingIndex = sessions.findIndex(s => s.nodeId === norm.nodeId && s.peering?.publicKey === norm.publicKey);
-    }
+
     const isExisting = existingIndex !== -1;
     const isNew = !isExisting;
 
@@ -224,7 +267,14 @@ export class SessionService {
         mntTag = `as${norm.asn}`;
       }
       const nodeTag = norm.nodeId.toLowerCase().replace(/[^a-z0-9]/g, '');
-      sessionId = `peer_${mntTag}_${nodeTag}`;
+      const baseId = `peer_${mntTag}_${nodeTag}`;
+      let candidateId = baseId;
+      let suffix = 2;
+      while (sessions.some(s => s.id === candidateId)) {
+        candidateId = `${baseId}_${suffix}`;
+        suffix++;
+      }
+      sessionId = candidateId;
     } else {
       sessionId = sessions[existingIndex].id;
     }

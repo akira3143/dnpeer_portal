@@ -1,4 +1,4 @@
-﻿import { test, describe, after, beforeEach } from 'node:test';
+import { test, describe, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -106,6 +106,7 @@ describe('Round 18 Fixes & Enhancements Unit Tests', () => {
 
     // Re-submit with updated endpoint
     const sub2 = await SessionService.submitPeering({
+      id: sessionId,
       asn: 4242423143,
       nodeId: node1.id,
       publicKey: key,

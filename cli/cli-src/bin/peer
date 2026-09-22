@@ -114,23 +114,49 @@ do_new() {
     done
   fi
 
-  # Check if user already has an existing session on target node
+  # Check if user already has existing session(s) on target node
   sessions_resp=$(api_get "/api/sessions")
-  existing_sess=$(echo "$sessions_resp" | sed 's/},{/}\n{/g' | grep "\"nodeId\":\"$sel_nid\"")
-  if [ -n "$existing_sess" ]; then
-    ex_id=${existing_sess#*\"id\":\"}; ex_id=${ex_id%%\"*}
-    ex_port=${existing_sess#*\"hostPort\":}; ex_port=${ex_port%%,*}; ex_port=${ex_port%%\}*}
-    ex_status=${existing_sess#*\"status\":\"}; ex_status=${ex_status%%\"*}
+  rm -f /tmp/dn42_node_existing_sessions
+  if echo "$sessions_resp" | grep -q '"id"'; then
+    echo "$sessions_resp" | sed 's/},{/}\n{/g' | grep "\"nodeId\":\"$sel_nid\"" > /tmp/dn42_node_existing_sessions
+  fi
+
+  node_sess_count=0
+  if [ -s /tmp/dn42_node_existing_sessions ]; then
+    while IFS= read -r _; do node_sess_count=$((node_sess_count + 1)); done < /tmp/dn42_node_existing_sessions
+  fi
+
+  if [ "$node_sess_count" -gt 0 ]; then
     echo ""
-    echo -e "\033[33mNotice: An active session already exists on node $sel_nid (ID: $ex_id, Port: $ex_port, Status: $ex_status).\033[0m"
-    printf "Submitting again will overwrite existing configuration. Continue? \033[33m[y/N]\033[0m: "
+    echo -e "\033[33mNotice: You already have $node_sess_count existing peering session(s) on node $sel_nid:\033[0m"
+    echo ""
+    printf "  %-4s %-26s %-16s %-10s %s\n" "#" "SESSION ID" "INTERFACE" "PORT" "STATUS"
+    printf "  \033[90m%s\033[0m\n" "----------------------------------------------------------------------"
+    idx=0
+    while IFS= read -r line; do
+      idx=$((idx + 1))
+      _ex_id=${line#*\"id\":\"}; _ex_id=${_ex_id%%\"*}
+      _ex_status=${line#*\"status\":\"}; _ex_status=${_ex_status%%\"*}
+      _ex_port=${line#*\"hostPort\":}; _ex_port=${_ex_port%%,*}; _ex_port=${_ex_port%%\}*}
+      [ -z "$_ex_port" ] || [ "$_ex_port" = "$line" ] && _ex_port="-"
+      _ex_iface=${line#*\"interface\":\"}; _ex_iface=${_ex_iface%%\"*}
+      [ -z "$_ex_iface" ] || [ "$_ex_iface" = "$line" ] && _ex_iface="-"
+      printf "  \033[32m[%d]\033[0m %-26s %-16s %-10s %s\n" "$idx" "$_ex_id" "$_ex_iface" "$_ex_port" "$_ex_status"
+    done < /tmp/dn42_node_existing_sessions
+    echo ""
+    echo -e "\033[90mTip: To modify an existing session, exit and run 'peer edit'.\033[0m"
+    echo -e "\033[90mNote: To create an additional peer on $sel_nid, you must use a DIFFERENT WireGuard public key.\033[0m"
+    echo ""
+    printf "Create an additional new peer on node %s? \033[33m[y/N]\033[0m: " "$sel_nid"
     read -r ex_confirm
     ex_confirm=$(echo "$ex_confirm" | tr 'A-Z' 'a-z' | tr -d ' \t\r\n')
     if [ "$ex_confirm" != "y" ] && [ "$ex_confirm" != "yes" ]; then
       echo -e "\033[90mCancelled.\033[0m"
+      rm -f /tmp/dn42_node_existing_sessions
       return 0
     fi
   fi
+  rm -f /tmp/dn42_node_existing_sessions
 
   clean_asn=$(cat /tmp/dn42_asn 2>/dev/null)
   if [ -z "$clean_asn" ]; then
@@ -147,7 +173,7 @@ do_new() {
 
 # ---------- Shared editor flow (prefill via pfill_* globals) ----------
 run_edit_flow() {
-  sel_nid="$1"; sel_nname="$2"; action_mode="${3:-new}"
+  sel_nid="$1"; sel_nname="$2"; action_mode="${3:-new}"; edit_session_id="$4"
 
   draft_file="/tmp/peer_draft"
   template_file="/etc/peer_template"
@@ -320,6 +346,28 @@ run_edit_flow() {
     elif ! validate_pubkey "$parsed_pubkey"; then
       err_count=$((err_count + 1))
       err_msg_list="${err_msg_list}  • WireGuard Public Key: Must be 44-character Base64 ending with =.\n"
+    elif [ "$action_mode" = "new" ]; then
+      _existing_key_conflict=""
+      _sessions_chk=$(api_get "/api/sessions")
+      if echo "$_sessions_chk" | grep -q "\"nodeId\":\"$parsed_node\""; then
+        _existing_key_conflict=$(echo "$_sessions_chk" | sed 's/},{/}\n{/g' | grep "\"nodeId\":\"$parsed_node\"" | grep "\"publicKey\":\"$parsed_pubkey\"")
+      fi
+      if [ -n "$_existing_key_conflict" ]; then
+        _conflict_sid=${_existing_key_conflict#*\"id\":\"}; _conflict_sid=${_conflict_sid%%\"*}
+        err_count=$((err_count + 1))
+        err_msg_list="${err_msg_list}  • WireGuard Public Key: Key conflicts with existing session (${_conflict_sid}) on node ${parsed_node}. Use a different key or run 'peer edit'.\n"
+      fi
+    elif [ "$action_mode" = "update" ] && [ -n "$edit_session_id" ]; then
+      _existing_key_conflict=""
+      _sessions_chk=$(api_get "/api/sessions")
+      if echo "$_sessions_chk" | grep -q "\"nodeId\":\"$parsed_node\""; then
+        _existing_key_conflict=$(echo "$_sessions_chk" | sed 's/},{/}\n{/g' | grep "\"nodeId\":\"$parsed_node\"" | grep "\"publicKey\":\"$parsed_pubkey\"" | grep -v "\"id\":\"$edit_session_id\"")
+      fi
+      if [ -n "$_existing_key_conflict" ]; then
+        _conflict_sid=${_existing_key_conflict#*\"id\":\"}; _conflict_sid=${_conflict_sid%%\"*}
+        err_count=$((err_count + 1))
+        err_msg_list="${err_msg_list}  • WireGuard Public Key: Key conflicts with another session (${_conflict_sid}) on node ${parsed_node}.\n"
+      fi
     fi
 
     # Link-Local (required)
@@ -452,7 +500,11 @@ run_edit_flow() {
 
   # 7. Construct and Submit Payload
   # Mapping: PeerPort -> listenPort (hostPort), ListenPort -> clientPort
-  payload="{\"asn\":$clean_asn,\"nodeId\":\"$parsed_node\",\"publicKey\":\"$parsed_pubkey\",\"linkLocal\":\"$parsed_lla\",\"ipv4\":\"$parsed_ipv4\",\"ipv6Ula\":\"$parsed_ula\",\"endpoint\":\"$parsed_ep\",\"listenPort\":\"$parsed_peer_port\",\"clientPort\":\"$parsed_listen_port\",\"mtu\":$parsed_mtu,\"bgpMode\":\"mpbgp_enh\"}"
+  if [ "$action_mode" = "update" ] && [ -n "$edit_session_id" ]; then
+    payload="{\"id\":\"$edit_session_id\",\"asn\":$clean_asn,\"nodeId\":\"$parsed_node\",\"publicKey\":\"$parsed_pubkey\",\"linkLocal\":\"$parsed_lla\",\"ipv4\":\"$parsed_ipv4\",\"ipv6Ula\":\"$parsed_ula\",\"endpoint\":\"$parsed_ep\",\"listenPort\":\"$parsed_peer_port\",\"clientPort\":\"$parsed_listen_port\",\"mtu\":$parsed_mtu,\"bgpMode\":\"mpbgp_enh\"}"
+  else
+    payload="{\"asn\":$clean_asn,\"nodeId\":\"$parsed_node\",\"publicKey\":\"$parsed_pubkey\",\"linkLocal\":\"$parsed_lla\",\"ipv4\":\"$parsed_ipv4\",\"ipv6Ula\":\"$parsed_ula\",\"endpoint\":\"$parsed_ep\",\"listenPort\":\"$parsed_peer_port\",\"clientPort\":\"$parsed_listen_port\",\"mtu\":$parsed_mtu,\"bgpMode\":\"mpbgp_enh\"}"
+  fi
 
   echo ""
   echo -e "\033[90mSubmitting peering application to AkiLab Authority...\033[0m"
@@ -624,7 +676,7 @@ do_edit() {
   echo ""
   echo -e "\033[90mEditing session on $sel_nid - prefill loaded. Make your changes, then Ctrl+S save, Ctrl+X exit.\033[0m"
 
-  run_edit_flow "$sel_nid" "$sel_nname" "update"
+  run_edit_flow "$sel_nid" "$sel_nname" "update" "$sel_id"
 }
 
 # ---------- peer ls ----------
