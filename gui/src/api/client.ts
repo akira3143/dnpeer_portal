@@ -220,6 +220,24 @@ export class ApiClient {
     });
   }
 
+  public static async checkAuth(asn: string | number): Promise<ApiResponse<any>> {
+    return this.request(`/api/auth/check?asn=${asn}`);
+  }
+
+  public static async sendEmailOtp(asn: string | number): Promise<ApiResponse<any>> {
+    return this.request('/api/auth/email/send', {
+      method: 'POST',
+      body: JSON.stringify({ asn })
+    });
+  }
+
+  public static async verifyEmailOtp(asn: string | number, code: string, rememberMe: boolean = false): Promise<ApiResponse<any>> {
+    return this.request('/api/auth/email/verify', {
+      method: 'POST',
+      body: JSON.stringify({ asn, code, rememberMe })
+    });
+  }
+
   public static async loginPassword(asnOrUsername: string | number, password: string, rememberMe: boolean = false): Promise<ApiResponse<any>> {
     return this.request('/api/auth/login-password', {
       method: 'POST',

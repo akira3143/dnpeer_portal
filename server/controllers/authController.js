@@ -1,5 +1,6 @@
 import { AuthService } from '../services/authService.js';
 import { RegistryService } from '../services/registryService.js';
+import { EmailService } from '../services/emailService.js';
 import { validateAsn, normalizeAsn, isValidAsnFormat } from '../utils/validator.js';
 import { successEnvelope, errorEnvelope } from '../utils/envelope.js';
 
@@ -12,11 +13,12 @@ export class AuthController {
     }
 
     const cleanAsn = parseInt(normalizeAsn(asn), 10);
+    let regInfo = null;
 
     // Authoritative verification via DN42 Registry when repository is initialized
     if (RegistryService.isRepoInitialized()) {
       try {
-        const regInfo = await RegistryService.getAsnInfo(cleanAsn);
+        regInfo = await RegistryService.getAsnInfo(cleanAsn);
         if (!regInfo) {
           return errorEnvelope(`AS${cleanAsn} is not registered in the DN42 registry`, { asn: 'ASN not found in DN42 registry' }, 200);
         }
@@ -28,7 +30,13 @@ export class AuthController {
     const hasPassword = await AuthService.hasPassword(cleanAsn);
     return successEnvelope({
       asn: cleanAsn,
-      hasPassword
+      hasPassword,
+      asName: regInfo?.asName || `AS${cleanAsn}`,
+      personName: regInfo?.personName || regInfo?.adminContact || '',
+      primaryEmail: regInfo?.primaryEmail || '',
+      emailSource: regInfo?.emailSource || '',
+      primarySshKey: regInfo?.primarySshKey || '',
+      authKeys: regInfo?.authKeys || []
     }, 200);
   }
 
@@ -192,5 +200,76 @@ export class AuthController {
       role: user.role,
       isAdmin: user.role === 'admin'
     }, 200);
+  }
+
+  static async sendEmailOtp(body) {
+    const rawAsn = body?.asn || body?.asnNumber;
+    if (!isValidAsnFormat(rawAsn)) {
+      return errorEnvelope('Invalid ASN format. Please enter a valid ASN number (1-4294967295)', { asn: 'Invalid ASN format' }, 200);
+    }
+    const cleanAsn = parseInt(normalizeAsn(rawAsn), 10);
+
+    let regInfo = null;
+    if (RegistryService.isRepoInitialized()) {
+      try {
+        regInfo = await RegistryService.getAsnInfo(cleanAsn);
+        if (!regInfo) {
+          return errorEnvelope(`AS${cleanAsn} is not registered in the DN42 registry`, { asn: 'ASN not found in DN42 registry' }, 200);
+        }
+      } catch (err) {
+        return errorEnvelope(err.message || 'Registry sync failed, please retry later', null, 200);
+      }
+    }
+
+    const targetEmail = regInfo?.primaryEmail;
+    if (!targetEmail) {
+      return errorEnvelope(`No email registered in DN42 registry for AS${cleanAsn}`, { email: 'No email registered' }, 200);
+    }
+
+    try {
+      const code = EmailService.generateOtp(cleanAsn, targetEmail);
+      const displayName = regInfo?.personName || regInfo?.asName || `AS${cleanAsn}`;
+      await EmailService.sendVerificationEmail({
+        asn: cleanAsn,
+        displayName,
+        email: targetEmail,
+        code
+      });
+
+      return successEnvelope({
+        asn: cleanAsn,
+        email: targetEmail,
+        emailSource: regInfo?.emailSource || '',
+        cooldownSeconds: 30,
+        message: `Verification code sent to ${targetEmail}`
+      }, 200);
+    } catch (err) {
+      if (err.code === 429) {
+        return errorEnvelope(err.message, { remainingSeconds: err.remainingSeconds }, 200);
+      }
+      console.error(`[AuthController] Failed to send OTP to AS${cleanAsn}:`, err);
+      return errorEnvelope(err.message || 'Failed to send verification email', null, 200);
+    }
+  }
+
+  static async verifyEmailOtp(body) {
+    const rawAsn = body?.asn || body?.asnNumber;
+    const code = body?.code || body?.otp;
+    const rememberMe = !!body?.rememberMe;
+
+    if (!isValidAsnFormat(rawAsn)) {
+      return errorEnvelope('Invalid ASN format', { asn: 'Invalid ASN format' }, 200);
+    }
+    const cleanAsn = parseInt(normalizeAsn(rawAsn), 10);
+
+    if (!code) {
+      return errorEnvelope('Verification code is required', { code: 'Code is required' }, 200);
+    }
+
+    const res = await AuthService.verifyEmailOtp({ asn: cleanAsn, code, rememberMe });
+    if (!res.success) {
+      return errorEnvelope(res.error, null, 200);
+    }
+    return successEnvelope(res.data, 200);
   }
 }

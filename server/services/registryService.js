@@ -71,6 +71,7 @@ export class RegistryService {
       let asName = `AS${cleanAsn}`;
       let descr = '';
       let adminContact = '';
+      let techContact = '';
       const mntByList = [];
 
       for (const rec of records) {
@@ -83,6 +84,9 @@ export class RegistryService {
             break;
           case 'admin-c':
             adminContact = rec.value;
+            break;
+          case 'tech-c':
+            techContact = rec.value;
             break;
           case 'mnt-by':
             if (rec.value && !mntByList.includes(rec.value)) {
@@ -97,6 +101,7 @@ export class RegistryService {
         asName,
         descr: descr || 'DN42 Autonomous System',
         adminContact,
+        techContact,
         maintainer: mntByList[0] || '',
         maintainers: mntByList
       };
@@ -153,37 +158,133 @@ export class RegistryService {
   }
 
   /**
-   * Read complete ASN info and its SSH public keys from local files
+   * Parse contact text directly for email addresses and person name
+   */
+  static parseContactInfoFromText(content, handle = '') {
+    if (!content || typeof content !== 'string') return { emails: [], personName: '', primaryEmail: '', emailSource: handle };
+    const records = parseRpslLines(content);
+    const emails = [];
+    let personName = '';
+    for (const rec of records) {
+      if (!personName && (rec.key === 'person' || rec.key === 'role' || rec.key === 'descr')) {
+        personName = rec.value;
+      }
+      if (rec.key === 'e-mail' || rec.key === 'email' || rec.key === 'contact') {
+        const matches = rec.value.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
+        if (matches) {
+          for (const em of matches) {
+            const cleanEm = em.toLowerCase().trim();
+            if (!emails.includes(cleanEm)) {
+              emails.push(cleanEm);
+            }
+          }
+        }
+      }
+    }
+    return {
+      emails,
+      personName,
+      primaryEmail: emails[0] || '',
+      emailSource: handle
+    };
+  }
+
+  /**
+   * Extract email addresses and person name from data/person/<HANDLE>, data/role/<HANDLE>, data/mntner/<HANDLE>
+   */
+  static parseContactInfo(handle, repoDir = this.getRegistryDir()) {
+    if (!handle || typeof handle !== 'string') return { emails: [], personName: '', primaryEmail: '', emailSource: '' };
+
+    const candidatePaths = [
+      path.join(repoDir, 'data', 'person', handle),
+      path.join(repoDir, 'data', 'role', handle),
+      path.join(repoDir, 'data', 'mntner', handle)
+    ];
+
+    const emails = [];
+    let personName = '';
+
+    for (const filePath of candidatePaths) {
+      if (fs.existsSync(filePath)) {
+        try {
+          const content = fs.readFileSync(filePath, 'utf8');
+          const parsed = this.parseContactInfoFromText(content, handle);
+          if (!personName && parsed.personName) {
+            personName = parsed.personName;
+          }
+          for (const em of parsed.emails) {
+            if (!emails.includes(em)) {
+              emails.push(em);
+            }
+          }
+        } catch (err) {
+          console.error(`[RegistryService] Error reading contact file ${filePath}:`, err.message);
+        }
+      }
+    }
+    return { emails, personName, primaryEmail: emails[0] || '', emailSource: handle };
+  }
+
+  /**
+   * Read complete ASN info, emails, and SSH public keys from local files
    */
   static readLocalAsn(cleanAsn, repoDir = this.getRegistryDir()) {
     const asnObj = this.parseAsnObject(cleanAsn, repoDir);
     if (!asnObj) return null;
 
     const allKeys = [];
-    const candidateMnts = asnObj.maintainers && asnObj.maintainers.length > 0
-      ? asnObj.maintainers
+    const allEmails = [];
+    let discoveredPersonName = '';
+
+    const candidateHandles = asnObj.maintainers && asnObj.maintainers.length > 0
+      ? [...asnObj.maintainers]
       : (asnObj.maintainer ? [asnObj.maintainer] : []);
 
-    if (asnObj.adminContact && !candidateMnts.includes(asnObj.adminContact)) {
-      candidateMnts.push(asnObj.adminContact);
+    if (asnObj.adminContact && !candidateHandles.includes(asnObj.adminContact)) {
+      candidateHandles.push(asnObj.adminContact);
+    }
+    if (asnObj.techContact && !candidateHandles.includes(asnObj.techContact)) {
+      candidateHandles.push(asnObj.techContact);
     }
 
-    for (const mnt of candidateMnts) {
-      const keys = this.parseAuthKeys(mnt, repoDir);
+    for (const hdl of candidateHandles) {
+      const keys = this.parseAuthKeys(hdl, repoDir);
       for (const k of keys) {
         if (!allKeys.includes(k)) allKeys.push(k);
       }
+
+      const { emails, personName } = this.parseContactInfo(hdl, repoDir);
+      if (!discoveredPersonName && personName) {
+        discoveredPersonName = personName;
+      }
+      for (const em of emails) {
+        if (!allEmails.some(e => e.email === em)) {
+          allEmails.push({ email: em, source: hdl });
+        }
+      }
     }
+
+    // Prioritize first ssh-ed25519 key, then fallback to first of other types
+    const edKey = allKeys.find(k => k.startsWith('ssh-ed25519 '));
+    const primarySshKey = edKey || allKeys[0] || '';
+
+    const primaryEmail = allEmails[0]?.email || '';
+    const emailSource = allEmails[0]?.source || '';
 
     return {
       asn: cleanAsn,
       asName: asnObj.asName,
       descr: asnObj.descr,
       adminContact: asnObj.adminContact,
+      techContact: asnObj.techContact,
       maintainer: asnObj.maintainer,
       maintainers: asnObj.maintainers,
-      personName: asnObj.adminContact || '',
-      authKeys: allKeys
+      personName: discoveredPersonName || asnObj.adminContact || '',
+      authKeys: allKeys,
+      primarySshKey,
+      emails: allEmails,
+      primaryEmail,
+      emailSource
     };
   }
 

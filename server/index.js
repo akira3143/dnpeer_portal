@@ -158,6 +158,18 @@ export function createServer() {
           return sendJson(res, 200, resp);
         }
 
+        if (pathname === '/api/auth/email/send' && method === 'POST') {
+          const body = await parseJsonBody(req);
+          const resp = await AuthController.sendEmailOtp(body);
+          return sendJson(res, 200, resp);
+        }
+
+        if (pathname === '/api/auth/email/verify' && method === 'POST') {
+          const body = await parseJsonBody(req);
+          const resp = await AuthController.verifyEmailOtp(body);
+          return sendJson(res, 200, resp);
+        }
+
         if (pathname === '/api/auth/login-password' && method === 'POST') {
           const body = await parseJsonBody(req);
           const resp = await AuthController.loginPassword(body);

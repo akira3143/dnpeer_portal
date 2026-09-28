@@ -149,11 +149,15 @@ test('Auth Flow API Integration Tests', async (t) => {
     // 2. Must conditionally trigger password login only if has_pwd == true
     assert.ok(loginScript.includes('[ "$has_pwd" = "true" ]'), 'Must gate do_password_login on hasPassword == true');
 
-    // 3. Must default to SSH login when no password is set
-    assert.ok(loginScript.includes('No stored password for AS$clean. Defaulting to SSH signature verification'), 'Must announce defaulting to SSH');
+    // 3. Must prompt verification method options for first-time login (no password)
+    assert.ok(
+      loginScript.includes('First-time login detected') || loginScript.includes('Defaulting to SSH signature verification'),
+      'Must prompt verification options for first-time user'
+    );
 
-    // 4. do_password_login must allow typing ssh to switch
+    // 4. do_password_login must allow typing ssh or mail to switch
     assert.ok(loginScript.includes('[ "$pwd" = "ssh" ]'), 'Must allow typing ssh to switch to SSH verification');
+    assert.ok(loginScript.includes('[ "$pwd" = "mail" ]'), 'Must allow typing mail to switch to Email verification');
   });
 });
 

@@ -7,6 +7,7 @@ import { ENV, getDataDir } from '../config.js';
 import { getActiveConfig } from '../storage/configLoader.js';
 import { FileStore } from '../storage/fileStore.js';
 import { RegistryService } from './registryService.js';
+import { EmailService } from './emailService.js';
 
 // In-memory active challenges map: challengeText -> challengeData
 const activeChallenges = new Map();
@@ -405,5 +406,55 @@ export class AuthService {
     const cleanAsn = parseInt(String(asn).replace(/^AS/i, ''), 10);
     const authUsers = await this.getAuthUsers();
     return !!(authUsers[String(cleanAsn)] || authUsers[`AS${cleanAsn}`] || authUsers[String(asn)]);
+  }
+
+  /**
+   * Verify email OTP code and issue JWT token
+   */
+  static async verifyEmailOtp({ asn, code, rememberMe = false }) {
+    const cleanAsn = parseInt(String(asn).replace(/^AS/i, ''), 10);
+    if (!cleanAsn || isNaN(cleanAsn)) {
+      return { success: false, error: 'Valid ASN is required' };
+    }
+    if (!code || typeof code !== 'string') {
+      return { success: false, error: 'Verification code is required' };
+    }
+
+    const otpRes = EmailService.verifyOtp(cleanAsn, code);
+    if (!otpRes.valid) {
+      return { success: false, error: otpRes.error };
+    }
+
+    let registryInfo = null;
+    try {
+      registryInfo = await this.getAsnRegistryInfo(cleanAsn);
+    } catch {}
+
+    const config = getActiveConfig();
+    const isAdmin = Array.isArray(config.admins) && config.admins.includes(cleanAsn);
+    const maintainer = registryInfo?.maintainer || '';
+    const mnt = this.simplifyMnt(maintainer) || this.simplifyMnt(registryInfo?.asName) || `as${cleanAsn}`;
+
+    const tokenData = this.signJwt({
+      asn: cleanAsn,
+      asName: registryInfo?.asName || `AS${cleanAsn}`,
+      mnt,
+      role: isAdmin ? 'admin' : 'user'
+    }, rememberMe);
+
+    const hasPassword = await this.hasPassword(cleanAsn);
+
+    return {
+      success: true,
+      data: {
+        asn: cleanAsn,
+        asName: registryInfo?.asName || `AS${cleanAsn}`,
+        maintainer,
+        mnt,
+        role: isAdmin ? 'admin' : 'user',
+        hasPassword,
+        ...tokenData
+      }
+    };
   }
 }

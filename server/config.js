@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -15,6 +16,19 @@ export function getConfigYamlPath() {
   return process.env.PORTAL_CONFIG_PATH || path.join(ROOT_DIR, 'portal.config.yaml');
 }
 
+export function getResendApiKey() {
+  if (process.env.RESEND_API_KEY) {
+    return process.env.RESEND_API_KEY.trim();
+  }
+  const keyFile = path.join(getDataDir(), 'resend.key');
+  if (fs.existsSync(keyFile)) {
+    try {
+      return fs.readFileSync(keyFile, 'utf8').trim();
+    } catch {}
+  }
+  return '';
+}
+
 export const ENV = {
   NODE_ENV: process.env.NODE_ENV || 'development',
   PORT: parseInt(process.env.PORT || '4242', 10),
@@ -22,6 +36,10 @@ export const ENV = {
   AUTH_JWT_SECRET: process.env.AUTH_JWT_SECRET || 'dev-insecure-secret-placeholder-please-set-auth-jwt-secret',
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '',
   TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || '',
+  RESEND_FROM: process.env.RESEND_FROM || 'AkiLab Networks <akira@akilab.meme>',
+  get RESEND_API_KEY() {
+    return getResendApiKey();
+  },
   get DATA_DIR() {
     return getDataDir();
   },

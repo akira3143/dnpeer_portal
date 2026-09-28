@@ -121,7 +121,7 @@ save_token() {
 
 do_password_login() {
   local clean="$1" remember="$2" pwd resp token user_asn
-  echo -e "\033[90m(Enter password, type 'ssh' for SSH key sign-in, or 'q' to cancel)\033[0m"
+  echo -e "\033[90m(Enter password, type 'mail' for Email OTP, 'ssh' for SSH key, or 'q' to cancel)\033[0m"
   while true; do
     printf "\033[33mPassword for %s\033[0m: " "$clean"
     read_line_edit pwd -s
@@ -133,8 +133,11 @@ do_password_login() {
     if [ "$pwd" = "ssh" ] || [ "$pwd" = "SSH" ]; then
       return 2
     fi
+    if [ "$pwd" = "mail" ] || [ "$pwd" = "MAIL" ] || [ "$pwd" = "email" ] || [ "$pwd" = "EMAIL" ]; then
+      return 4
+    fi
     if [ -z "$pwd" ]; then
-      echo -e "\033[90m(Password cannot be empty. Type 'ssh' for SSH sign-in, or 'q' to cancel)\033[0m"
+      echo -e "\033[90m(Password cannot be empty. Type 'mail' or 'ssh' to verify, or 'q' to cancel)\033[0m"
       continue
     fi
 
@@ -150,7 +153,7 @@ do_password_login() {
     fi
 
     echo -e "\033[31merror: $(json_field "$resp" message)\033[0m"
-    echo -e "\033[90m(Type 'ssh' to switch to SSH cryptographic sign-in, or retry password)\033[0m"
+    echo -e "\033[90m(Type 'mail' for Email OTP, 'ssh' for SSH key, or retry password)\033[0m"
   done
 }
 
@@ -184,6 +187,73 @@ do_set_password() {
       echo -e "\033[31merror: $(json_field "$resp" message)\033[0m"
       return 1
     fi
+  done
+}
+
+do_email_login() {
+  local clean="$1" remember="$2" target_email="$3" email_src="$4"
+  local send_resp verify_resp code token user_asn err_msg
+
+  echo -e "\033[90mSending verification code to $target_email...\033[0m"
+  send_resp=$(api_post "/api/auth/email/send" "{\"asn\":\"$clean\"}")
+  if ! echo "$send_resp" | grep -q '"success":true'; then
+    err_msg=$(json_field "$send_resp" message)
+    [ -z "$err_msg" ] && err_msg="Failed to send verification code"
+    echo -e "\033[31merror: $err_msg\033[0m"
+    return 1
+  fi
+
+  echo ""
+  echo -e "\033[32mVerification code sent to \033[1m$target_email\033[0;32m.\033[0m"
+  echo -e "\033[93mNotice: 若未送达请检查您的垃圾邮件 (Spam / Junk)。\033[0m"
+  echo -e "\033[90m(The code is valid for 10 minutes. 30s cooldown before resending)\033[0m"
+  echo ""
+
+  while true; do
+    printf "\033[33mEnter 6-digit code (type 'r' to resend, 'q' to cancel)\033[0m: "
+    read_line_edit code
+    flush_after_input
+
+    if [ "$code" = "q" ] || [ "$code" = "quit" ]; then
+      echo -e "\033[90mCancelled.\033[0m"
+      return 1
+    fi
+
+    if [ "$code" = "r" ] || [ "$code" = "resend" ]; then
+      echo -e "\033[90mRequesting new verification code...\033[0m"
+      send_resp=$(api_post "/api/auth/email/send" "{\"asn\":\"$clean\"}")
+      if echo "$send_resp" | grep -q '"success":true'; then
+        echo -e "\033[32mA new verification code has been sent to $target_email.\033[0m"
+        echo -e "\033[93mNotice: 若未送达请检查您的垃圾邮件 (Spam / Junk)。\033[0m"
+      else
+        err_msg=$(json_field "$send_resp" message)
+        [ -z "$err_msg" ] && err_msg="Failed to resend code"
+        echo -e "\033[31merror: $err_msg\033[0m"
+      fi
+      continue
+    fi
+
+    # Clean non-digits
+    code=$(echo "$code" | tr -cd '0-9')
+    if [ "${#code}" -ne 6 ]; then
+      echo -e "\033[31merror: Please enter a 6-digit numeric code.\033[0m"
+      continue
+    fi
+
+    echo -e "\033[90mVerifying code with gateway...\033[0m"
+    verify_resp=$(api_post "/api/auth/email/verify" "{\"asn\":\"$clean\",\"code\":\"$code\",\"rememberMe\":$remember}")
+    if echo "$verify_resp" | grep -q '"success":true'; then
+      token=$(json_field "$verify_resp" token)
+      user_asn=$(json_field "$verify_resp" asn)
+      [ -z "$user_asn" ] && user_asn="$clean"
+      save_token "$token" "$user_asn" "$remember"
+      echo -e "\033[32mVerified via Email OTP. Welcome AS$user_asn.\033[0m"
+      return 0
+    fi
+
+    err_msg=$(json_field "$verify_resp" message)
+    [ -z "$err_msg" ] && err_msg="Verification code invalid or expired"
+    echo -e "\033[31merror: $err_msg\033[0m"
   done
 }
 
@@ -295,6 +365,7 @@ main() {
   echo -e "\033[90mCopy: Ctrl+C (select) · Paste: Ctrl+V · Interrupt: Ctrl+C (no select)\033[0m"
 
   local asn_in clean remember rem_in ret
+  local check_resp err_msg has_pwd as_name person_name primary_email email_source primary_ssh_key key_preview method_choice set_pwd_ans
   while true; do
     echo ""
     printf "\033[33mlogin (Your DN42 ASN)\033[0m: "
@@ -319,7 +390,7 @@ main() {
       remember="true"
     fi
 
-    # 4. Check auth methods and registration on gateway
+    # Authoritative check for registration, password status, and WHOIS credentials
     check_resp=$(api_get "/api/auth/check?asn=$clean")
     if ! echo "$check_resp" | grep -q '"success":true'; then
       err_msg=$(json_field "$check_resp" message)
@@ -329,6 +400,11 @@ main() {
     fi
 
     has_pwd=$(json_field "$check_resp" hasPassword)
+    as_name=$(json_field "$check_resp" asName)
+    person_name=$(json_field "$check_resp" personName)
+    primary_email=$(json_field "$check_resp" primaryEmail)
+    email_source=$(json_field "$check_resp" emailSource)
+    primary_ssh_key=$(json_field "$check_resp" primarySshKey)
 
     if [ "$has_pwd" = "true" ]; then
       do_password_login "$clean" "$remember"
@@ -339,25 +415,104 @@ main() {
       fi
       # ret 3 = cancelled (Ctrl+C / 'q' at password), back to login prompt
       [ $ret -eq 3 ] && continue
-      # ret 2 = user typed 'ssh', proceed to SSH login below
-    else
-      echo -e "\033[90mNo stored password for AS$clean. Defaulting to SSH signature verification...\033[0m"
-    fi
 
-    do_ssh_login "$clean" "$remember"
-    if [ $? -eq 0 ]; then
-      if [ "$has_pwd" != "true" ]; then
-        echo ""
-        printf "\033[33mSet a password for future fast logins? [y/N]\033[0m: "
-        set_pwd_ans=""
-        read_line_edit set_pwd_ans
-        flush_after_input
-        if [ "$set_pwd_ans" = "y" ] || [ "$set_pwd_ans" = "Y" ]; then
-          do_set_password "$clean"
+      if [ $ret -eq 4 ]; then
+        # user typed 'mail'
+        if [ -z "$primary_email" ]; then
+          echo -e "\033[31merror: No registered email address found in WHOIS for AS$clean.\033[0m"
+          continue
         fi
+        do_email_login "$clean" "$remember" "$primary_email" "$email_source"
+        if [ $? -eq 0 ]; then
+          enter_shell "$clean"
+          return 0
+        fi
+        continue
       fi
-      enter_shell "$clean"
-      return 0
+
+      if [ $ret -eq 2 ]; then
+        # user typed 'ssh'
+        do_ssh_login "$clean" "$remember"
+        if [ $? -eq 0 ]; then
+          enter_shell "$clean"
+          return 0
+        fi
+        continue
+      fi
+    else
+      # First time login (no password set) -> Show method options directly
+      echo ""
+      if [ -n "$person_name" ]; then
+        echo -e "\033[1;36mHello, $person_name (AS$clean)!\033[0m"
+      else
+        echo -e "\033[1;36mHello, AS$clean!\033[0m"
+      fi
+      echo -e "\033[90mFirst-time login detected. Please select an identity verification method:\033[0m"
+      echo ""
+      if [ -n "$primary_email" ]; then
+        echo -e "  \033[1;33m1)\033[0m Email OTP Verification   \033[90m-> $primary_email ($email_source)\033[0m"
+      else
+        echo -e "  \033[90m1) Email OTP Verification   -> (No email found in WHOIS)\033[0m"
+      fi
+      if [ -n "$primary_ssh_key" ]; then
+        key_preview="$primary_ssh_key"
+        if [ "${#key_preview}" -gt 45 ]; then
+          key_preview="$(printf '%s' "$key_preview" | cut -c 1-45)..."
+        fi
+        echo -e "  \033[1;33m2)\033[0m SSH Key Signature        \033[90m-> $key_preview\033[0m"
+      else
+        echo -e "  \033[90m2) SSH Key Signature        -> (No SSH key found in WHOIS)\033[0m"
+      fi
+      echo ""
+
+      while true; do
+        printf "\033[33mSelect verification method [1/2, or 'q' to cancel]\033[0m: "
+        read_line_edit method_choice
+        flush_after_input
+
+        if [ "$method_choice" = "q" ] || [ "$method_choice" = "quit" ]; then
+          echo -e "\033[90mCancelled.\033[0m"
+          break
+        fi
+
+        if [ "$method_choice" = "1" ] || [ "$method_choice" = "mail" ]; then
+          if [ -z "$primary_email" ]; then
+            echo -e "\033[31merror: No registered email address found in WHOIS for AS$clean.\033[0m"
+            continue
+          fi
+          do_email_login "$clean" "$remember" "$primary_email" "$email_source"
+          if [ $? -eq 0 ]; then
+            echo ""
+            printf "\033[33mSet a password for future fast logins? [y/N]\033[0m: "
+            set_pwd_ans=""
+            read_line_edit set_pwd_ans
+            flush_after_input
+            if [ "$set_pwd_ans" = "y" ] || [ "$set_pwd_ans" = "Y" ]; then
+              do_set_password "$clean"
+            fi
+            enter_shell "$clean"
+            return 0
+          fi
+          break
+        elif [ "$method_choice" = "2" ] || [ "$method_choice" = "ssh" ]; then
+          do_ssh_login "$clean" "$remember"
+          if [ $? -eq 0 ]; then
+            echo ""
+            printf "\033[33mSet a password for future fast logins? [y/N]\033[0m: "
+            set_pwd_ans=""
+            read_line_edit set_pwd_ans
+            flush_after_input
+            if [ "$set_pwd_ans" = "y" ] || [ "$set_pwd_ans" = "Y" ]; then
+              do_set_password "$clean"
+            fi
+            enter_shell "$clean"
+            return 0
+          fi
+          break
+        else
+          echo -e "\033[90m(Please type '1' for Email OTP, '2' for SSH, or 'q' to cancel)\033[0m"
+        fi
+      done
     fi
   done
 }
