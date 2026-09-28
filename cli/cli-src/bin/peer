@@ -682,15 +682,13 @@ do_edit() {
 # ---------- peer ls ----------
 do_ls() {
   require_login || return 1
-  local resp line id asn node status port stage disp_id disp_asn disp_port color node_name ep ep_port divider iface disp_iface
+  local resp line id asn node status port stage disp_id disp_asn disp_port color node_name ep ep_port divider iface disp_iface host_port listen_port client_port
   echo -e "\033[90mFetching peering sessions...\033[0m"
   resp=$(api_get "/api/sessions")
   if ! echo "$resp" | grep -q '"success":true'; then
     echo -e "\033[31merror: $(json_field "$resp" message)\033[0m"
     return 1
   fi
-
-  ensure_nodes || true
 
   divider="-----------------------------------------------------------------------------------------------------------------"
   echo ""
@@ -734,29 +732,36 @@ do_ls() {
 
     # 5. PEERPORT (user's peering partner / AkiLab node WireGuard listen port: assigned.hostPort or peering.listenPort)
     disp_pport=""
-    if [ -n "$host_port" ] && [ "$host_port" != "null" ] && [ "$host_port" != "$line" ] && echo "$host_port" | grep -q '^[0-9][0-9]*$' && [ "$host_port" -gt 0 ]; then
-      disp_pport="$host_port"
-    elif [ -n "$listen_port" ] && [ "$listen_port" != "null" ] && [ "$listen_port" != "$line" ] && echo "$listen_port" | grep -q '^[0-9][0-9]*$' && [ "$listen_port" -gt 0 ]; then
-      disp_pport="$listen_port"
-    else
-      disp_pport="0"
+    case "$host_port" in
+      ""|null|"$line"|*[!0-9]*) ;;
+      *) [ "$host_port" -gt 0 ] 2>/dev/null && disp_pport="$host_port" ;;
+    esac
+    if [ -z "$disp_pport" ]; then
+      case "$listen_port" in
+        ""|null|"$line"|*[!0-9]*) disp_pport="0" ;;
+        *) [ "$listen_port" -gt 0 ] 2>/dev/null && disp_pport="$listen_port" || disp_pport="0" ;;
+      esac
     fi
 
     # 6. LISTENPORT (user's local listen port: remote endpoint port or clientPort; roaming/missing is 0)
     ep=${line#*\"endpoint\":\"}; ep=${ep%%\"*}
     disp_lport=""
-    if [ -n "$ep" ] && [ "$ep" != "$line" ] && echo "$ep" | grep -q ':'; then
-      ep_port=${ep##*:}
-      if echo "$ep_port" | grep -q '^[0-9][0-9]*$' && [ "$ep_port" -gt 0 ]; then
-        disp_lport="$ep_port"
-      fi
+    if [ -n "$ep" ] && [ "$ep" != "$line" ]; then
+      case "$ep" in
+        *:*)
+          ep_port="${ep##*:}"
+          case "$ep_port" in
+            ""|*[!0-9]*) ;;
+            *) [ "$ep_port" -gt 0 ] 2>/dev/null && disp_lport="$ep_port" ;;
+          esac
+          ;;
+      esac
     fi
     if [ -z "$disp_lport" ]; then
-      if [ -n "$client_port" ] && [ "$client_port" != "null" ] && [ "$client_port" != "$line" ] && echo "$client_port" | grep -q '^[0-9][0-9]*$' && [ "$client_port" -gt 0 ]; then
-        disp_lport="$client_port"
-      else
-        disp_lport="0"
-      fi
+      case "$client_port" in
+        ""|null|"$line"|*[!0-9]*) disp_lport="0" ;;
+        *) [ "$client_port" -gt 0 ] 2>/dev/null && disp_lport="$client_port" || disp_lport="0" ;;
+      esac
     fi
 
     # 7. Status: BGP truth progression (Established/Connect/Idle/pending)
