@@ -93,7 +93,6 @@ export class EmailService {
    * Render HTML email template (Full English)
    */
   static renderEmailHtml({ asn, displayName, code }) {
-    const spacedCode = `${code.slice(0, 3)} ${code.slice(3)}`;
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -120,8 +119,8 @@ export class EmailService {
 
       <!-- Code Box -->
       <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 18px 20px; text-align: center; margin: 24px 0;">
-        <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 32px; font-weight: 700; color: #15803d; letter-spacing: 6px;">
-          ${spacedCode}
+        <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 32px; font-weight: 700; color: #15803d; letter-spacing: 4px;">
+          ${code}
         </span>
       </div>
 
@@ -157,7 +156,7 @@ export class EmailService {
     }
 
     const from = ENV.RESEND_FROM || 'AkiLab Networks <akira@akilab.meme>';
-    const subject = `[AkiLab DN42] Verification Code: ${code.slice(0, 3)} ${code.slice(3)}`;
+    const subject = `[AkiLab DN42] Verification Code: ${code}`;
     const html = this.renderEmailHtml({ asn, displayName, code });
 
     const response = await fetch('https://api.resend.com/emails', {

@@ -216,14 +216,14 @@ do_email_login() {
     if ! read -r code; then
       code="q"
     fi
-    code=$(printf '%s' "$code" | tr -d '\r')
+    clean_raw=$(printf '%s' "$code" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-    if [ "$code" = "q" ] || [ "$code" = "quit" ]; then
+    if [ "$clean_raw" = "q" ] || [ "$clean_raw" = "quit" ]; then
       echo -e "\033[90mCancelled.\033[0m"
       return 1
     fi
 
-    if [ "$code" = "r" ] || [ "$code" = "resend" ]; then
+    if [ "$clean_raw" = "r" ] || [ "$clean_raw" = "resend" ]; then
       echo -e "\033[90mRequesting new verification code...\033[0m"
       send_resp=$(api_post "/api/auth/email/send" "{\"asn\":\"$clean\"}")
       if echo "$send_resp" | grep -q '"success":true'; then
@@ -236,6 +236,8 @@ do_email_login() {
       fi
       continue
     fi
+
+    code=$(printf '%s' "$clean_raw" | tr -d ' \t')
 
     # Clean non-digits
     code=$(echo "$code" | tr -cd '0-9')

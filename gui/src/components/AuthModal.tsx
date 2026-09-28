@@ -282,7 +282,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
   // 5. Verify Email OTP Code
   const handleVerifyEmailOtp = async () => {
-    const cleanCode = otpInput.trim();
+    const cleanCode = otpInput.replace(/\D/g, '').slice(0, 6);
     if (!cleanCode || cleanCode.length !== 6) {
       showToast('Please enter the 6-digit verification code', 'error');
       return;
@@ -728,10 +728,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               <label className="text-xs font-semibold text-slate-300">6 位数字验证码</label>
               <input
                 type="text"
-                maxLength={6}
                 placeholder="123456"
                 value={otpInput}
-                onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))}
+                onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                onPaste={(e) => {
+                  e.preventDefault();
+                  const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+                  setOtpInput(pasted);
+                }}
                 onKeyDown={(e) => e.key === 'Enter' && handleVerifyEmailOtp()}
                 autoFocus
                 className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-white/10 text-white text-center text-lg font-mono tracking-widest focus:border-cyan-400 focus:outline-none"
@@ -766,7 +770,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               <button
                 type="button"
                 onClick={handleVerifyEmailOtp}
-                disabled={isLoading || otpInput.trim().length !== 6}
+                disabled={isLoading || otpInput.replace(/\D/g, '').length !== 6}
                 className="btn-primary w-2/3 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/20 disabled:opacity-50"
               >
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}

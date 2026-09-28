@@ -49,7 +49,7 @@ describe('Round 39: Email OTP Authentication & Two-Stage Login Flow', () => {
         'Must throw 429 when cooldown is active'
       );
 
-      // 1C. HTML email template check (Full English, no spam notice per user request)
+      // 1C. HTML email template check (Full English, no spam notice per user request, contiguous code without space)
       const html = EmailService.renderEmailHtml({
         asn: testAsn,
         displayName: 'Akira Tester',
@@ -58,6 +58,8 @@ describe('Round 39: Email OTP Authentication & Two-Stage Login Flow', () => {
       assert.ok(html.includes('DN42 Authentication'), 'Email HTML must be in English');
       assert.ok(!html.includes('垃圾邮件'), 'Email HTML must not include spam reminder per request');
       assert.ok(html.includes('AS4242429991'), 'Email HTML must include ASN');
+      assert.ok(html.includes(code), 'Email HTML must include contiguous OTP code without space');
+      assert.ok(!html.includes(`${code.slice(0, 3)} ${code.slice(3)}`), 'Email HTML must not have space in OTP code string');
     } finally {
       EmailService.deleteOtpRecord(testAsn);
     }
@@ -163,6 +165,7 @@ source:      DN42`;
     assert.ok(guiModal.includes('emailCooldown'), 'Must maintain emailCooldown state');
     assert.ok(guiModal.includes('垃圾邮件箱 (Spam / Junk)'), 'Must include spam folder warning');
     assert.ok(guiModal.includes('setEmailCooldown(30)'), 'Must set cooldown to 30 seconds');
+    assert.ok(guiModal.includes('onPaste'), 'Must include onPaste handler for OTP clipboard input');
   });
 
   it('8. CLI dn42-login contains two-stage choice, silent sending, 30s cooldown, and spam warning', () => {
