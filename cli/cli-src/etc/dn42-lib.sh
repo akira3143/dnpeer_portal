@@ -326,55 +326,15 @@ read_line_edit() {
       continue
     fi
 
-    # Normal Printable Characters: drain any immediately queued characters (pasted text burst)
-    _extra=""
-    IFS= read -r -t 0.02 -n 256 _extra 2>/dev/null
-    if [ -n "$_extra" ]; then
-      _c="${_c}${_extra}"
-    fi
-
-    # Handle any Enter embedded in pasted input
-    case "$_c" in
-      *"$_cr"*|*"$_nl"*)
-        _c="${_c%%"$_cr"*}"
-        _c="${_c%%"$_nl"*}"
-        if [ "$_is_secret" = "-s" ] || [ "$_is_secret" = "--secret" ]; then
-          _buf="${_buf}${_c}"
-          _pos=$((_pos + ${#_c}))
-          _stars=$(printf '%*s' "${#_c}" '' | tr ' ' '*')
-          printf "%s\r\n" "$_stars"
-        else
-          if [ $_pos -eq ${#_buf} ]; then
-            _buf="${_buf}${_c}"
-            _pos=$((_pos + ${#_c}))
-            printf "%s\r\n" "$_c"
-          else
-            _i=0; _left=""; _right=""; _remaining="$_buf"
-            while [ -n "$_remaining" ]; do
-              if [ $_i -eq $_pos ]; then _right="$_remaining"; break; fi
-              _char="${_remaining%${_remaining#?}}"
-              _left="${_left}${_char}"
-              _remaining="${_remaining#?}"
-              _i=$((_i + 1))
-            done
-            _buf="${_left}${_c}${_right}"
-            _pos=$((_pos + ${#_c}))
-            printf "%s\r\n" "$_c$_right"
-          fi
-        fi
-        break
-        ;;
-    esac
-
+    # Normal Printable Characters
     if [ "$_is_secret" = "-s" ] || [ "$_is_secret" = "--secret" ]; then
       _buf="${_buf}${_c}"
-      _pos=$((_pos + ${#_c}))
-      _stars=$(printf '%*s' "${#_c}" '' | tr ' ' '*')
-      printf "%s" "$_stars"
+      _pos=$((_pos + 1))
+      printf "*"
     else
       if [ $_pos -eq ${#_buf} ]; then
         _buf="${_buf}${_c}"
-        _pos=$((_pos + ${#_c}))
+        _pos=$((_pos + 1))
         printf "%s" "$_c"
       else
         _i=0; _left=""; _right=""; _remaining="$_buf"
@@ -386,7 +346,7 @@ read_line_edit() {
           _i=$((_i + 1))
         done
         _buf="${_left}${_c}${_right}"
-        _pos=$((_pos + ${#_c}))
+        _pos=$((_pos + 1))
         _rem_len=${#_right}
         if [ $_rem_len -gt 0 ]; then
           printf "%s%s\033[%dD" "$_c" "$_right" "$_rem_len"

@@ -211,8 +211,12 @@ do_email_login() {
 
   while true; do
     printf "\033[33mEnter 6-digit code (type 'r' to resend, 'q' to cancel)\033[0m: "
-    read_line_edit code
-    flush_after_input
+    stty icanon echo isig 2>/dev/null
+    code=""
+    if ! read -r code; then
+      code="q"
+    fi
+    code=$(printf '%s' "$code" | tr -d '\r')
 
     if [ "$code" = "q" ] || [ "$code" = "quit" ]; then
       echo -e "\033[90mCancelled.\033[0m"

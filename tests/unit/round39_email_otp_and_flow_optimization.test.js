@@ -189,9 +189,9 @@ source:      DN42`;
       path.resolve(ROOT_DIR, 'cli/cli-src/etc/dn42-lib.sh'),
       'utf8'
     );
-    // Must NOT contain unquoted $(printf '\n') in case pattern matching (which evaluates to empty string and matches any char)
-    assert.ok(!libScript.includes("*$(printf '\\n')*"), 'Must not have wildcard matching empty string');
-    assert.ok(libScript.includes('*"$_cr"*|*"$_nl"*'), 'Must match explicit quoted _cr and _nl variables');
+    // Must NOT contain unquoted $(printf '\n') in enter check (which evaluates to empty string and matches any char)
+    assert.ok(!libScript.includes("[ \"$_c\" = \"$(printf '\\n')\" ]"), 'Must not have empty string check');
+    assert.ok(libScript.includes('"$_c" = "$_cr"') || libScript.includes('"$_c" = "$_nl"'), 'Must check explicit _cr or _nl variables');
     assert.ok(libScript.includes('local _cr='), 'Must define _cr variable');
     assert.ok(libScript.includes('local _nl='), 'Must define _nl variable');
   });
