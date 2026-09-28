@@ -183,4 +183,16 @@ source:      DN42`;
     const rootfsStat = fs.statSync(path.resolve(ROOT_DIR, 'cli/public/rootfs.dat'));
     assert.ok(rootfsStat.size > 500000, 'Compiled rootfs.dat must be valid and non-empty');
   });
+
+  it('9. dn42-lib.sh read_line_edit safely handles Enter detection without subshell newline stripping', () => {
+    const libScript = fs.readFileSync(
+      path.resolve(ROOT_DIR, 'cli/cli-src/etc/dn42-lib.sh'),
+      'utf8'
+    );
+    // Must NOT contain unquoted $(printf '\n') in case pattern matching (which evaluates to empty string and matches any char)
+    assert.ok(!libScript.includes("*$(printf '\\n')*"), 'Must not have wildcard matching empty string');
+    assert.ok(libScript.includes('*"$_cr"*|*"$_nl"*'), 'Must match explicit quoted _cr and _nl variables');
+    assert.ok(libScript.includes('local _cr='), 'Must define _cr variable');
+    assert.ok(libScript.includes('local _nl='), 'Must define _nl variable');
+  });
 });

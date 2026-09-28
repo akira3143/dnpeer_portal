@@ -185,6 +185,9 @@ read_line_edit() {
   local _buf=""
   local _pos=0
   local _c _c2 _c3 _c4 _old_stty _i _left _right _remaining _char _diff _rem_len
+  local _cr="$(printf '\r')"
+  local _nl='
+'
 
   # Fallback for non-interactive / piped environments
   if [ ! -t 0 ]; then
@@ -213,7 +216,7 @@ read_line_edit() {
     fi
 
     # Enter (\r or \n or empty when Enter key pressed)
-    if [ "$_c" = "$(printf '\r')" ] || [ "$_c" = "$(printf '\n')" ] || [ -z "$_c" ]; then
+    if [ "$_c" = "$_cr" ] || [ "$_c" = "$_nl" ] || [ -z "$_c" ]; then
       printf "\r\n"
       break
     fi
@@ -332,9 +335,9 @@ read_line_edit() {
 
     # Handle any Enter embedded in pasted input
     case "$_c" in
-      *$(printf '\r')*|*$(printf '\n')*)
-        _c="${_c%%$(printf '\r')*}"
-        _c="${_c%%$(printf '\n')*}"
+      *"$_cr"*|*"$_nl"*)
+        _c="${_c%%"$_cr"*}"
+        _c="${_c%%"$_nl"*}"
         if [ "$_is_secret" = "-s" ] || [ "$_is_secret" = "--secret" ]; then
           _buf="${_buf}${_c}"
           _pos=$((_pos + ${#_c}))
