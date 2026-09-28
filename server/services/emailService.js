@@ -113,16 +113,7 @@ export class EmailService {
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
           <tr>
             <td align="left" valign="middle">
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td style="padding-right: 10px;" valign="middle">
-                    <span style="display: inline-block; background-color: #0f172a; color: #38bdf8; font-weight: 800; font-size: 13px; line-height: 1; padding: 5px 8px; border-radius: 6px; letter-spacing: 0.5px;">AKI</span>
-                  </td>
-                  <td valign="middle">
-                    <span style="font-weight: 700; font-size: 16px; color: #0f172a; letter-spacing: -0.3px;">AkiLab Networks</span>
-                  </td>
-                </tr>
-              </table>
+              <span style="font-weight: 700; font-size: 16px; color: #0f172a; letter-spacing: -0.3px;">AkiLab Networks</span>
             </td>
             <td align="right" valign="middle">
               <span style="display: inline-block; padding: 4px 10px; background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 9999px; font-size: 11px; font-weight: 600; color: #64748b; letter-spacing: 0.5px; text-transform: uppercase;">
