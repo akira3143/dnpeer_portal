@@ -405,7 +405,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         {/* Close Button */}
         <button
           onClick={handleClose}
-          className="absolute top-5 right-5 p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+          className="absolute top-5 right-5 p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer z-20"
         >
           <X className="w-4 h-4" />
         </button>
@@ -413,7 +413,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         {/* ----------------- STEP 1: Enter ASN ----------------- */}
         {step === 'input_asn' && (
           <div className="space-y-5">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 pr-12">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-600/30 border border-cyan-500/40 flex items-center justify-center text-cyan-300">
                 <ShieldCheck className="w-5 h-5" />
               </div>
@@ -464,7 +464,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         {/* ----------------- STEP 2: Password Login (For Users with Password) ----------------- */}
         {step === 'password_login' && (
           <div className="space-y-5">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between pr-12">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-600/30 border border-emerald-500/40 flex items-center justify-center text-emerald-300">
                   <Lock className="w-5 h-5" />
@@ -478,7 +478,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                   </p>
                 </div>
               </div>
-              <span className="px-2.5 py-1 rounded-lg bg-white/10 border border-white/10 text-xs font-mono text-cyan-300">
+              <span className="px-2.5 py-1 rounded-lg bg-white/10 border border-white/10 text-xs font-mono text-cyan-300 shrink-0">
                 AS{authCheckData?.asn || asnInput}
               </span>
             </div>
@@ -549,7 +549,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         {step === 'select_method' && (
           <div className="space-y-5">
             {/* Top Identity Header (Figure 2 Style) */}
-            <div className="flex items-start justify-between">
+            <div className="flex items-start justify-between pr-12">
               <div>
                 <h3 className="text-xl font-bold text-white tracking-tight">
                   你好，{authCheckData?.personName || authCheckData?.asName || `AS${authCheckData?.asn}`}
@@ -697,7 +697,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         {/* ----------------- STEP 4: Email OTP Verification ----------------- */}
         {step === 'verify_email' && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between pr-12">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300">
                   <Mail className="w-5 h-5" />
@@ -707,7 +707,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                   <p className="text-xs text-slate-400">已向您的注册邮箱发送 6 位验证码</p>
                 </div>
               </div>
-              <span className="px-2.5 py-1 rounded-lg bg-white/10 border border-white/10 text-xs font-mono text-cyan-300">
+              <span className="px-2.5 py-1 rounded-lg bg-white/10 border border-white/10 text-xs font-mono text-cyan-300 shrink-0">
                 AS{authCheckData?.asn}
               </span>
             </div>
@@ -784,7 +784,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         {step === 'verify_ssh' && (
           <div className="space-y-4">
             {/* OS Selector */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between pr-12">
               <span className="text-xs font-semibold text-slate-300">1. Run Signing Command</span>
               <div className="flex rounded-lg bg-black/40 border border-white/10 p-0.5 text-[11px]">
                 <button
@@ -860,9 +860,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         {/* ----------------- STEP 6: Optional Set Password for First-time Users ----------------- */}
         {step === 'set_password' && (
           <div className="space-y-4">
-            <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/20 text-xs text-emerald-200/90 flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>验证成功！为了下次更快速登入，您可以设置一个密码（可选）。</span>
+            <div className="pr-12">
+              <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/20 text-xs text-emerald-200/90 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>验证成功！为了下次更快速登入，您可以设置一个密码（可选）。</span>
+              </div>
             </div>
 
             <div className="space-y-1.5">

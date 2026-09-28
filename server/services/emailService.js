@@ -100,48 +100,94 @@ export class EmailService {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AkiLab DN42 Authentication Code</title>
 </head>
-<body style="margin: 0; padding: 24px 16px; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #1e293b;">
-  <div style="max-width: 540px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-    <!-- Brand Header -->
-    <div style="padding: 20px 24px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between;">
-      <span style="font-weight: 700; font-size: 15px; color: #0f172a; letter-spacing: -0.3px;">AkiLab Networks</span>
-      <span style="font-size: 12px; color: #64748b; font-weight: 500;">DN42 Authentication</span>
-    </div>
+<body style="margin: 0; padding: 32px 16px; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #1e293b;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width: 520px; margin: 0 auto; background-color: #ffffff; border-radius: 14px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);">
+    <!-- Top Accent Gradient Stripe -->
+    <tr>
+      <td height="4" style="background: linear-gradient(90deg, #06b6d4 0%, #3b82f6 50%, #8b5cf6 100%); line-height: 4px; font-size: 4px;">&nbsp;</td>
+    </tr>
+
+    <!-- Header (Table-based layout for 100% email client compatibility) -->
+    <tr>
+      <td style="padding: 22px 26px 18px; border-bottom: 1px solid #f1f5f9;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+          <tr>
+            <td align="left" valign="middle">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="padding-right: 10px;" valign="middle">
+                    <span style="display: inline-block; background-color: #0f172a; color: #38bdf8; font-weight: 800; font-size: 13px; line-height: 1; padding: 5px 8px; border-radius: 6px; letter-spacing: 0.5px;">AKI</span>
+                  </td>
+                  <td valign="middle">
+                    <span style="font-weight: 700; font-size: 16px; color: #0f172a; letter-spacing: -0.3px;">AkiLab Networks</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+            <td align="right" valign="middle">
+              <span style="display: inline-block; padding: 4px 10px; background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 9999px; font-size: 11px; font-weight: 600; color: #64748b; letter-spacing: 0.5px; text-transform: uppercase;">
+                DN42 Authentication
+              </span>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
 
     <!-- Body -->
-    <div style="padding: 28px 24px 20px;">
-      <p style="margin: 0 0 14px; font-size: 15px; font-weight: 600; color: #0f172a;">
-        Hello ${displayName || 'Peer'} (AS${asn}),
-      </p>
-      <p style="margin: 0 0 20px; font-size: 14px; line-height: 1.6; color: #475569;">
-        We received a request to verify your identity on the AkiLab DN42 Portal. Please enter the one-time verification code (OTP) below to complete your sign-in:
-      </p>
+    <tr>
+      <td style="padding: 28px 26px 20px;">
+        <p style="margin: 0 0 14px; font-size: 16px; font-weight: 700; color: #0f172a;">
+          Hello ${displayName || 'Peer'} <span style="font-weight: 500; color: #64748b; font-size: 14px;">(AS${asn})</span>,
+        </p>
+        <p style="margin: 0 0 22px; font-size: 14px; line-height: 1.6; color: #475569;">
+          We received a sign-in request for your ASN on the <strong>AkiLab DN42 Peering Portal</strong>. Please enter the one-time verification code (OTP) below to authenticate:
+        </p>
 
-      <!-- Code Box -->
-      <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 18px 20px; text-align: center; margin: 24px 0;">
-        <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 32px; font-weight: 700; color: #15803d; letter-spacing: 4px;">
-          ${code}
-        </span>
-      </div>
+        <!-- OTP Code Box -->
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin: 24px 0;">
+          <tr>
+            <td align="center" style="padding: 22px 16px 10px;">
+              <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #64748b; margin-bottom: 8px;">
+                VERIFICATION CODE
+              </div>
+              <div style="font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 38px; font-weight: 800; color: #0284c7; letter-spacing: 8px; text-indent: 8px; line-height: 1.1;">
+                ${code}
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding: 0 16px 18px;">
+              <div style="font-size: 12px; color: #94a3b8; font-weight: 500;">
+                Expires in <strong>10 minutes</strong> &middot; Single use only
+              </div>
+            </td>
+          </tr>
+        </table>
 
-      <ul style="margin: 20px 0 0; padding-left: 20px; font-size: 13px; line-height: 1.8; color: #64748b;">
-        <li>This code is valid for <strong>10 minutes</strong> and will expire immediately after single use.</li>
-        <li>Do not share this code with anyone. AkiLab administrators will never ask for it.</li>
-      </ul>
-
-      <p style="margin: 20px 0 0; font-size: 12px; line-height: 1.6; color: #94a3b8; border-top: 1px solid #f1f5f9; padding-top: 16px;">
-        If you did not initiate this request, you can safely ignore this email. Your DN42 peering sessions and assets will not be affected.
-      </p>
-    </div>
+        <!-- Security Notice Box -->
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f1f5f9; border-radius: 8px; margin: 20px 0 0;">
+          <tr>
+            <td style="padding: 14px 16px; font-size: 12px; line-height: 1.6; color: #64748b;">
+              <strong style="color: #334155;">Security Notice:</strong> AkiLab administrators will never ask for this code. If you did not initiate this request, you can safely ignore this email.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
 
     <!-- Footer -->
-    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #f1f5f9; text-align: center;">
-      <p style="margin: 0; font-size: 12px; color: #94a3b8;">
-        &copy; 2026 AkiLab Networks &middot; AS4242423143<br/>
-        Automated system message, please do not reply directly.
-      </p>
-    </div>
-  </div>
+    <tr>
+      <td style="padding: 18px 26px; background-color: #fafafa; border-top: 1px solid #f1f5f9; text-align: center;">
+        <p style="margin: 0 0 5px; font-size: 12px; font-weight: 600; color: #64748b;">
+          AkiLab Networks &middot; AS4242423143
+        </p>
+        <p style="margin: 0; font-size: 11px; color: #94a3b8;">
+          Automated security message from AkiLab DN42 Portal. Please do not reply directly.
+        </p>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>`;
   }
