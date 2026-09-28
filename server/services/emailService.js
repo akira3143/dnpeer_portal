@@ -90,32 +90,32 @@ export class EmailService {
   }
 
   /**
-   * Render HTML email template
+   * Render HTML email template (Full English)
    */
   static renderEmailHtml({ asn, displayName, code }) {
     const spacedCode = `${code.slice(0, 3)} ${code.slice(3)}`;
     return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AkiLab DN42 身份验证码</title>
+  <title>AkiLab DN42 Authentication Code</title>
 </head>
 <body style="margin: 0; padding: 24px 16px; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #1e293b;">
   <div style="max-width: 540px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
     <!-- Brand Header -->
     <div style="padding: 20px 24px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between;">
       <span style="font-weight: 700; font-size: 15px; color: #0f172a; letter-spacing: -0.3px;">AkiLab Networks</span>
-      <span style="font-size: 12px; color: #64748b; font-weight: 500;">DN42 身份验证</span>
+      <span style="font-size: 12px; color: #64748b; font-weight: 500;">DN42 Authentication</span>
     </div>
 
     <!-- Body -->
     <div style="padding: 28px 24px 20px;">
       <p style="margin: 0 0 14px; font-size: 15px; font-weight: 600; color: #0f172a;">
-        您好 ${displayName || 'Peer'}（AS${asn}），
+        Hello ${displayName || 'Peer'} (AS${asn}),
       </p>
       <p style="margin: 0 0 20px; font-size: 14px; line-height: 1.6; color: #475569;">
-        我们收到了在 AkiLab DN42 门户验证您身份的请求。请在验证界面输入下方的一次性验证码（OTP）：
+        We received a request to verify your identity on the AkiLab DN42 Portal. Please enter the one-time verification code (OTP) below to complete your sign-in:
       </p>
 
       <!-- Code Box -->
@@ -126,21 +126,20 @@ export class EmailService {
       </div>
 
       <ul style="margin: 20px 0 0; padding-left: 20px; font-size: 13px; line-height: 1.8; color: #64748b;">
-        <li>此验证码 <strong>10 分钟内有效</strong>，单次验证后立即失效。</li>
-        <li>请勿将此验证码透露给任何人，AkiLab 管理员绝不会主动向您索取。</li>
-        <li>若未在收件箱中看到验证码，请检查您的<strong>垃圾邮件（Spam / Junk）</strong>文件夹。</li>
+        <li>This code is valid for <strong>10 minutes</strong> and will expire immediately after single use.</li>
+        <li>Do not share this code with anyone. AkiLab administrators will never ask for it.</li>
       </ul>
 
       <p style="margin: 20px 0 0; font-size: 12px; line-height: 1.6; color: #94a3b8; border-top: 1px solid #f1f5f9; padding-top: 16px;">
-        如非您本人操作，请直接忽略此邮件，您的 DN42 资产不会受到任何影响。
+        If you did not initiate this request, you can safely ignore this email. Your DN42 peering sessions and assets will not be affected.
       </p>
     </div>
 
     <!-- Footer -->
     <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #f1f5f9; text-align: center;">
       <p style="margin: 0; font-size: 12px; color: #94a3b8;">
-        © 2026 AkiLab Networks · AS4242423143<br/>
-        系统自动发送邮件，请勿直接回复
+        &copy; 2026 AkiLab Networks &middot; AS4242423143<br/>
+        Automated system message, please do not reply directly.
       </p>
     </div>
   </div>
@@ -158,7 +157,7 @@ export class EmailService {
     }
 
     const from = ENV.RESEND_FROM || 'AkiLab Networks <akira@akilab.meme>';
-    const subject = `[AkiLab DN42] 登录验证码：${code.slice(0, 3)} ${code.slice(3)}`;
+    const subject = `[AkiLab DN42] Verification Code: ${code.slice(0, 3)} ${code.slice(3)}`;
     const html = this.renderEmailHtml({ asn, displayName, code });
 
     const response = await fetch('https://api.resend.com/emails', {

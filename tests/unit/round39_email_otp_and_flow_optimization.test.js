@@ -49,13 +49,14 @@ describe('Round 39: Email OTP Authentication & Two-Stage Login Flow', () => {
         'Must throw 429 when cooldown is active'
       );
 
-      // 1C. HTML email template check
+      // 1C. HTML email template check (Full English, no spam notice per user request)
       const html = EmailService.renderEmailHtml({
         asn: testAsn,
         displayName: 'Akira Tester',
         code
       });
-      assert.ok(html.includes('垃圾邮件（Spam / Junk）'), 'Email HTML must mention Spam / Junk folder reminder');
+      assert.ok(html.includes('DN42 Authentication'), 'Email HTML must be in English');
+      assert.ok(!html.includes('垃圾邮件'), 'Email HTML must not include spam reminder per request');
       assert.ok(html.includes('AS4242429991'), 'Email HTML must include ASN');
     } finally {
       EmailService.deleteOtpRecord(testAsn);
@@ -174,7 +175,7 @@ source:      DN42`;
     assert.ok(cliScript.includes('SSH Key Signature'), 'Must offer SSH Signature as option 2');
     assert.ok(cliScript.includes('/api/auth/email/send'), 'Must invoke email send endpoint');
     assert.ok(cliScript.includes('/api/auth/email/verify'), 'Must invoke email verify endpoint');
-    assert.ok(cliScript.includes('若未送达请检查您的垃圾邮件 (Spam / Junk)'), 'Must display exact spam folder warning');
+    assert.ok(cliScript.includes('Notice: If not received, please check your Spam / Junk folder.'), 'Must display exact spam folder warning in English');
     assert.ok(cliScript.includes('30s cooldown'), 'Must display 30s cooldown reminder');
     assert.ok(cliScript.includes('[ "$pwd" = "mail" ]'), 'Must allow typing mail to switch from password login');
 

@@ -205,7 +205,7 @@ do_email_login() {
 
   echo ""
   echo -e "\033[32mVerification code sent to \033[1m$target_email\033[0;32m.\033[0m"
-  echo -e "\033[93mNotice: 若未送达请检查您的垃圾邮件 (Spam / Junk)。\033[0m"
+  echo -e "\033[93mNotice: If not received, please check your Spam / Junk folder.\033[0m"
   echo -e "\033[90m(The code is valid for 10 minutes. 30s cooldown before resending)\033[0m"
   echo ""
 
@@ -224,7 +224,7 @@ do_email_login() {
       send_resp=$(api_post "/api/auth/email/send" "{\"asn\":\"$clean\"}")
       if echo "$send_resp" | grep -q '"success":true'; then
         echo -e "\033[32mA new verification code has been sent to $target_email.\033[0m"
-        echo -e "\033[93mNotice: 若未送达请检查您的垃圾邮件 (Spam / Junk)。\033[0m"
+        echo -e "\033[93mNotice: If not received, please check your Spam / Junk folder.\033[0m"
       else
         err_msg=$(json_field "$send_resp" message)
         [ -z "$err_msg" ] && err_msg="Failed to resend code"
