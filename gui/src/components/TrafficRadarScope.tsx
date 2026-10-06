@@ -30,7 +30,7 @@ export const formatBitrate = (bytesPerSec: number): string => {
 /**
  * Builds a mathematically smooth cubic bezier SVG path across given coordinate points.
  */
-function buildSmoothPath(points: Array<{ x: number; y: number }>, height: number = 36): { linePath: string; areaPath: string } {
+function buildSmoothPath(points: Array<{ x: number; y: number }>, height: number = 52): { linePath: string; areaPath: string } {
   if (points.length === 0) return { linePath: '', areaPath: '' };
   if (points.length === 1) {
     return {
@@ -101,7 +101,7 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
   }
 
   const scopeWidth = 300;
-  const scopeHeight = 36;
+  const scopeHeight = 52;
   const pointCount = 14;
 
   const { rxPoints, txPoints, healthGlow, peakScaleLabel } = useMemo(() => {
@@ -135,9 +135,9 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
         const rxNorm = Math.min((recentRx[i] || 0) / maxVal, 1);
         const txNorm = Math.min((recentTx[i] || 0) / maxVal, 1);
 
-        // Invert Y: 0 top, 32 bottom baseline, wave peaks up to y = 8 (height 24)
-        rxPts.push({ x, y: 32 - rxNorm * 24 });
-        txPts.push({ x, y: 32 - txNorm * 24 });
+        // Invert Y: 0 top, 46 bottom baseline, wave peaks up to y = 8 (height 38)
+        rxPts.push({ x, y: 46 - rxNorm * 38 });
+        txPts.push({ x, y: 46 - txNorm * 38 });
       }
     } else {
       // Natural organic heartbeat synthesis based on volume presence
@@ -151,8 +151,8 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
         const x = (i / (pointCount - 1)) * scopeWidth;
         if (!hasTraffic) {
           // Flat quiet baseline
-          rxPts.push({ x, y: 32 });
-          txPts.push({ x, y: 32 });
+          rxPts.push({ x, y: 46 });
+          txPts.push({ x, y: 46 });
         } else {
           // Modulated undulating rhythm
           const r1 = pseudoHash(sessionId + '_rx', i);
@@ -160,8 +160,8 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
           const waveRx = Math.sin((i / pointCount) * Math.PI * 2) * 0.4 + r1 * 0.6;
           const waveTx = Math.cos((i / pointCount) * Math.PI * 2.5) * 0.4 + t1 * 0.6;
 
-          rxPts.push({ x, y: 30 - waveRx * 20 * baseAmp });
-          txPts.push({ x, y: 30 - waveTx * 18 * baseAmp });
+          rxPts.push({ x, y: 44 - waveRx * 30 * baseAmp });
+          txPts.push({ x, y: 44 - waveTx * 26 * baseAmp });
         }
       }
     }
@@ -184,8 +184,8 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
   const rxPaths = useMemo(() => buildSmoothPath(rxPoints, scopeHeight), [rxPoints]);
   const txPaths = useMemo(() => buildSmoothPath(txPoints, scopeHeight), [txPoints]);
 
-  const lastRx = rxPoints[rxPoints.length - 1] || { x: scopeWidth, y: 32 };
-  const lastTx = txPoints[txPoints.length - 1] || { x: scopeWidth, y: 32 };
+  const lastRx = rxPoints[rxPoints.length - 1] || { x: scopeWidth, y: 46 };
+  const lastTx = txPoints[txPoints.length - 1] || { x: scopeWidth, y: 46 };
 
   const rxGradientId = `rxGrad_${sessionId.replace(/[^a-zA-Z0-9]/g, '_')}`;
   const txGradientId = `txGrad_${sessionId.replace(/[^a-zA-Z0-9]/g, '_')}`;
@@ -193,22 +193,22 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
 
   return (
     <div className="bg-black/40 p-2.5 rounded-lg border border-white/5 space-y-2 relative overflow-hidden group">
-      {/* Top row: Metrics Header */}
-      <div className="flex items-center justify-between text-xs">
-        <div>
-          <span className="text-slate-500 block text-[9px] uppercase tracking-wider font-sans mb-0.5 flex items-center gap-1">
+      {/* Top row: Metrics Header (Inward Mirroring: [Rx][2.9MB] ... [565KB][Tx]) */}
+      <div className="flex items-center justify-between text-xs px-0.5">
+        <div className="flex items-center gap-1.5">
+          <span className="text-slate-500 text-[9px] uppercase tracking-wider font-sans flex items-center gap-0.5">
             <ArrowDownRight className="w-3 h-3 text-cyan-400" /> Rx Volume
           </span>
           <span className="font-mono text-cyan-300 text-xs font-semibold">
             {formatBytes(rxBytes)}
           </span>
         </div>
-        <div className="text-right">
-          <span className="text-slate-500 block text-[9px] uppercase tracking-wider font-sans mb-0.5 flex items-center justify-end gap-1">
-            <ArrowUpRight className="w-3 h-3 text-emerald-400" /> Tx Volume
-          </span>
+        <div className="flex items-center gap-1.5">
           <span className="font-mono text-emerald-300 text-xs font-semibold">
             {formatBytes(txBytes)}
+          </span>
+          <span className="text-slate-500 text-[9px] uppercase tracking-wider font-sans flex items-center gap-0.5">
+            <ArrowUpRight className="w-3 h-3 text-emerald-400" /> Tx Volume
           </span>
         </div>
       </div>
@@ -217,7 +217,7 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
       <div className="border-t border-white/5 my-1" />
 
       {/* Dual Heartbeat Radar Scope */}
-      <div className="w-full h-9 relative overflow-hidden rounded">
+      <div className="w-full h-[52px] relative overflow-hidden rounded">
         <svg
           viewBox={`0 0 ${scopeWidth} ${scopeHeight}`}
           className="w-full h-full overflow-visible"
@@ -246,8 +246,8 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
           <rect width={scopeWidth} height={scopeHeight} fill={healthGlow} opacity="0.04" />
 
           {/* Grid guidelines */}
-          <line x1="0" y1="12" x2={scopeWidth} y2="12" stroke="white" strokeOpacity="0.03" strokeDasharray="3 4" />
-          <line x1="0" y1="24" x2={scopeWidth} y2="24" stroke="white" strokeOpacity="0.03" strokeDasharray="3 4" />
+          <line x1="0" y1="16" x2={scopeWidth} y2="16" stroke="white" strokeOpacity="0.03" strokeDasharray="3 4" />
+          <line x1="0" y1="32" x2={scopeWidth} y2="32" stroke="white" strokeOpacity="0.03" strokeDasharray="3 4" />
 
           {/* Oscilloscope scanning beam sweeping across scope (Right to Left / New to Old) */}
           {isBgpActive && (
@@ -331,24 +331,24 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
           {/* HUD dynamic vertical scale labels */}
           <text
             x={scopeWidth - 4}
-            y={9}
+            y={12}
             textAnchor="end"
-            fontSize="7"
-            fill="#22d3ee"
-            fillOpacity="0.8"
+            fontSize="9"
+            fill="#38bdf8"
+            fillOpacity="0.95"
             fontFamily="ui-monospace, monospace"
-            fontWeight="500"
+            fontWeight="600"
             className="select-none pointer-events-none"
           >
             {peakScaleLabel}
           </text>
           <text
             x={scopeWidth - 4}
-            y={32}
+            y={46}
             textAnchor="end"
-            fontSize="6.5"
+            fontSize="7.5"
             fill="#64748b"
-            fillOpacity="0.6"
+            fillOpacity="0.75"
             fontFamily="ui-monospace, monospace"
             className="select-none pointer-events-none"
           >
