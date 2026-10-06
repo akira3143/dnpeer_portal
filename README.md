@@ -82,16 +82,10 @@ npm test
 
 ## 🙏 致谢与引用 (Credits & Acknowledgements)
 
-本项目在开发过程中离不开以下优秀开源项目与社区的启发和支持，特此致谢：
+本项目在实现过程中参考并借用了以下开源项目的能力与实现，特此致谢：
 
-- [v86](https://github.com/copy/v86) - 浏览器端 x86 虚拟化环境
-- [BusyBox](https://busybox.net/) - 极简嵌入式 Linux 实用工具集
-- [Vue.js](https://vuejs.org/) & [Vite](https://vitejs.dev/) & [Tailwind CSS](https://tailwindcss.com/) - 响应式 Web 界面基础技术栈
-- [BIRD Internet Routing Daemon](https://bird.network.cz/) - 动态路由守护进程
-- [bird-lgproxy](https://github.com/sargon/bird-lgproxy) - BIRD Looking Glass 代理服务
-- [WireGuard](https://www.wireguard.com/) - 现代轻量安全隧道协议
-- [Resend](https://resend.com/) - 邮件投递服务支持
-- [DN42 Community](https://dn42.eu/) - 感谢社区同行们在去中心化实验网络中的持续探索与支持
+- [v86](https://github.com/copy/v86) - 浏览器端 x86 虚拟化环境支持
+- [bird-lgproxy](https://github.com/sargon/bird-lgproxy) - BIRD Looking Glass 代理与状态查询协议实现
 
 ---
 
