@@ -84,7 +84,7 @@ npm test
 
 本项目在实现过程中参考并借用了以下开源项目的能力与实现，特此致谢：
 
-- [v86](https://github.com/copy/v86) - 浏览器端 x86 虚拟化环境支持
+- [tombl/linux](https://github.com/tombl/linux) - 浏览器端 WebAssembly Linux 内核与 VirtIO 运行时支持
 - [bird-lgproxy](https://github.com/sargon/bird-lgproxy) - BIRD Looking Glass 代理与状态查询协议实现
 
 ---
