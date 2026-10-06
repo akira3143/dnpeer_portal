@@ -191,7 +191,6 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
 
   const rxGradientId = `rxGrad_${sessionId.replace(/[^a-zA-Z0-9]/g, '_')}`;
   const txGradientId = `txGrad_${sessionId.replace(/[^a-zA-Z0-9]/g, '_')}`;
-  const sweepGradientId = `sweepGrad_${sessionId.replace(/[^a-zA-Z0-9]/g, '_')}`;
 
   return (
     <div className="bg-black/40 p-2.5 rounded-lg border border-white/5 space-y-2 relative overflow-hidden group">
@@ -234,14 +233,6 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
               <stop offset="0%" stopColor="#34d399" stopOpacity="0.25" />
               <stop offset="100%" stopColor="#34d399" stopOpacity="0" />
             </linearGradient>
-            {/* Oscilloscope radar sweep beam */}
-            <linearGradient id={sweepGradientId} x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#22d3ee" stopOpacity="0" />
-              <stop offset="45%" stopColor="#22d3ee" stopOpacity="0.08" />
-              <stop offset="50%" stopColor="#34d399" stopOpacity="0.14" />
-              <stop offset="55%" stopColor="#34d399" stopOpacity="0.08" />
-              <stop offset="100%" stopColor="#34d399" stopOpacity="0" />
-            </linearGradient>
           </defs>
 
           {/* Background subtle health glow */}
@@ -250,13 +241,6 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
           {/* Grid guidelines */}
           <line x1="0" y1="16" x2={scopeWidth} y2="16" stroke="white" strokeOpacity="0.03" strokeDasharray="3 4" />
           <line x1="0" y1="32" x2={scopeWidth} y2="32" stroke="white" strokeOpacity="0.03" strokeDasharray="3 4" />
-
-          {/* Oscilloscope scanning beam sweeping across scope (Left to Right) */}
-          {isBgpActive && (
-            <rect x="-80" y="0" width="80" height={scopeHeight} fill={`url(#${sweepGradientId})`}>
-              <animate attributeName="x" values="-80;320" dur="4.8s" repeatCount="indefinite" />
-            </rect>
-          )}
 
           {/* Rx Area & Line (Cyan) */}
           {rxPaths.areaPath && <path d={rxPaths.areaPath} fill={`url(#${rxGradientId})`} />}
@@ -270,7 +254,7 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
                 strokeLinecap="round"
                 className="drop-shadow-[0_0_4px_rgba(34,211,238,0.4)]"
               />
-              {/* Solitary Real-time Refresh Pulse (Rx Vibrant Cyan flowing Left to Right) */}
+              {/* Solitary Real-time Refresh Pulse (Rx Vibrant Cyan flowing Right to Left) */}
               {hasActiveTraffic && (
                 <path
                   d={rxPaths.linePath}
@@ -281,7 +265,7 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
                   strokeDasharray="32 360"
                   className="drop-shadow-[0_0_6px_rgba(6,182,212,0.75)] opacity-85"
                 >
-                  <animate attributeName="stroke-dashoffset" values="-40;330" dur="4.4s" repeatCount="indefinite" />
+                  <animate attributeName="stroke-dashoffset" values="330;-40" dur="4.4s" repeatCount="indefinite" />
                 </path>
               )}
             </>
@@ -299,7 +283,7 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
                 strokeLinecap="round"
                 className="drop-shadow-[0_0_4px_rgba(52,211,153,0.4)]"
               />
-              {/* Solitary Real-time Refresh Pulse (Tx Vibrant Emerald flowing Left to Right) */}
+              {/* Solitary Real-time Refresh Pulse (Tx Vibrant Emerald flowing Right to Left) */}
               {hasActiveTraffic && (
                 <path
                   d={txPaths.linePath}
@@ -310,7 +294,7 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
                   strokeDasharray="32 360"
                   className="drop-shadow-[0_0_6px_rgba(16,185,129,0.75)] opacity-85"
                 >
-                  <animate attributeName="stroke-dashoffset" values="-40;330" dur="5.0s" begin="1.2s" repeatCount="indefinite" />
+                  <animate attributeName="stroke-dashoffset" values="330;-40" dur="5.0s" begin="1.2s" repeatCount="indefinite" />
                 </path>
               )}
             </>
