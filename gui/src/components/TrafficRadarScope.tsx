@@ -18,6 +18,15 @@ const formatBytes = (bytes?: number): string => {
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 };
 
+export const formatBitrate = (bytesPerSec: number): string => {
+  if (!bytesPerSec || bytesPerSec <= 0) return '0 bps';
+  const bps = bytesPerSec * 8;
+  if (bps < 1000) return `${Math.round(bps)} bps`;
+  if (bps < 1000 * 1000) return `${(bps / 1000).toFixed(1)} Kbps`;
+  if (bps < 1000 * 1000 * 1000) return `${(bps / (1000 * 1000)).toFixed(1)} Mbps`;
+  return `${(bps / (1000 * 1000 * 1000)).toFixed(1)} Gbps`;
+};
+
 /**
  * Builds a mathematically smooth cubic bezier SVG path across given coordinate points.
  */
@@ -95,14 +104,15 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
   const scopeHeight = 36;
   const pointCount = 14;
 
-  const { rxPoints, txPoints, healthGlow } = useMemo(() => {
+  const { rxPoints, txPoints, healthGlow, peakScaleLabel } = useMemo(() => {
     const rxPts: Array<{ x: number; y: number }> = [];
     const txPts: Array<{ x: number; y: number }> = [];
+    let peakLabel = '0 bps';
 
     const hasRealSeries = Array.isArray(series) && series.length >= 2;
 
     if (hasRealSeries) {
-      // Extract sequential delta rates from series
+      // Extract sequential delta rates from series (in bytes/sec)
       const rxDeltas: number[] = [];
       const txDeltas: number[] = [];
       for (let i = 1; i < series.length; i++) {
@@ -113,21 +123,28 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
 
       const recentRx = rxDeltas.slice(-pointCount);
       const recentTx = txDeltas.slice(-pointCount);
-      const maxVal = Math.max(...recentRx, ...recentTx, 100);
+      const rawMax = Math.max(...recentRx, ...recentTx, 0);
+
+      // Noise floor: minimum 1250 bytes/s (10 Kbps)
+      const maxVal = Math.max(rawMax, 1250);
+      peakLabel = formatBitrate(maxVal);
 
       const count = Math.max(recentRx.length, 2);
       for (let i = 0; i < count; i++) {
         const x = (i / (count - 1)) * scopeWidth;
-        const rxNorm = (recentRx[i] || 0) / maxVal;
-        const txNorm = (recentTx[i] || 0) / maxVal;
+        const rxNorm = Math.min((recentRx[i] || 0) / maxVal, 1);
+        const txNorm = Math.min((recentTx[i] || 0) / maxVal, 1);
 
-        // Invert Y: 0 top, 36 bottom (margin 4 to 32)
+        // Invert Y: 0 top, 32 bottom baseline, wave peaks up to y = 8 (height 24)
         rxPts.push({ x, y: 32 - rxNorm * 24 });
         txPts.push({ x, y: 32 - txNorm * 24 });
       }
     } else {
       // Natural organic heartbeat synthesis based on volume presence
       const hasTraffic = (rxBytes > 0 || txBytes > 0);
+      const avgRate = hasTraffic ? Math.max((rxBytes + txBytes) / 86400, 1250) : 0;
+      peakLabel = hasTraffic ? formatBitrate(avgRate) : '0 bps';
+
       const baseAmp = hasTraffic ? 1.0 : 0.05;
 
       for (let i = 0; i < pointCount; i++) {
@@ -135,7 +152,7 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
         if (!hasTraffic) {
           // Flat quiet baseline
           rxPts.push({ x, y: 32 });
-          txPts.push({ x, y: 32.5 });
+          txPts.push({ x, y: 32 });
         } else {
           // Modulated undulating rhythm
           const r1 = pseudoHash(sessionId + '_rx', i);
@@ -161,7 +178,7 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
       glow = '#10b981'; // healthy emerald
     }
 
-    return { rxPoints: rxPts, txPoints: txPts, healthGlow: glow };
+    return { rxPoints: rxPts, txPoints: txPts, healthGlow: glow, peakScaleLabel: `▲ ${peakLabel}` };
   }, [rxBytes, txBytes, series, sessionId]);
 
   const rxPaths = useMemo(() => buildSmoothPath(rxPoints, scopeHeight), [rxPoints]);
@@ -232,10 +249,10 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
           <line x1="0" y1="12" x2={scopeWidth} y2="12" stroke="white" strokeOpacity="0.03" strokeDasharray="3 4" />
           <line x1="0" y1="24" x2={scopeWidth} y2="24" stroke="white" strokeOpacity="0.03" strokeDasharray="3 4" />
 
-          {/* Oscilloscope scanning beam sweeping across scope */}
+          {/* Oscilloscope scanning beam sweeping across scope (Right to Left / New to Old) */}
           {isBgpActive && (
-            <rect x="-80" y="0" width="80" height={scopeHeight} fill={`url(#${sweepGradientId})`}>
-              <animate attributeName="x" values="-80;320" dur="3.6s" repeatCount="indefinite" />
+            <rect x="320" y="0" width="80" height={scopeHeight} fill={`url(#${sweepGradientId})`}>
+              <animate attributeName="x" values="320;-80" dur="3.6s" repeatCount="indefinite" />
             </rect>
           )}
 
@@ -251,7 +268,7 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
                 strokeLinecap="round"
                 className="drop-shadow-[0_0_4px_rgba(34,211,238,0.4)]"
               />
-              {/* Traveling Photon Pulse (Rx Cyan Packet) */}
+              {/* Traveling Photon Pulse (Rx Cyan Packet flowing Right to Left) */}
               <path
                 d={rxPaths.linePath}
                 fill="none"
@@ -261,7 +278,7 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
                 strokeDasharray="8 36"
                 className="opacity-75"
               >
-                <animate attributeName="stroke-dashoffset" values="44;0" dur="2.2s" repeatCount="indefinite" />
+                <animate attributeName="stroke-dashoffset" values="0;44" dur="2.2s" repeatCount="indefinite" />
               </path>
             </>
           )}
@@ -278,7 +295,7 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
                 strokeLinecap="round"
                 className="drop-shadow-[0_0_4px_rgba(52,211,153,0.4)]"
               />
-              {/* Traveling Photon Pulse (Tx Emerald Packet) */}
+              {/* Traveling Photon Pulse (Tx Emerald Packet flowing Right to Left) */}
               <path
                 d={txPaths.linePath}
                 fill="none"
@@ -288,7 +305,7 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
                 strokeDasharray="8 36"
                 className="opacity-75"
               >
-                <animate attributeName="stroke-dashoffset" values="44;0" dur="2.8s" repeatCount="indefinite" />
+                <animate attributeName="stroke-dashoffset" values="0;44" dur="2.8s" repeatCount="indefinite" />
               </path>
             </>
           )}
@@ -310,6 +327,33 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
           {/* Pulse nodes on latest points */}
           <circle cx={lastRx.x} cy={lastRx.y} r="2" fill="#22d3ee" />
           <circle cx={lastTx.x} cy={lastTx.y} r="2" fill="#34d399" />
+
+          {/* HUD dynamic vertical scale labels */}
+          <text
+            x={scopeWidth - 4}
+            y={9}
+            textAnchor="end"
+            fontSize="7"
+            fill="#22d3ee"
+            fillOpacity="0.8"
+            fontFamily="ui-monospace, monospace"
+            fontWeight="500"
+            className="select-none pointer-events-none"
+          >
+            {peakScaleLabel}
+          </text>
+          <text
+            x={scopeWidth - 4}
+            y={32}
+            textAnchor="end"
+            fontSize="6.5"
+            fill="#64748b"
+            fillOpacity="0.6"
+            fontFamily="ui-monospace, monospace"
+            className="select-none pointer-events-none"
+          >
+            0
+          </text>
         </svg>
       </div>
     </div>
