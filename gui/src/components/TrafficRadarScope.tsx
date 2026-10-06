@@ -328,33 +328,19 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
           <circle cx={lastRx.x} cy={lastRx.y} r="2" fill="#22d3ee" />
           <circle cx={lastTx.x} cy={lastTx.y} r="2" fill="#34d399" />
 
-          {/* HUD dynamic vertical scale labels */}
-          <text
-            x={scopeWidth - 4}
-            y={12}
-            textAnchor="end"
-            fontSize="9"
-            fill="#38bdf8"
-            fillOpacity="0.95"
-            fontFamily="ui-monospace, monospace"
-            fontWeight="600"
-            className="select-none pointer-events-none"
-          >
-            {peakScaleLabel}
-          </text>
-          <text
-            x={scopeWidth - 4}
-            y={46}
-            textAnchor="end"
-            fontSize="7.5"
-            fill="#64748b"
-            fillOpacity="0.75"
-            fontFamily="ui-monospace, monospace"
-            className="select-none pointer-events-none"
-          >
-            0
-          </text>
         </svg>
+
+        {/* HUD Dynamic Scale Overlays (Unified font-mono Engine) */}
+        <div className="absolute top-1 right-2 pointer-events-none select-none">
+          <span className="font-mono text-[10px] font-semibold text-cyan-300 tracking-tight drop-shadow-[0_0_6px_rgba(6,182,212,0.4)]">
+            {peakScaleLabel}
+          </span>
+        </div>
+        <div className="absolute bottom-1 right-2 pointer-events-none select-none">
+          <span className="font-mono text-[9px] text-slate-500 font-medium">
+            0
+          </span>
+        </div>
       </div>
     </div>
   );
