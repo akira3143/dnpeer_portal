@@ -151,42 +151,6 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
     return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
   };
 
-  /**
-   * Evaluates real-time WireGuard tunnel handshake health:
-   * - Active (Up): Valid handshake within 180 seconds (3 minutes) per WireGuard protocol standard (REJECT_AFTER_TIME).
-   * - Inactive (Down): Handshake existed in the past (> 0) but timed out (> 180s ago).
-   * - Idle / Waiting: Never handshaked (timestamp <= 0 or missing).
-   */
-  const getWgHealth = (timestamp?: number) => {
-    if (!timestamp || timestamp <= 0) {
-      return {
-        status: 'idle' as const,
-        label: 'WG Idle',
-        badgeClass: 'text-slate-500',
-        detailText: 'Idle / Waiting',
-        detailClass: 'text-slate-500'
-      };
-    }
-    const now = currentTime;
-    const diff = now - timestamp;
-    if (diff <= 180) {
-      return {
-        status: 'up' as const,
-        label: 'WG Up',
-        badgeClass: 'text-emerald-400 font-medium',
-        detailText: 'Active',
-        detailClass: 'text-emerald-400 font-medium'
-      };
-    }
-    return {
-      status: 'down' as const,
-      label: 'WG Down',
-      badgeClass: 'text-rose-400 font-medium',
-      detailText: 'Down / Timeout',
-      detailClass: 'text-rose-400 font-medium'
-    };
-  };
-
   const formatHandshake = (timestamp?: number): string => {
     if (!timestamp || timestamp <= 0) return 'Never';
     const now = currentTime;
@@ -196,6 +160,100 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
     if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
     if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
     return `${Math.floor(diff / 86400)}d ago`;
+  };
+
+  /**
+   * Evaluates real-time transport/tunnel connectivity health:
+   * 1. Non-WireGuard Peers (IXP, direct ethernet, local daemon, pure BGP):
+   *    - Identified by missing or empty WireGuard public key.
+   *    - Direct: BGP is Established/active -> Cyan text-cyan-400 font-medium
+   *    - Offline: BGP is not Established -> Rose text-rose-400 font-medium
+   *
+   * 2. WireGuard Peers:
+   *    - BGP Truth-Linking: If BGP is Established/active, WireGuard is delivering packets -> WG Up (steady green).
+   *    - When BGP is down/negotiating, evaluate WireGuard handshake health with 300s (5-minute) tolerance window:
+   *      - Handshake <= 300s: WG Up (green) -> tunnel ok, diagnostic issue in BGP layer.
+   *      - Handshake > 300s: WG Down (rose-400) -> tunnel timed out / lost.
+   *      - Handshake <= 0 / missing: WG Idle (slate-500) -> waiting for initial peer handshake.
+   */
+  const getTransportHealth = (sess: PeeringSession) => {
+    const isPureBgp = !sess.peering?.publicKey || sess.peering.publicKey.trim() === '';
+    const isBgpActive = sess.status === 'active' || sess.runtime?.bgpState === 'Established';
+
+    // 1. Non-WG Peer (Direct / Offline)
+    if (isPureBgp) {
+      if (isBgpActive) {
+        return {
+          type: 'direct' as const,
+          label: 'Direct',
+          badgeClass: 'text-cyan-400 font-medium',
+          detailTitle: 'Transport Mode',
+          detailValue: 'Direct / L2 (Non-WG)',
+          detailStatus: 'Direct',
+          detailClass: 'text-cyan-400 font-medium'
+        };
+      }
+      return {
+        type: 'direct' as const,
+        label: 'Offline',
+        badgeClass: 'text-rose-400 font-medium',
+        detailTitle: 'Transport Mode',
+        detailValue: 'Direct / L2 (Non-WG)',
+        detailStatus: 'Offline',
+        detailClass: 'text-rose-400 font-medium'
+      };
+    }
+
+    // 2. WireGuard Peer: BGP Truth-Linking (If BGP is Established, tunnel is guaranteed alive)
+    if (isBgpActive) {
+      return {
+        type: 'wg' as const,
+        label: 'WG Up',
+        badgeClass: 'text-emerald-400 font-medium',
+        detailTitle: 'Latest Handshake',
+        detailValue: formatHandshake(sess.runtime?.latestHandshake),
+        detailStatus: 'Active',
+        detailClass: 'text-emerald-400 font-medium'
+      };
+    }
+
+    // 3. WireGuard Peer: BGP not active -> evaluate handshake with 300s window
+    const timestamp = sess.runtime?.latestHandshake;
+    if (!timestamp || timestamp <= 0) {
+      return {
+        type: 'wg' as const,
+        label: 'WG Idle',
+        badgeClass: 'text-slate-500',
+        detailTitle: 'Latest Handshake',
+        detailValue: 'Never',
+        detailStatus: 'Idle / Waiting',
+        detailClass: 'text-slate-500'
+      };
+    }
+
+    const now = currentTime;
+    const diff = now - timestamp;
+    if (diff <= 300) { // 300 seconds (5 minutes) industry standard tolerance window
+      return {
+        type: 'wg' as const,
+        label: 'WG Up',
+        badgeClass: 'text-emerald-400 font-medium',
+        detailTitle: 'Latest Handshake',
+        detailValue: formatHandshake(timestamp),
+        detailStatus: 'Active',
+        detailClass: 'text-emerald-400 font-medium'
+      };
+    }
+
+    return {
+      type: 'wg' as const,
+      label: 'WG Down',
+      badgeClass: 'text-rose-400 font-medium',
+      detailTitle: 'Latest Handshake',
+      detailValue: formatHandshake(timestamp),
+      detailStatus: 'Down / Timeout',
+      detailClass: 'text-rose-400 font-medium'
+    };
   };
 
   const filteredSessions = useMemo(() => {
@@ -380,7 +438,7 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                       const peerPort = (sess.peering?.endpoint && sess.peering.endpoint.includes(':') ? sess.peering.endpoint.split(':').pop() : null) || sess.assigned?.clientPort || sess.peering?.clientPort || 0;
                       const badge = getStatusBadge(sess);
                       const isExpanded = expandedSessions.has(sess.id);
-                      const wgHealth = getWgHealth(sess.runtime?.latestHandshake);
+                      const transportHealth = getTransportHealth(sess);
 
                       const cleanLla = sess.peering?.linkLocal && sess.peering.linkLocal.toLowerCase() !== 'fe80::' && !sess.peering.linkLocal.endsWith('::') ? sess.peering.linkLocal : '';
                       const cleanIpv4 = sess.peering?.ipv4 && sess.peering.ipv4 !== '172.16.0.0' && sess.peering.ipv4 !== '10.0.0.0' && !sess.peering.ipv4.endsWith('.0') ? sess.peering.ipv4 : '';
@@ -482,8 +540,8 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                                   <span className={`w-1.5 h-1.5 rounded-full ${badge.dotClass}`} />
                                   <span>{badge.label}</span>
                                 </span>
-                                <span className={`text-[9px] font-mono ${wgHealth.badgeClass}`}>
-                                  {wgHealth.label}
+                                <span className={`text-[9px] font-mono ${transportHealth.badgeClass}`}>
+                                  {transportHealth.label}
                                 </span>
                               </div>
                             </td>
@@ -662,15 +720,19 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
 
                                       <div>
                                         <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-sans mb-1">
-                                          Latest Handshake
+                                          {transportHealth.detailTitle}
                                         </span>
                                         <div className="flex items-center gap-2 bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/5">
-                                          <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                          {transportHealth.type === 'direct' ? (
+                                            <Network className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                                          ) : (
+                                            <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                          )}
                                           <span className="font-mono text-[11px] text-slate-200">
-                                            {formatHandshake(sess.runtime?.latestHandshake)}
+                                            {transportHealth.detailValue}
                                           </span>
-                                          <span className={`ml-auto text-[10px] font-sans ${wgHealth.detailClass}`}>
-                                            {wgHealth.detailText}
+                                          <span className={`ml-auto text-[10px] font-sans ${transportHealth.detailClass}`}>
+                                            {transportHealth.detailStatus}
                                           </span>
                                         </div>
                                       </div>
