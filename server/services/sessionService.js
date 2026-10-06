@@ -91,27 +91,22 @@ export function recordSessionTrafficMetrics(session, peer) {
 
   const lastPoint = series.length > 0 ? series[series.length - 1] : null;
 
-  // Append new point every 30 minutes (1800s), or if series is new (< 2 points)
+  // Append new checkpoint if empty or if >= 1800s (30m) elapsed since the last checkpoint
   if (!lastPoint || (nowSec - lastPoint.t) >= 1800) {
     series.push({ t: nowSec, rx: currentRx, tx: currentTx });
     if (series.length > 48) {
       series = series.slice(-48);
     }
-  } else {
-    // Keep most recent point updated with current totals
-    lastPoint.t = nowSec;
-    lastPoint.rx = currentRx;
-    lastPoint.tx = currentTx;
   }
   session.runtime.trafficSeries = series;
 
-  // Compute 24h rolling volume (difference between current and oldest sample in 24h window)
+  // Compute 24h rolling volume (difference between current and oldest baseline in 24h window)
   const oldestPoint = series.length > 0 ? series[0] : null;
-  const newestPoint = series.length > 0 ? series[series.length - 1] : null;
-  if (oldestPoint && newestPoint && oldestPoint !== newestPoint && currentRx >= oldestPoint.rx && currentTx >= oldestPoint.tx) {
+  if (oldestPoint && currentRx >= oldestPoint.rx && currentTx >= oldestPoint.tx) {
     session.runtime.rx24h = currentRx - oldestPoint.rx;
     session.runtime.tx24h = currentTx - oldestPoint.tx;
   } else {
+    // Fallback for node reboots / counter reset
     session.runtime.rx24h = currentRx;
     session.runtime.tx24h = currentTx;
   }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { recordSessionTrafficMetrics } from '../../server/services/sessionService.js';
 
 test('Round 41: Dual Heartbeat Radar Scope & 24h Traffic Telemetry', async (t) => {
-  await t.test('1. recordSessionTrafficMetrics initializes series and computes 24h volume', () => {
+  await t.test('1. recordSessionTrafficMetrics initializes series and computes 24h delta', () => {
     const session = { id: 'test_session_1', runtime: {} };
     const peer = { rxBytes: 1048576, txBytes: 2097152 }; // 1MB Rx, 2MB Tx
 
@@ -11,8 +11,15 @@ test('Round 41: Dual Heartbeat Radar Scope & 24h Traffic Telemetry', async (t) =
 
     assert.equal(session.runtime.rxBytes, 1048576);
     assert.equal(session.runtime.txBytes, 2097152);
-    assert.equal(session.runtime.rx24h, 1048576);
-    assert.equal(session.runtime.tx24h, 2097152);
+    assert.equal(session.runtime.rx24h, 0);
+    assert.equal(session.runtime.tx24h, 0);
+    assert.equal(session.runtime.trafficSeries.length, 1);
+
+    // Follow-up probe report with traffic increment within 30m
+    const peerNext = { rxBytes: 1048576 + 50000, txBytes: 2097152 + 25000 };
+    recordSessionTrafficMetrics(session, peerNext);
+    assert.equal(session.runtime.rx24h, 50000);
+    assert.equal(session.runtime.tx24h, 25000);
     assert.equal(session.runtime.trafficSeries.length, 1);
   });
 

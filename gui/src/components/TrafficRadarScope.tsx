@@ -172,6 +172,7 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
 
   const rxGradientId = `rxGrad_${sessionId.replace(/[^a-zA-Z0-9]/g, '_')}`;
   const txGradientId = `txGrad_${sessionId.replace(/[^a-zA-Z0-9]/g, '_')}`;
+  const sweepGradientId = `sweepGrad_${sessionId.replace(/[^a-zA-Z0-9]/g, '_')}`;
 
   return (
     <div className="bg-black/40 p-2.5 rounded-lg border border-white/5 space-y-2 relative overflow-hidden group">
@@ -214,6 +215,14 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
               <stop offset="0%" stopColor="#34d399" stopOpacity="0.25" />
               <stop offset="100%" stopColor="#34d399" stopOpacity="0" />
             </linearGradient>
+            {/* Oscilloscope radar sweep beam */}
+            <linearGradient id={sweepGradientId} x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#22d3ee" stopOpacity="0" />
+              <stop offset="45%" stopColor="#22d3ee" stopOpacity="0.08" />
+              <stop offset="50%" stopColor="#34d399" stopOpacity="0.14" />
+              <stop offset="55%" stopColor="#34d399" stopOpacity="0.08" />
+              <stop offset="100%" stopColor="#34d399" stopOpacity="0" />
+            </linearGradient>
           </defs>
 
           {/* Background subtle health glow */}
@@ -223,30 +232,79 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
           <line x1="0" y1="12" x2={scopeWidth} y2="12" stroke="white" strokeOpacity="0.03" strokeDasharray="3 4" />
           <line x1="0" y1="24" x2={scopeWidth} y2="24" stroke="white" strokeOpacity="0.03" strokeDasharray="3 4" />
 
+          {/* Oscilloscope scanning beam sweeping across scope */}
+          {isBgpActive && (
+            <rect x="-80" y="0" width="80" height={scopeHeight} fill={`url(#${sweepGradientId})`}>
+              <animate attributeName="x" values="-80;320" dur="3.6s" repeatCount="indefinite" />
+            </rect>
+          )}
+
           {/* Rx Area & Line (Cyan) */}
           {rxPaths.areaPath && <path d={rxPaths.areaPath} fill={`url(#${rxGradientId})`} />}
           {rxPaths.linePath && (
-            <path
-              d={rxPaths.linePath}
-              fill="none"
-              stroke="#22d3ee"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              className="drop-shadow-[0_0_4px_rgba(34,211,238,0.4)]"
-            />
+            <>
+              <path
+                d={rxPaths.linePath}
+                fill="none"
+                stroke="#22d3ee"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                className="drop-shadow-[0_0_4px_rgba(34,211,238,0.4)]"
+              />
+              {/* Traveling Photon Pulse (Rx Cyan Packet) */}
+              <path
+                d={rxPaths.linePath}
+                fill="none"
+                stroke="#a5f3fc"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeDasharray="8 36"
+                className="opacity-75"
+              >
+                <animate attributeName="stroke-dashoffset" values="44;0" dur="2.2s" repeatCount="indefinite" />
+              </path>
+            </>
           )}
 
           {/* Tx Area & Line (Emerald) */}
           {txPaths.areaPath && <path d={txPaths.areaPath} fill={`url(#${txGradientId})`} />}
           {txPaths.linePath && (
-            <path
-              d={txPaths.linePath}
-              fill="none"
-              stroke="#34d399"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              className="drop-shadow-[0_0_4px_rgba(52,211,153,0.4)]"
-            />
+            <>
+              <path
+                d={txPaths.linePath}
+                fill="none"
+                stroke="#34d399"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                className="drop-shadow-[0_0_4px_rgba(52,211,153,0.4)]"
+              />
+              {/* Traveling Photon Pulse (Tx Emerald Packet) */}
+              <path
+                d={txPaths.linePath}
+                fill="none"
+                stroke="#a7f3d0"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeDasharray="8 36"
+                className="opacity-75"
+              >
+                <animate attributeName="stroke-dashoffset" values="44;0" dur="2.8s" repeatCount="indefinite" />
+              </path>
+            </>
+          )}
+
+          {/* Sonar Beacon Rings on latest points */}
+          {isBgpActive && (
+            <>
+              <circle cx={lastRx.x} cy={lastRx.y} r="2" fill="none" stroke="#22d3ee" strokeWidth="1">
+                <animate attributeName="r" values="2;6;2" dur="2.2s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.85;0;0.85" dur="2.2s" repeatCount="indefinite" />
+              </circle>
+              <circle cx={lastTx.x} cy={lastTx.y} r="2" fill="none" stroke="#34d399" strokeWidth="1">
+                <animate attributeName="r" values="2;6;2" dur="2.8s" begin="0.5s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.85;0;0.85" dur="2.8s" begin="0.5s" repeatCount="indefinite" />
+              </circle>
+            </>
           )}
 
           {/* Pulse nodes on latest points */}
