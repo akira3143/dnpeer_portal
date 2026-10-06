@@ -100,6 +100,9 @@ export interface PeeringSession {
     latestHandshake?: number;
     rxBytes?: number;
     txBytes?: number;
+    rx24h?: number;
+    tx24h?: number;
+    trafficSeries?: Array<{ t: number; rx: number; tx: number }>;
     bgpState?: string;
     bgpInfo?: string;
     endpoint?: string;

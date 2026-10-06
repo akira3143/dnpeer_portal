@@ -3,6 +3,7 @@ import type { PeeringSession } from '../api/client';
 import { ApiClient } from '../api/client';
 import { useToast } from './Toast';
 import { CountryFlag } from './CountryFlag';
+import { TrafficRadarScope } from './TrafficRadarScope';
 import {
   Activity,
   RefreshCw,
@@ -439,6 +440,7 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                       const badge = getStatusBadge(sess);
                       const isExpanded = expandedSessions.has(sess.id);
                       const transportHealth = getTransportHealth(sess);
+                      const isPureBgp = !sess.peering?.publicKey || sess.peering.publicKey.trim() === '';
 
                       const cleanLla = sess.peering?.linkLocal && sess.peering.linkLocal.toLowerCase() !== 'fe80::' && !sess.peering.linkLocal.endsWith('::') ? sess.peering.linkLocal : '';
                       const cleanIpv4 = sess.peering?.ipv4 && sess.peering.ipv4 !== '172.16.0.0' && sess.peering.ipv4 !== '10.0.0.0' && !sess.peering.ipv4.endsWith('.0') ? sess.peering.ipv4 : '';
@@ -519,16 +521,20 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
 
                             {/* Column 6: Transfer (Rx / Tx Traffic) */}
                             <td className="py-3.5 px-3">
-                              <div className="font-mono text-[11px] flex flex-col gap-0.5">
-                                <div className="flex items-center gap-1.5 text-cyan-400 font-medium" title={`Received: ${sess.runtime?.rxBytes || 0} bytes`}>
-                                  <ArrowDownRight className="w-3.5 h-3.5 shrink-0" />
-                                  <span>{formatBytes(sess.runtime?.rxBytes)}</span>
+                              {isPureBgp ? (
+                                <span className="font-mono text-[11px] text-slate-500">Direct L2</span>
+                              ) : (
+                                <div className="font-mono text-[11px] flex flex-col gap-0.5">
+                                  <div className="flex items-center gap-1.5 text-cyan-400 font-medium" title={`Received: ${formatBytes(sess.runtime?.rx24h ?? sess.runtime?.rxBytes)}`}>
+                                    <ArrowDownRight className="w-3.5 h-3.5 shrink-0" />
+                                    <span>{formatBytes(sess.runtime?.rx24h ?? sess.runtime?.rxBytes)}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 text-emerald-400/80 text-[10px]" title={`Transmitted: ${formatBytes(sess.runtime?.tx24h ?? sess.runtime?.txBytes)}`}>
+                                    <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
+                                    <span>{formatBytes(sess.runtime?.tx24h ?? sess.runtime?.txBytes)}</span>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-1.5 text-emerald-400/80 text-[10px]" title={`Transmitted: ${sess.runtime?.txBytes || 0} bytes`}>
-                                  <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
-                                  <span>{formatBytes(sess.runtime?.txBytes)}</span>
-                                </div>
-                              </div>
+                              )}
                             </td>
 
                             {/* Column 7: Status & Handshake */}
@@ -737,24 +743,14 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                                         </div>
                                       </div>
 
-                                      <div className="grid grid-cols-2 gap-2">
-                                        <div className="bg-black/40 p-2.5 rounded-lg border border-white/5">
-                                          <span className="text-slate-500 block text-[9px] uppercase tracking-wider font-sans mb-0.5 flex items-center gap-1">
-                                            <ArrowDownRight className="w-3 h-3 text-cyan-400" /> Rx Volume
-                                          </span>
-                                          <span className="font-mono text-cyan-300 text-xs font-semibold">
-                                            {formatBytes(sess.runtime?.rxBytes)}
-                                          </span>
-                                        </div>
-                                        <div className="bg-black/40 p-2.5 rounded-lg border border-white/5">
-                                          <span className="text-slate-500 block text-[9px] uppercase tracking-wider font-sans mb-0.5 flex items-center gap-1">
-                                            <ArrowUpRight className="w-3 h-3 text-emerald-400" /> Tx Volume
-                                          </span>
-                                          <span className="font-mono text-emerald-300 text-xs font-semibold">
-                                            {formatBytes(sess.runtime?.txBytes)}
-                                          </span>
-                                        </div>
-                                      </div>
+                                      <TrafficRadarScope
+                                        rxBytes={sess.runtime?.rx24h ?? sess.runtime?.rxBytes ?? 0}
+                                        txBytes={sess.runtime?.tx24h ?? sess.runtime?.txBytes ?? 0}
+                                        series={sess.runtime?.trafficSeries}
+                                        isPureBgp={isPureBgp}
+                                        isBgpActive={sess.status === 'active' || sess.runtime?.bgpState === 'Established'}
+                                        sessionId={sess.id}
+                                      />
                                     </div>
 
                                     {sess.runtime?.bgpInfo && sess.runtime.bgpInfo !== sess.runtime.bgpState ? (

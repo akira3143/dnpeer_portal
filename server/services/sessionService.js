@@ -72,6 +72,51 @@ export function extractCleanPeerName(rawName = '', nodeTag = '') {
   return clean;
 }
 
+/**
+ * Updates session traffic metrics and maintains a rolling 24-hour ring buffer of samples (up to 48 points)
+ */
+export function recordSessionTrafficMetrics(session, peer) {
+  if (!session.runtime) session.runtime = {};
+  const currentRx = peer.rxBytes || 0;
+  const currentTx = peer.txBytes || 0;
+  session.runtime.rxBytes = currentRx;
+  session.runtime.txBytes = currentTx;
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  const WINDOW_24H_SEC = 86400;
+
+  // Filter existing points to past 24 hours
+  let series = Array.isArray(session.runtime.trafficSeries) ? session.runtime.trafficSeries : [];
+  series = series.filter(p => p && typeof p.t === 'number' && (nowSec - p.t) <= WINDOW_24H_SEC);
+
+  const lastPoint = series.length > 0 ? series[series.length - 1] : null;
+
+  // Append new point every 30 minutes (1800s), or if series is new (< 2 points)
+  if (!lastPoint || (nowSec - lastPoint.t) >= 1800) {
+    series.push({ t: nowSec, rx: currentRx, tx: currentTx });
+    if (series.length > 48) {
+      series = series.slice(-48);
+    }
+  } else {
+    // Keep most recent point updated with current totals
+    lastPoint.t = nowSec;
+    lastPoint.rx = currentRx;
+    lastPoint.tx = currentTx;
+  }
+  session.runtime.trafficSeries = series;
+
+  // Compute 24h rolling volume (difference between current and oldest sample in 24h window)
+  const oldestPoint = series.length > 0 ? series[0] : null;
+  const newestPoint = series.length > 0 ? series[series.length - 1] : null;
+  if (oldestPoint && newestPoint && oldestPoint !== newestPoint && currentRx >= oldestPoint.rx && currentTx >= oldestPoint.tx) {
+    session.runtime.rx24h = currentRx - oldestPoint.rx;
+    session.runtime.tx24h = currentTx - oldestPoint.tx;
+  } else {
+    session.runtime.rx24h = currentRx;
+    session.runtime.tx24h = currentTx;
+  }
+}
+
 export class SessionService {
   static withSessionCommitLock(fn) {
     const key = 'sessions';
@@ -563,8 +608,7 @@ export class SessionService {
       if (session) {
         if (!session.runtime) session.runtime = {};
         session.runtime.latestHandshake = peer.latestHandshake || session.runtime.latestHandshake || 0;
-        session.runtime.rxBytes = peer.rxBytes || 0;
-        session.runtime.txBytes = peer.txBytes || 0;
+        recordSessionTrafficMetrics(session, peer);
 
         // Endpoint: Prefer domain or configured endpoint from probe (avoid exposing resolved numeric IPs)
         if (peer.endpoint !== undefined) {
@@ -745,8 +789,7 @@ export class SessionService {
         }
         existingSession.runtime = existingSession.runtime || {};
         existingSession.runtime.latestHandshake = peer.latestHandshake || 0;
-        existingSession.runtime.rxBytes = peer.rxBytes || 0;
-        existingSession.runtime.txBytes = peer.txBytes || 0;
+        recordSessionTrafficMetrics(existingSession, peer);
         existingSession.updatedAt = new Date().toISOString();
         updated = true;
         continue;
@@ -793,6 +836,9 @@ export class SessionService {
           endpoint: peer.endpoint || '',
           rxBytes: peer.rxBytes || 0,
           txBytes: peer.txBytes || 0,
+          rx24h: peer.rxBytes || 0,
+          tx24h: peer.txBytes || 0,
+          trafficSeries: [{ t: Math.floor(Date.now() / 1000), rx: peer.rxBytes || 0, tx: peer.txBytes || 0 }],
           bgpState: 'Pending'
         }
       };
