@@ -265,7 +265,7 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
                   strokeDasharray="32 360"
                   className="drop-shadow-[0_0_6px_rgba(6,182,212,0.75)] opacity-85"
                 >
-                  <animate attributeName="stroke-dashoffset" values="330;-40" dur="4.4s" repeatCount="indefinite" />
+                  <animate attributeName="stroke-dashoffset" values="90;482" dur="4.4s" repeatCount="indefinite" />
                 </path>
               )}
             </>
@@ -294,7 +294,7 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
                   strokeDasharray="32 360"
                   className="drop-shadow-[0_0_6px_rgba(16,185,129,0.75)] opacity-85"
                 >
-                  <animate attributeName="stroke-dashoffset" values="330;-40" dur="5.0s" begin="1.2s" repeatCount="indefinite" />
+                  <animate attributeName="stroke-dashoffset" values="90;482" dur="5.0s" begin="1.2s" repeatCount="indefinite" />
                 </path>
               )}
             </>
