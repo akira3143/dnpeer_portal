@@ -112,19 +112,30 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
     let rateRx = 0;
     let rateTx = 0;
 
+    const numRxBytes = (typeof rxBytes === 'number' && Number.isFinite(rxBytes) && rxBytes > 0) ? rxBytes : 0;
+    const numTxBytes = (typeof txBytes === 'number' && Number.isFinite(txBytes) && txBytes > 0) ? txBytes : 0;
+
     if (Array.isArray(series) && series.length >= 2) {
       const last = series[series.length - 1];
       const prev = series[series.length - 2];
-      const dt = Math.max(last.t - prev.t, 1);
-      rateRx = Math.max((last.rx - prev.rx) / dt, 0);
-      rateTx = Math.max((last.tx - prev.tx) / dt, 0);
-    } else if (rxBytes > 0 || txBytes > 0) {
-      rateRx = rxBytes > 0 ? rxBytes / 86400 : 0;
-      rateTx = txBytes > 0 ? txBytes / 86400 : 0;
+      const lastT = (last && typeof last.t === 'number') ? last.t : 0;
+      const prevT = (prev && typeof prev.t === 'number') ? prev.t : 0;
+      const dt = (lastT > prevT) ? (lastT - prevT) : 1;
+
+      const lastRx = (last && typeof last.rx === 'number') ? last.rx : 0;
+      const prevRx = (prev && typeof prev.rx === 'number') ? prev.rx : 0;
+      const lastTx = (last && typeof last.tx === 'number') ? last.tx : 0;
+      const prevTx = (prev && typeof prev.tx === 'number') ? prev.tx : 0;
+
+      rateRx = Math.max((lastRx - prevRx) / dt, 0) || 0;
+      rateTx = Math.max((lastTx - prevTx) / dt, 0) || 0;
+    } else if (numRxBytes > 0 || numTxBytes > 0) {
+      rateRx = numRxBytes > 0 ? numRxBytes / 86400 : 0;
+      rateTx = numTxBytes > 0 ? numTxBytes / 86400 : 0;
     }
 
-    const hasTraffic = (rxBytes > 0 || txBytes > 0 || rateRx > 0 || rateTx > 0);
-    const maxObservedRate = Math.max(rateRx, rateTx, 0);
+    const hasTraffic = (numRxBytes > 0 || numTxBytes > 0 || rateRx > 0 || rateTx > 0);
+    const maxObservedRate = Math.max(rateRx, rateTx, 0) || 0;
 
     // Noise floor: minimum 1250 bytes/s (10.0 Kbps)
     const scaleCeiling = hasTraffic ? Math.max(maxObservedRate, 1250) : 0;
@@ -134,7 +145,7 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
     const baselineY = 44;
     const rateRatio = scaleCeiling > 0 ? Math.min(maxObservedRate / scaleCeiling, 1) : 0;
     // Quiet peers have ~11px subtle ripples; busy peers surge up to 26px
-    const amp = hasTraffic ? (10 + rateRatio * 16) : 0;
+    const amp = hasTraffic ? (10 + (rateRatio || 0) * 16) : 0;
 
     for (let i = 0; i < pointCount; i++) {
       const u = i / (pointCount - 1);

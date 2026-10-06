@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { ENV } from '../config.js';
 
 const COOLDOWN_MS = 30 * 1000;       // 30 seconds cooldown
@@ -6,6 +7,15 @@ const MAX_ATTEMPTS = 5;
 
 // In-memory OTP storage: cleanAsn -> { code, email, expiresAt, lastSentAt, attempts }
 const otpStore = new Map();
+
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 export class EmailService {
   /**
@@ -36,8 +46,8 @@ export class EmailService {
       throw err;
     }
 
-    // 6-digit numeric code
-    const code = String(Math.floor(100000 + Math.random() * 900000));
+    // Cryptographically secure 6-digit numeric code
+    const code = String(crypto.randomInt(100000, 1000000));
     const now = Date.now();
 
     otpStore.set(cleanAsn, {
@@ -93,6 +103,9 @@ export class EmailService {
    * Render HTML email template (Full English)
    */
   static renderEmailHtml({ asn, displayName, code }) {
+    const safeName = escapeHtml(displayName || 'Peer');
+    const safeAsn = escapeHtml(asn);
+    const safeCode = escapeHtml(code);
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -129,7 +142,7 @@ export class EmailService {
     <tr>
       <td style="padding: 28px 26px 20px;">
         <p style="margin: 0 0 14px; font-size: 16px; font-weight: 700; color: #0f172a;">
-          Hello ${displayName || 'Peer'} <span style="font-weight: 500; color: #64748b; font-size: 14px;">(AS${asn})</span>,
+          Hello ${safeName} <span style="font-weight: 500; color: #64748b; font-size: 14px;">(AS${safeAsn})</span>,
         </p>
         <p style="margin: 0 0 22px; font-size: 14px; line-height: 1.6; color: #475569;">
           We received a sign-in request for your ASN on the <strong>AkiLab DN42 Peering Portal</strong>. Please enter the one-time verification code (OTP) below to authenticate:
@@ -143,7 +156,7 @@ export class EmailService {
                 VERIFICATION CODE
               </div>
               <div style="font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 38px; font-weight: 800; color: #0284c7; letter-spacing: 8px; text-indent: 8px; line-height: 1.1;">
-                ${code}
+                ${safeCode}
               </div>
             </td>
           </tr>
