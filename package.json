@@ -3,6 +3,7 @@
   "version": "2.0.0",
   "description": "DN42 Peering Portal (Refactored 2.0) - High Performance Single Source of Truth Dual-Frontend System",
   "type": "module",
+  "license": "MIT",
   "bin": {
     "dnp": "./bin/dnp.js"
   },
