@@ -83,9 +83,13 @@ if [ ! -f "$INSTALL_DIR/.env" ]; then
     echo "# Telegram Bot Notifications (Optional)"
     echo "TELEGRAM_BOT_TOKEN="
     echo "TELEGRAM_CHAT_ID="
+    echo ""
+    echo "# Email OTP Authentication (Optional, via Resend API: https://resend.com)"
+    echo "RESEND_API_KEY="
+    echo "RESEND_FROM=AkiLab Networks <auth@akilab.meme>"
   } > "$INSTALL_DIR/.env"
   chmod 600 "$INSTALL_DIR/.env"
-  echo "    .env created. Edit $INSTALL_DIR/.env to set Telegram credentials if needed."
+  echo "    .env created. Edit $INSTALL_DIR/.env to configure Telegram / Resend credentials if needed."
 else
   echo "[4/7] .env already exists, skipping."
 fi

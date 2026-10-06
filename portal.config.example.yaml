@@ -1,49 +1,51 @@
 # ==============================================================================
-# 🌐 AkiLab DN42 Peering Portal - Configuration File (portal.config.yaml)
+# 🌐 DN42 Peering Portal - Configuration File (portal.config.yaml)
 # ==============================================================================
-# This file is the ONLY configuration file administrators need to maintain manually.
+# This is the PRIMARY configuration file for your DN42 Autonomous System.
 # Hot-reloaded automatically within 200ms upon save (zero downtime, no restart required).
 
+# Route path for the Modern Web GUI (e.g., "/gui", "/portal", "/akilab").
+# Note: The root path ("/") hosts the in-browser WebAssembly Linux terminal CLI.
 guiPath: "/gui"
 
 network:
   asn: "AS4242420000"
   asnNumber: 4242420000
   networkName: "AkiLab DN42 Network"
-  shortName: "akilab"
+  shortName: "akilab"                      # Used as default OpenSSH signing principal namespace
   tagline: "High Performance DN42 Experimental Autonomous System"
   description: "AkiLab DN42 multi-region backbone with MP-BGP Extended Next Hop."
   maintainer: "AKIRA-MNT"
-  ipv4Pool: "172.20.150.0/24"
-  ipv6Pool: "fd00:4242:3143::/48"
+  ipv4Pool: "172.20.150.0/24"              # Assigned DN42 IPv4 subnet
+  ipv6Pool: "fd00:4242:3143::/48"          # Assigned DN42 IPv6 ULA subnet
   routingPolicy: "Open for all DN42 participants / MP-BGP (ENH) / Strict ROA Validation"
   bgpMode: "MP-BGP + Extended Next Hop (ENH)"
   portFormulaDisplay: "20000 + (ASN % 10000) [Auto-increments +10000 on conflict]"
-  lookingGlassUrl: "https://lg.akilab.dn42"
+  lookingGlassUrl: "https://lg.akilab.dn42" # Public looking glass URL (optional)
   dn42WhoisUrl: "https://explorer.burble.com/#/AS4242420000"
-  lastUpdated: "2026-08-29"
+  lastUpdated: "2026-10-07"
 
 nodes:
-  - id: "JP-TYO-1"
-    code: "JP-1"
-    name: "Tokyo Hub 01 (Japan)"
-    flag: "🇯🇵"
+  - id: "JP-TYO-1"                         # Unique node ID
+    code: "JP-1"                           # Short badge code displayed in GUI & CLI
+    name: "Tokyo Hub 01 (Japan Core Hub)"
+    flag: "🇯🇵"                            # Country / regional emoji flag
     city: "Tokyo"
     country: "Japan"
-    region: "apac"
-    status: "active"
+    region: "apac"                         # Region code: "apac", "na", "eu", etc.
+    status: "active"                       # Node status: "active", "maintenance", "offline"
     isp: "AkiLab Datacenter Tokyo"
-    endpointDomain: "jp1.akilab.dn42"
-    wgPublicKey: "akilab_tokyo_wg_pubkey_replace_in_config_111111="
-    tunnelIpv4: "172.20.150.1"
-    tunnelIpv6ULA: "fd00:4242:3143::1"
-    tunnelIpv6LLA: "fe80::3143"
-    mtu: 1420
+    endpointDomain: "jp1.akilab.dn42"      # Public WireGuard endpoint domain (clients connect here)
+    wgPublicKey: "akilab_tokyo_wg_pubkey_replace_in_config_111111=" # Master WireGuard Public Key
+    tunnelIpv4: "172.20.150.1"             # Master's internal DN42 IPv4 on WireGuard link
+    tunnelIpv6ULA: "fd00:4242:3143::1"     # Master's internal DN42 IPv6 ULA
+    tunnelIpv6LLA: "fe80::3143"            # Master's IPv6 Link-Local address (preferred for BGP next-hop)
+    mtu: 1420                              # Default WireGuard MTU
     features:
       - "★ Core Hub"
       - "MP-BGP"
       - "ENH"
-    lgProxyUrl: "http://127.0.0.1:5000"
+    lgProxyUrl: "http://127.0.0.1:5000"    # Local bird-lgproxy endpoint for real-time BGP inspection
 
   - id: "US-SJC-1"
     code: "US-1"
@@ -64,7 +66,8 @@ nodes:
       - "MP-BGP"
       - "ENH"
       - "Trans-Pacific"
-    lgProxyUrl: "http://127.0.0.1:5001"
+    # For remote edge nodes running the probe agent, configure the probe's lgproxy address:
+    lgProxyUrl: "http://us1.akilab.dn42:5000"
 
 contacts:
   - platform: "Telegram"
@@ -73,5 +76,10 @@ contacts:
     type: "telegram"
     preferred: true
 
+  - platform: "DN42 WHOIS"
+    handle: "AKIRA-DN42"
+    link: "https://explorer.burble.com/#/AKIRA-DN42"
+    type: "whois"
+
 admins:
-  - 4242420000
+  - 4242420000                             # Numeric ASNs granted administrative privileges

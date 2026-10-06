@@ -10,7 +10,7 @@
 > - The portal parses objects directly from the local git repository at `server/data/registry/`.
 > - Initial production setup requires cloning the repository once:
 >   `git clone --depth 1 https://git.dn42.dev/dn42/registry server/data/registry`
-> - An in-process background worker syncs the repository every 30 minutes via `git pull`. On login misses, real-time `git pull` is automatically triggered.
+> - An in-process background worker syncs the repository every 10 minutes (configurable via `REGISTRY_SYNC_INTERVAL_MS`) via `git pull`. On login misses, real-time `git pull` is automatically triggered.
 > 
 > **STRICT RULE FOR AUTOMATED TESTS & SCRIPTS:**
 > - Automated tests (unit, integration, and E2E) MUST ALWAYS use isolated temporary directories via `process.env.PORTAL_DATA_DIR` (`os.tmpdir()/dn42-test-*`).
