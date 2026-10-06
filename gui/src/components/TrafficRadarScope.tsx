@@ -251,10 +251,10 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
           <line x1="0" y1="16" x2={scopeWidth} y2="16" stroke="white" strokeOpacity="0.03" strokeDasharray="3 4" />
           <line x1="0" y1="32" x2={scopeWidth} y2="32" stroke="white" strokeOpacity="0.03" strokeDasharray="3 4" />
 
-          {/* Oscilloscope scanning beam sweeping across scope (Right to Left / New to Old) */}
+          {/* Oscilloscope scanning beam sweeping across scope (Left to Right) */}
           {isBgpActive && (
-            <rect x="320" y="0" width="80" height={scopeHeight} fill={`url(#${sweepGradientId})`}>
-              <animate attributeName="x" values="320;-80" dur="3.6s" repeatCount="indefinite" />
+            <rect x="-80" y="0" width="80" height={scopeHeight} fill={`url(#${sweepGradientId})`}>
+              <animate attributeName="x" values="-80;320" dur="4.8s" repeatCount="indefinite" />
             </rect>
           )}
 
@@ -270,18 +270,18 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
                 strokeLinecap="round"
                 className="drop-shadow-[0_0_4px_rgba(34,211,238,0.4)]"
               />
-              {/* Solitary Real-time Refresh Pulse (Rx Cyan Packet flowing Right to Left) */}
+              {/* Solitary Real-time Refresh Pulse (Rx Vibrant Cyan flowing Left to Right) */}
               {hasActiveTraffic && (
                 <path
                   d={rxPaths.linePath}
                   fill="none"
-                  stroke="#cffafe"
-                  strokeWidth="2.2"
+                  stroke="#38bdf8"
+                  strokeWidth="2.0"
                   strokeLinecap="round"
                   strokeDasharray="32 360"
-                  className="drop-shadow-[0_0_8px_rgba(34,211,238,0.9)] opacity-95"
+                  className="drop-shadow-[0_0_6px_rgba(6,182,212,0.75)] opacity-85"
                 >
-                  <animate attributeName="stroke-dashoffset" values="320;-40" dur="2.4s" repeatCount="indefinite" />
+                  <animate attributeName="stroke-dashoffset" values="-40;330" dur="4.4s" repeatCount="indefinite" />
                 </path>
               )}
             </>
@@ -299,18 +299,18 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
                 strokeLinecap="round"
                 className="drop-shadow-[0_0_4px_rgba(52,211,153,0.4)]"
               />
-              {/* Solitary Real-time Refresh Pulse (Tx Emerald Packet flowing Right to Left) */}
+              {/* Solitary Real-time Refresh Pulse (Tx Vibrant Emerald flowing Left to Right) */}
               {hasActiveTraffic && (
                 <path
                   d={txPaths.linePath}
                   fill="none"
-                  stroke="#d1fae5"
-                  strokeWidth="2.2"
+                  stroke="#10b981"
+                  strokeWidth="2.0"
                   strokeLinecap="round"
                   strokeDasharray="32 360"
-                  className="drop-shadow-[0_0_8px_rgba(52,211,153,0.9)] opacity-95"
+                  className="drop-shadow-[0_0_6px_rgba(16,185,129,0.75)] opacity-85"
                 >
-                  <animate attributeName="stroke-dashoffset" values="320;-40" dur="2.8s" begin="0.7s" repeatCount="indefinite" />
+                  <animate attributeName="stroke-dashoffset" values="-40;330" dur="5.0s" begin="1.2s" repeatCount="indefinite" />
                 </path>
               )}
             </>
@@ -320,12 +320,12 @@ export const TrafficRadarScope: React.FC<TrafficRadarScopeProps> = ({
           {isBgpActive && (
             <>
               <circle cx={lastRx.x} cy={lastRx.y} r="2" fill="none" stroke="#22d3ee" strokeWidth="1">
-                <animate attributeName="r" values="2;6;2" dur="2.4s" repeatCount="indefinite" />
-                <animate attributeName="opacity" values="0.85;0;0.85" dur="2.4s" repeatCount="indefinite" />
+                <animate attributeName="r" values="2;6;2" dur="4.4s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.85;0;0.85" dur="4.4s" repeatCount="indefinite" />
               </circle>
               <circle cx={lastTx.x} cy={lastTx.y} r="2" fill="none" stroke="#34d399" strokeWidth="1">
-                <animate attributeName="r" values="2;6;2" dur="2.8s" begin="0.7s" repeatCount="indefinite" />
-                <animate attributeName="opacity" values="0.85;0;0.85" dur="2.8s" begin="0.7s" repeatCount="indefinite" />
+                <animate attributeName="r" values="2;6;2" dur="5.0s" begin="1.2s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.85;0;0.85" dur="5.0s" begin="1.2s" repeatCount="indefinite" />
               </circle>
             </>
           )}
