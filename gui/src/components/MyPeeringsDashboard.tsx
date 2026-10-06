@@ -47,6 +47,14 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
   const [sessionToDelete, setSessionToDelete] = useState<PeeringSession | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
+  const [currentTime, setCurrentTime] = useState<number>(() => Math.floor(Date.now() / 1000));
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(Math.floor(Date.now() / 1000));
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
 
   const toggleExpand = (id: string) => {
     setExpandedSessions((prev) => {
@@ -143,9 +151,45 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
     return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
   };
 
+  /**
+   * Evaluates real-time WireGuard tunnel handshake health:
+   * - Active (Up): Valid handshake within 180 seconds (3 minutes) per WireGuard protocol standard (REJECT_AFTER_TIME).
+   * - Inactive (Down): Handshake existed in the past (> 0) but timed out (> 180s ago).
+   * - Idle / Waiting: Never handshaked (timestamp <= 0 or missing).
+   */
+  const getWgHealth = (timestamp?: number) => {
+    if (!timestamp || timestamp <= 0) {
+      return {
+        status: 'idle' as const,
+        label: 'WG Idle',
+        badgeClass: 'text-slate-500',
+        detailText: 'Idle / Waiting',
+        detailClass: 'text-slate-500'
+      };
+    }
+    const now = currentTime;
+    const diff = now - timestamp;
+    if (diff <= 180) {
+      return {
+        status: 'up' as const,
+        label: 'WG Up',
+        badgeClass: 'text-emerald-400 font-medium',
+        detailText: 'Active',
+        detailClass: 'text-emerald-400 font-medium'
+      };
+    }
+    return {
+      status: 'down' as const,
+      label: 'WG Down',
+      badgeClass: 'text-rose-400 font-medium',
+      detailText: 'Down / Timeout',
+      detailClass: 'text-rose-400 font-medium'
+    };
+  };
+
   const formatHandshake = (timestamp?: number): string => {
     if (!timestamp || timestamp <= 0) return 'Never';
-    const now = Math.floor(Date.now() / 1000);
+    const now = currentTime;
     const diff = now - timestamp;
     if (diff < 0 || diff < 10) return 'Just now';
     if (diff < 60) return `${diff}s ago`;
@@ -336,6 +380,7 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                       const peerPort = (sess.peering?.endpoint && sess.peering.endpoint.includes(':') ? sess.peering.endpoint.split(':').pop() : null) || sess.assigned?.clientPort || sess.peering?.clientPort || 0;
                       const badge = getStatusBadge(sess);
                       const isExpanded = expandedSessions.has(sess.id);
+                      const wgHealth = getWgHealth(sess.runtime?.latestHandshake);
 
                       const cleanLla = sess.peering?.linkLocal && sess.peering.linkLocal.toLowerCase() !== 'fe80::' && !sess.peering.linkLocal.endsWith('::') ? sess.peering.linkLocal : '';
                       const cleanIpv4 = sess.peering?.ipv4 && sess.peering.ipv4 !== '172.16.0.0' && sess.peering.ipv4 !== '10.0.0.0' && !sess.peering.ipv4.endsWith('.0') ? sess.peering.ipv4 : '';
@@ -437,12 +482,8 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                                   <span className={`w-1.5 h-1.5 rounded-full ${badge.dotClass}`} />
                                   <span>{badge.label}</span>
                                 </span>
-                                <span className="text-[9px] font-mono text-slate-500">
-                                  {sess.runtime?.latestHandshake && sess.runtime.latestHandshake > 0 ? (
-                                    <span className="text-emerald-400 font-medium">WG Up</span>
-                                  ) : (
-                                    <span>WG Idle</span>
-                                  )}
+                                <span className={`text-[9px] font-mono ${wgHealth.badgeClass}`}>
+                                  {wgHealth.label}
                                 </span>
                               </div>
                             </td>
@@ -628,11 +669,9 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
                                           <span className="font-mono text-[11px] text-slate-200">
                                             {formatHandshake(sess.runtime?.latestHandshake)}
                                           </span>
-                                          {sess.runtime?.latestHandshake && sess.runtime.latestHandshake > 0 ? (
-                                            <span className="ml-auto text-[10px] text-emerald-400 font-sans font-medium">Active</span>
-                                          ) : (
-                                            <span className="ml-auto text-[10px] text-slate-500 font-sans">Idle / Waiting</span>
-                                          )}
+                                          <span className={`ml-auto text-[10px] font-sans ${wgHealth.detailClass}`}>
+                                            {wgHealth.detailText}
+                                          </span>
                                         </div>
                                       </div>
 
