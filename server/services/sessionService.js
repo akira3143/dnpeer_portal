@@ -516,14 +516,26 @@ export class SessionService {
           session.source === 'discovered' ? 'discovered_deleted' : 'session_deleted'
         );
       }
+      if (session.assigned?.interface) {
+        await this.addIgnoredPeer(
+          session.nodeId,
+          session.assigned.interface,
+          session.source === 'discovered' ? 'discovered_deleted' : 'session_deleted'
+        );
+      }
+      if (session.runtime?.bgpProtocolName) {
+        await this.addIgnoredPeer(
+          session.nodeId,
+          session.runtime.bgpProtocolName,
+          session.source === 'discovered' ? 'discovered_deleted' : 'session_deleted'
+        );
+      }
 
       sessions.splice(sessionIndex, 1);
       await this.saveSessions(sessions);
 
-      // Fire async Telegram deletion notification only for portal-managed sessions
-      if (session.source !== 'discovered') {
-        NotificationService.notifySessionDeletion(session).catch(() => {});
-      }
+      // Fire async Telegram deletion notification with actor context and teardown advice
+      NotificationService.notifySessionDeletion(session, { requesterAsn, isAdmin }).catch(() => {});
 
       return { success: true, message: `Session ${sessionId} removed successfully` };
     });
