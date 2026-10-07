@@ -49,7 +49,7 @@ const DEFAULT_CONFIG = {
       flag: '🇺🇸',
       city: 'San Jose',
       country: 'United States',
-      region: 'us-west',
+      region: 'na',
       isp: 'AkiLab Datacenter US-West',
       endpointDomain: 'us1.akilab.dn42',
       wgPublicKey: 'akilab_sjc_wg_pubkey_replace_in_config_2222222=',

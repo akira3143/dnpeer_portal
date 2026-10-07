@@ -74,7 +74,7 @@ export const NodeGrid: React.FC<NodeGridProps> = ({ nodes, onSelectNode }) => {
       me: 'ME'
     };
 
-    const priorityOrder = ['apac', 'us-west', 'us-east', 'na', 'eu', 'sa', 'oc', 'af', 'me'];
+    const priorityOrder = ['apac', 'na', 'eu', 'us-west', 'us-east', 'sa', 'oc', 'af', 'me'];
     const countMap = new Map<string, number>();
 
     for (const node of nodes) {

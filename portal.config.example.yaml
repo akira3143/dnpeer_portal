@@ -53,7 +53,7 @@ nodes:
     flag: "🇺🇸"
     city: "San Jose"
     country: "United States"
-    region: "us-west"
+    region: "na"
     status: "active"
     isp: "AkiLab Datacenter US-West"
     endpointDomain: "us1.akilab.dn42"
