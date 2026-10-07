@@ -3,6 +3,30 @@
 # ==============================================================================
 # This is the PRIMARY configuration file for your DN42 Autonomous System.
 # Hot-reloaded automatically within 200ms upon save (zero downtime, no restart required).
+#
+# ------------------------------------------------------------------------------
+# 📌 Region Code Reference / 节点区域代码规范 (用于 nodes[].region)
+# ------------------------------------------------------------------------------
+# Web GUI 会自动根据已配置节点的 region 字段动态生成过滤 Tab。
+# 为保持与亚太（APAC）同等的宏观大洲层级对称性，推荐使用以下标准大洲代码：
+#
+#   标准宏观大洲代码（推荐与 APAC 平级）：
+#     - "apac"          : Asia-Pacific (亚太: 日本、香港、新加坡等) -> Badge: APAC
+#     - "na"            : North America (北美: 洛杉矶、圣何塞、西雅图、纽约等) -> Badge: NA
+#     - "eu"            : Europe (欧洲: 法兰克福、伦敦、阿姆斯特丹等) -> Badge: EU
+#     - "sa"            : South America (南美: 圣保罗、布宜诺斯艾利斯等) -> Badge: SA
+#     - "oc"            : Oceania (大洋洲: 悉尼、墨尔本、奥克兰等) -> Badge: OC
+#     - "af"            : Africa (非洲: 约翰内斯堡等) -> Badge: AF
+#     - "me"            : Middle East (中东: 迪拜等) -> Badge: ME
+#
+#   可选细分子区域代码（如需在 Tab 中单独细分美西/美东）：
+#     - "us-west" / "usw" : United States West (美西) -> Badge: US-WEST
+#     - "us-east" / "use" : United States East (美东) -> Badge: US-EAST
+#
+#   * 注：节点名称（name）已明确标明具体城市与网络方位（如 Los Angeles 01 (US West)），
+#        因此 region 建议保持大洲级标准代码。
+#   * 注：系统支持任意自定义代码，未预设代码会在前端自动转为大写徽章展示。
+# ------------------------------------------------------------------------------
 
 # Route path for the Modern Web GUI (e.g., "/gui", "/portal", "/akilab").
 # Note: The root path ("/") hosts the in-browser WebAssembly Linux terminal CLI.
@@ -32,7 +56,7 @@ nodes:
     flag: "🇯🇵"                            # Country / regional emoji flag
     city: "Tokyo"
     country: "Japan"
-    region: "apac"                         # Region code: "apac", "us-west", "us-east", "eu", etc.
+    region: "apac"                         # Standard region code (e.g. "apac", "na", "eu", "sa", "oc")
     status: "active"                       # Node status: "active", "maintenance", "offline"
     isp: "AkiLab Datacenter Tokyo"
     endpointDomain: "jp1.akilab.dn42"      # Public WireGuard endpoint domain (clients connect here)
