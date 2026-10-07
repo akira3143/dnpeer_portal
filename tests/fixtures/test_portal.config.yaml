@@ -91,7 +91,7 @@ nodes:
     flag: "🇺🇸"
     city: "Los Angeles"
     country: "United States"
-    region: "na"
+    region: "us-west"
     isp: "AkiLab Datacenter US-West"
     endpointDomain: "akiusla1-dn42.akilab.meme"
     wgPublicKey: "CBbv9qUv/u7j/keioB3yx7NaL5yxlI+0ej+SsXVuJ1o="

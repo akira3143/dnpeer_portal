@@ -32,7 +32,7 @@ nodes:
     flag: "🇯🇵"                            # Country / regional emoji flag
     city: "Tokyo"
     country: "Japan"
-    region: "apac"                         # Region code: "apac", "na", "eu", etc.
+    region: "apac"                         # Region code: "apac", "us-west", "us-east", "eu", etc.
     status: "active"                       # Node status: "active", "maintenance", "offline"
     isp: "AkiLab Datacenter Tokyo"
     endpointDomain: "jp1.akilab.dn42"      # Public WireGuard endpoint domain (clients connect here)
@@ -53,7 +53,7 @@ nodes:
     flag: "🇺🇸"
     city: "San Jose"
     country: "United States"
-    region: "na"
+    region: "us-west"
     status: "active"
     isp: "AkiLab Datacenter US-West"
     endpointDomain: "us1.akilab.dn42"

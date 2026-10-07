@@ -55,7 +55,7 @@ const DEFAULT_META: NetworkMeta = {
       flag: '🇺🇸',
       city: 'San Jose',
       country: 'United States',
-      region: 'na',
+      region: 'us-west',
       status: 'offline',
       isp: 'AkiLab Core Backbone',
       endpointDomain: 'us1.akilab.dn42',

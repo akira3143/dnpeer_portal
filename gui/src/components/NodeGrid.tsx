@@ -4,7 +4,7 @@ import { useToast } from './Toast';
 import { CountryFlag } from './CountryFlag';
 import { Layers, Copy, Terminal } from 'lucide-react';
 
-export type RegionType = 'all' | 'apac' | 'na' | 'eu';
+export type RegionType = string;
 
 interface NodeGridProps {
   nodes: NetworkMeta['nodes'];
@@ -54,18 +54,67 @@ export const NodeGrid: React.FC<NodeGridProps> = ({ nodes, onSelectNode }) => {
 
   const filteredNodes = useMemo(() => {
     return nodes.filter((node) => {
-      return selectedRegion === 'all' || node.region === selectedRegion;
+      return selectedRegion === 'all' || (node.region || '').toLowerCase() === selectedRegion.toLowerCase();
     });
   }, [nodes, selectedRegion]);
 
-  const allRegionTabs: { id: RegionType; label: string; count: number }[] = [
-    { id: 'all', label: 'ALL', count: nodes.length },
-    { id: 'apac', label: 'APAC', count: nodes.filter((n) => n.region === 'apac').length },
-    { id: 'na', label: 'NA', count: nodes.filter((n) => n.region === 'na').length },
-    { id: 'eu', label: 'EU', count: nodes.filter((n) => n.region === 'eu').length },
-  ];
+  const regionTabs = useMemo(() => {
+    const labelMap: Record<string, string> = {
+      all: 'ALL',
+      apac: 'APAC',
+      'us-west': 'US-WEST',
+      usw: 'US-WEST',
+      'us-east': 'US-EAST',
+      use: 'US-EAST',
+      na: 'NA',
+      eu: 'EU',
+      sa: 'SA',
+      oc: 'OC',
+      af: 'AF',
+      me: 'ME'
+    };
 
-  const regionTabs = allRegionTabs.filter((tab) => tab.id === 'all' || tab.count > 0);
+    const priorityOrder = ['apac', 'us-west', 'us-east', 'na', 'eu', 'sa', 'oc', 'af', 'me'];
+    const countMap = new Map<string, number>();
+
+    for (const node of nodes) {
+      const reg = (node.region || '').toLowerCase();
+      if (reg) {
+        countMap.set(reg, (countMap.get(reg) || 0) + 1);
+      }
+    }
+
+    const tabs: { id: RegionType; label: string; count: number }[] = [
+      { id: 'all', label: 'ALL', count: nodes.length }
+    ];
+
+    for (const reg of priorityOrder) {
+      if (countMap.has(reg)) {
+        tabs.push({
+          id: reg,
+          label: labelMap[reg] || reg.toUpperCase(),
+          count: countMap.get(reg) || 0
+        });
+        countMap.delete(reg);
+      }
+    }
+
+    for (const [reg, count] of countMap.entries()) {
+      tabs.push({
+        id: reg,
+        label: labelMap[reg] || reg.toUpperCase(),
+        count
+      });
+    }
+
+    return tabs;
+  }, [nodes]);
+
+  useEffect(() => {
+    if (selectedRegion !== 'all' && !regionTabs.some((t) => t.id === selectedRegion)) {
+      setSelectedRegion('all');
+    }
+  }, [regionTabs, selectedRegion]);
 
   return (
     <section id="nodes" className="w-full py-8 scroll-mt-20">
