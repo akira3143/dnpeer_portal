@@ -469,7 +469,7 @@ export class SessionService {
   /**
    * Delete peering session & release port
    */
-  static async deleteSession(sessionId, requesterAsn, isAdmin = false) {
+  static async deleteSession(sessionId, requesterAsn, isAdmin = false, options = {}) {
     return this.withSessionCommitLock(async () => {
       const sessions = await this.getSessions();
       let sessionIndex = sessions.findIndex(s => s.id === sessionId);
@@ -535,7 +535,11 @@ export class SessionService {
       await this.saveSessions(sessions);
 
       // Fire async Telegram deletion notification with actor context and teardown advice
-      NotificationService.notifySessionDeletion(session, { requesterAsn, isAdmin }).catch(() => {});
+      NotificationService.notifySessionDeletion(session, {
+        requesterAsn,
+        isAdmin,
+        requesterMnt: options.requesterMnt
+      }).catch(() => {});
 
       return { success: true, message: `Session ${sessionId} removed successfully` };
     });

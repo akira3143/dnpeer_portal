@@ -17,7 +17,9 @@ export class SessionController {
       return errorEnvelope('Unauthorized', null, 401);
     }
     const isAdmin = user.role === 'admin';
-    const result = await SessionService.deleteSession(sessionId, user.asn, isAdmin);
+    const result = await SessionService.deleteSession(sessionId, user.asn, isAdmin, {
+      requesterMnt: user.mnt || user.maintainer || user.asName
+    });
     if (!result.success) {
       return errorEnvelope(result.message, null, 200);
     }
