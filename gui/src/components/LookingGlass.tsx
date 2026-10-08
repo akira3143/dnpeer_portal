@@ -66,7 +66,7 @@ export const LookingGlass: React.FC<LookingGlassProps> = ({ nodes, networkMeta: 
         setOutput('error: Please specify an IP, CIDR subnet, or ASN (e.g. 172.20.0.0/16 or 4242423143)');
         return;
       }
-      if (!/^[a-zA-Z0-9.:/_\-\s]+$/.test(trimmed)) {
+      if (/[\r\n]/.test(trimmed) || !/^[a-zA-Z0-9.:/_\- ]+$/.test(trimmed)) {
         setQueryError('Target contains invalid characters');
         setOutput('error: Target contains invalid characters. Please use a valid IP, CIDR prefix, or ASN.');
         return;

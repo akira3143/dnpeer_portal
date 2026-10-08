@@ -12,7 +12,10 @@ export function formatBirdRouteQuery(target) {
   if (!target || !String(target).trim()) {
     return 'show route';
   }
-  let clean = String(target).trim();
+  let clean = String(target).replace(/[\r\n]/g, ' ').trim();
+  if (!clean) {
+    return 'show route';
+  }
 
   // If user passed "for AS12345" or "for 4242421816", strip "for " so ASN handler catches it
   if (/^for\s+(?:AS)?(\d{1,10})(\s+.*)?$/i.test(clean)) {
@@ -29,6 +32,9 @@ export function formatBirdRouteQuery(target) {
 
   // 2. If target already has BIRD keywords: for, where, filter, table, export, primary, all
   if (/^(for|where|filter|table|export|primary|all)\b/i.test(clean)) {
+    if (!/^[a-zA-Z0-9.:/_\- ~[\]*=<>'"]+$/.test(clean)) {
+      return 'show route';
+    }
     return `show route ${clean}`;
   }
 
@@ -38,7 +44,10 @@ export function formatBirdRouteQuery(target) {
     return `show route for ${clean}`;
   }
 
-  // 4. Fallback for any other custom syntax:
+  // 4. Fallback for any other custom syntax (strictly validated against injection characters):
+  if (!/^[a-zA-Z0-9.:/_\- ~[\]*=<>'"]+$/.test(clean)) {
+    return 'show route';
+  }
   return `show route ${clean}`;
 }
 
@@ -103,6 +112,14 @@ export class LookingGlassService {
       };
     }
 
+    // Strictly forbid newlines and control characters to prevent command/CRLF injection
+    if (/[\r\n]/.test(String(command || '')) || /[\r\n]/.test(String(target || ''))) {
+      return {
+        success: false,
+        error: 'Invalid characters in query: newlines are strictly forbidden'
+      };
+    }
+
     let cleanCmd = String(command || 'summary').trim();
     let cleanTarget = String(target || '').trim();
 
@@ -119,6 +136,38 @@ export class LookingGlassService {
 
     if (cleanCmd === 'bgp' || cleanCmd === 'summary') cleanCmd = 'protocols';
     if (cleanCmd === 'trace') cleanCmd = 'traceroute';
+
+    const ALLOWED_COMMANDS = ['protocols', 'route', 'ping', 'traceroute', 'status'];
+    if (!ALLOWED_COMMANDS.includes(cleanCmd)) {
+      return {
+        success: false,
+        error: `Invalid command '${cleanCmd}'. Permitted commands: protocols, route, ping, traceroute, status`
+      };
+    }
+
+    // Command-specific target validation to prevent argument injection
+    if (cleanCmd === 'ping' || cleanCmd === 'traceroute') {
+      if (cleanTarget && (!/^[a-zA-Z0-9.:_-]+$/.test(cleanTarget) || cleanTarget.startsWith('-'))) {
+        return {
+          success: false,
+          error: 'Invalid target for ping/traceroute: only IP address or hostname is permitted'
+        };
+      }
+    } else if (cleanCmd === 'protocols' || cleanCmd === 'status') {
+      if (cleanTarget && !/^[a-zA-Z0-9._-]+$/.test(cleanTarget)) {
+        return {
+          success: false,
+          error: 'Invalid protocol target: only protocol name or "all" is permitted'
+        };
+      }
+    } else if (cleanCmd === 'route') {
+      if (cleanTarget && !/^[a-zA-Z0-9.:/_\- ~[\]*=<>'"]+$/.test(cleanTarget)) {
+        return {
+          success: false,
+          error: 'Invalid route target: contains unsupported characters'
+        };
+      }
+    }
 
     if (process.env.MOCK_LG_OUTPUT) {
       return {
