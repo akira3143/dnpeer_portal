@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { getDataDir } from '../config.js';
@@ -135,64 +134,7 @@ export class SessionService {
     return path.join(getDataDir(), 'peering_sessions.json');
   }
 
-  /**
-   * Automatically migrates legacy peering_sessions.json containing inline trafficSeries
-   * and volatile runtime telemetry into decoupled storage (peering_sessions.json + session_telemetry.json).
-   * Creates an exact backup of the original file beforehand.
-   */
-  static async ensureMigrated() {
-    const filePath = this.getSessionsPath();
-    if (!fs.existsSync(filePath)) return;
-
-    let rawSessions = null;
-    try {
-      rawSessions = await FileStore.readJson(filePath, null);
-    } catch {
-      return;
-    }
-    if (!Array.isArray(rawSessions) || rawSessions.length === 0) return;
-
-    const hasLegacyTelemetry = rawSessions.some(
-      s => s && s.runtime && (
-        (Array.isArray(s.runtime.trafficSeries) && s.runtime.trafficSeries.length > 0) ||
-        typeof s.runtime.rxBytes === 'number' ||
-        s.runtime.latestHandshake !== undefined
-      )
-    );
-
-    if (!hasLegacyTelemetry) return;
-
-    // 1. Create timestamped backup
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const backupPath = `${filePath}.bak.${timestamp}`;
-    try {
-      fs.copyFileSync(filePath, backupPath);
-      console.log(`[SessionService] Created backup of legacy peering_sessions.json at ${backupPath}`);
-    } catch (err) {
-      console.error(`[SessionService] Failed to create backup before migration: ${err.message}`);
-      throw err;
-    }
-
-    // 2. Extract telemetry into SessionTelemetryManager
-    SessionTelemetryManager.ensureLoaded();
-    const sanitizedSessions = [];
-    for (const s of rawSessions) {
-      if (!s || typeof s !== 'object') continue;
-      const { runtime, ...staticProps } = s;
-      if (runtime && s.id) {
-        SessionTelemetryManager.setTelemetry(s.id, runtime, s.status);
-      }
-      sanitizedSessions.push(staticProps);
-    }
-
-    // 3. Persist telemetry and write slimmed sessions
-    await SessionTelemetryManager.saveTelemetry();
-    await FileStore.writeJson(filePath, sanitizedSessions);
-    console.log(`[SessionService] Successfully migrated ${sanitizedSessions.length} sessions. Telemetry decoupled to session_telemetry.json.`);
-  }
-
   static async getSessions() {
-    await this.ensureMigrated();
     const filePath = this.getSessionsPath();
     const sessions = await FileStore.readJson(filePath, []);
     const list = Array.isArray(sessions) ? sessions : [];
@@ -677,7 +619,11 @@ export class SessionService {
           while (sessions.some(other => other.id === newId && other !== s)) {
             newId = `${canonicalBase}_${c++}`;
           }
+          const oldId = s.id;
           s.id = newId;
+          if (oldId && oldId !== newId) {
+            SessionTelemetryManager.renameSession(oldId, newId);
+          }
           updated = true;
         }
       }
