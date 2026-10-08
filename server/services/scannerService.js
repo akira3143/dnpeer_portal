@@ -1,10 +1,22 @@
-import { execSync } from 'node:child_process';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
 import fs from 'node:fs';
 import { getActiveConfig } from '../storage/configLoader.js';
 import { PortLedgerService } from './portLedgerService.js';
 import { SessionService } from './sessionService.js';
 import { StatusTracker } from './statusTracker.js';
 import { parseBgpProtocols, parseWireguardConfigs } from '../../scripts/probe-agent.js';
+
+const execAsync = promisify(exec);
+
+async function safeExec(cmd, timeout = 5000) {
+  try {
+    const { stdout } = await execAsync(cmd, { encoding: 'utf8', timeout });
+    return (stdout || '').trim();
+  } catch {
+    return '';
+  }
+}
 
 export { parseBgpProtocols, parseWireguardConfigs };
 
@@ -123,39 +135,24 @@ export class ScannerService {
     let ssOutput = options.mockSsOutput;
 
     if (wgOutput === undefined) {
-      try {
-        wgOutput = execSync('wg show all dump', { encoding: 'utf8', timeout: 5000 }).trim();
-      } catch {
-        wgOutput = '';
-      }
+      wgOutput = await safeExec('wg show all dump', 5000);
     }
 
     if (ssOutput === undefined) {
-      try {
-        ssOutput = execSync('ss -ulnp', { encoding: 'utf8', timeout: 5000 }).trim();
-      } catch {
-        ssOutput = '';
-      }
+      ssOutput = await safeExec('ss -ulnp', 5000);
     }
 
     let bgpOutput = options.mockBgpOutput;
     if (bgpOutput === undefined) {
-      try {
-        let rawBgp = execSync('birdc -r show protocols all', { encoding: 'utf8', timeout: 5000 }).trim();
-        try {
-          const rawBgp6 = execSync('birdc6 -r show protocols all', { encoding: 'utf8', timeout: 5000 }).trim();
-          if (rawBgp6) rawBgp += '\n' + rawBgp6;
-        } catch {}
+      let rawBgp = await safeExec('birdc -r show protocols all', 5000);
+      if (rawBgp) {
+        const rawBgp6 = await safeExec('birdc6 -r show protocols all', 5000);
+        if (rawBgp6) rawBgp += '\n' + rawBgp6;
         bgpOutput = rawBgp;
-      } catch {
-        try {
-          bgpOutput = execSync('birdc show protocols all', { encoding: 'utf8', timeout: 5000 }).trim();
-        } catch {
-          try {
-            bgpOutput = execSync('birdc show protocols', { encoding: 'utf8', timeout: 5000 }).trim();
-          } catch {
-            bgpOutput = '';
-          }
+      } else {
+        bgpOutput = await safeExec('birdc show protocols all', 5000);
+        if (!bgpOutput) {
+          bgpOutput = await safeExec('birdc show protocols', 5000);
         }
       }
     }

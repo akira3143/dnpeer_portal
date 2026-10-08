@@ -443,6 +443,9 @@ export function createServer() {
   server.closeAll = function() {
     stopConfigWatcher();
     RegistryService.stopPeriodicSync();
+    if (typeof server.closeAllConnections === 'function') {
+      server.closeAllConnections();
+    }
     return new Promise(resolve => {
       server.close(resolve);
     });

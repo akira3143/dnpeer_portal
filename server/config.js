@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,11 +30,29 @@ export function getResendApiKey() {
   return '';
 }
 
+export function getAuthJwtSecret() {
+  const envSecret = process.env.AUTH_JWT_SECRET;
+  if (envSecret && envSecret.trim()) {
+    return envSecret.trim();
+  }
+  const isProd = (process.env.NODE_ENV === 'production');
+  if (isProd) {
+    if (!globalThis.__ephemeralJwtSecret) {
+      globalThis.__ephemeralJwtSecret = crypto.randomBytes(32).toString('hex');
+      console.warn('⚠️ [SECURITY WARNING] AUTH_JWT_SECRET is not configured in production mode. Generated ephemeral secure random key for session security.');
+    }
+    return globalThis.__ephemeralJwtSecret;
+  }
+  return 'dev-insecure-secret-placeholder-please-set-auth-jwt-secret';
+}
+
 export const ENV = {
   NODE_ENV: process.env.NODE_ENV || 'development',
   PORT: parseInt(process.env.PORT || '4242', 10),
   HOST: process.env.HOST || '0.0.0.0',
-  AUTH_JWT_SECRET: process.env.AUTH_JWT_SECRET || 'dev-insecure-secret-placeholder-please-set-auth-jwt-secret',
+  get AUTH_JWT_SECRET() {
+    return getAuthJwtSecret();
+  },
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '',
   TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || '',
   RESEND_FROM: process.env.RESEND_FROM || 'AkiLab Networks <akira@akilab.meme>',

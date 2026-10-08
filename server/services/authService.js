@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
+import { promisify } from 'node:util';
 import { ENV, getDataDir } from '../config.js';
 import { getActiveConfig } from '../storage/configLoader.js';
 import { FileStore } from '../storage/fileStore.js';
@@ -12,19 +13,55 @@ import { EmailService } from './emailService.js';
 // In-memory active challenges map: challengeText -> challengeData
 const activeChallenges = new Map();
 
-// Periodic cleanup of expired challenges
+// In-memory password login failure tracker: lockKey -> { attempts, lockedUntil, lastAttempt }
+const passwordAttemptTracker = new Map();
+
+// Periodic cleanup of expired challenges and stale rate limits
 const challengeCleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [key, val] of activeChallenges) {
     if (now > val.expiresAt) activeChallenges.delete(key);
+  }
+  for (const [key, val] of passwordAttemptTracker) {
+    if (now > (val.lockedUntil || (val.lastAttempt + 300 * 1000))) {
+      passwordAttemptTracker.delete(key);
+    }
   }
 }, 60 * 1000);
 if (typeof challengeCleanupTimer?.unref === 'function') {
   challengeCleanupTimer.unref();
 }
 
+const scryptAsync = promisify(crypto.scrypt);
+
 /**
- * Scrypt password hashing with unique salt
+ * Non-blocking asynchronous scrypt password hashing
+ */
+export async function hashPasswordAsync(password, salt = crypto.randomBytes(16).toString('hex')) {
+  const key = await scryptAsync(password, salt, 64);
+  return {
+    salt,
+    hash: key.toString('hex')
+  };
+}
+
+/**
+ * Non-blocking asynchronous password verification
+ */
+export async function verifyPasswordAsync(password, salt, storedHash) {
+  if (!password || !salt || !storedHash) return false;
+  try {
+    const key = await scryptAsync(password, salt, 64);
+    const expected = Buffer.from(storedHash, 'hex');
+    if (key.length !== expected.length) return false;
+    return crypto.timingSafeEqual(key, expected);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Scrypt password hashing with unique salt (synchronous fallback for fixtures & scripts)
  */
 export function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
   const key = crypto.scryptSync(password, salt, 64);
@@ -58,18 +95,8 @@ export class AuthService {
       .replace(/[^a-z0-9]/g, '');
   }
 
-  // Deprecated: registry_cache.json is retired in Round 20
-  static getRegistryPath() {
-    return path.join(getDataDir(), 'registry_cache.json');
-  }
-
   static getAuthUsersPath() {
     return path.join(getDataDir(), 'auth_users.json');
-  }
-
-  // Deprecated: JSON cache retired, kept for backward signature compatibility
-  static async getRegistryData() {
-    return {};
   }
 
   static async getAuthUsers() {
@@ -310,6 +337,19 @@ export class AuthService {
   }
 
   /**
+   * Reset in-memory failed login attempts for an ASN/username (helper for tests and admin)
+   */
+  static resetPasswordAttempts(key) {
+    if (key) {
+      const cleanKey = String(key).replace(/^AS/i, '').toLowerCase();
+      passwordAttemptTracker.delete(cleanKey);
+      passwordAttemptTracker.delete(String(key).toLowerCase());
+    } else {
+      passwordAttemptTracker.clear();
+    }
+  }
+
+  /**
    * Password login loaded from server/data/auth_users.json with scrypt verification
    */
   static async loginWithPassword({ username, asn, password, rememberMe = false }) {
@@ -319,19 +359,59 @@ export class AuthService {
     }
 
     const cleanAsn = parseInt(rawUser.replace(/^AS/i, ''), 10);
+    const lockKey = String(cleanAsn || rawUser).toLowerCase();
+    const now = Date.now();
+    const attemptRecord = passwordAttemptTracker.get(lockKey);
+
+    if (attemptRecord && attemptRecord.lockedUntil > now) {
+      const remainingSec = Math.ceil((attemptRecord.lockedUntil - now) / 1000);
+      return {
+        success: false,
+        error: `Account temporarily locked due to multiple failed login attempts. Please wait ${remainingSec}s.`
+      };
+    }
+
     const authUsers = await this.getAuthUsers();
+
+    const recordFailure = () => {
+      const isLockExpired = attemptRecord && attemptRecord.lockedUntil > 0 && attemptRecord.lockedUntil <= now;
+      const isStale = attemptRecord && (now - (attemptRecord.lastAttempt || 0)) > 300 * 1000;
+      const count = (isLockExpired || isStale || !attemptRecord ? 0 : attemptRecord.attempts) + 1;
+
+      if (count >= 5) {
+        passwordAttemptTracker.set(lockKey, {
+          attempts: count,
+          lockedUntil: now + 60 * 1000,
+          lastAttempt: now
+        });
+        return {
+          success: false,
+          error: 'Account temporarily locked due to multiple failed login attempts. Please wait 60s.'
+        };
+      } else {
+        passwordAttemptTracker.set(lockKey, {
+          attempts: count,
+          lockedUntil: 0,
+          lastAttempt: now
+        });
+        return { success: false, error: 'Invalid username or password' };
+      }
+    };
 
     // Match by key: username or AS<asn> or numeric asn
     let userEntry = authUsers[rawUser] || (cleanAsn ? authUsers[String(cleanAsn)] : null) || (cleanAsn ? authUsers[`AS${cleanAsn}`] : null);
 
     if (!userEntry) {
-      return { success: false, error: 'Invalid username or password' };
+      return recordFailure();
     }
 
-    const isMatch = verifyPassword(password, userEntry.salt, userEntry.hash);
+    const isMatch = await verifyPasswordAsync(password, userEntry.salt, userEntry.hash);
     if (!isMatch) {
-      return { success: false, error: 'Invalid username or password' };
+      return recordFailure();
     }
+
+    // Succeeded: clear attempt history
+    passwordAttemptTracker.delete(lockKey);
 
     const userAsn = userEntry.asn || cleanAsn;
     const config = getActiveConfig();
@@ -378,7 +458,7 @@ export class AuthService {
       return { success: false, error: 'Password must be at least 8 characters long' };
     }
 
-    const { salt, hash } = hashPassword(newPassword);
+    const { salt, hash } = await hashPasswordAsync(newPassword);
     const authUsers = await this.getAuthUsers();
 
     const config = getActiveConfig();
