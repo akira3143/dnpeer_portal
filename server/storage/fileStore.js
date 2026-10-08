@@ -53,7 +53,7 @@ export class FileStore {
       const dir = path.dirname(filePath);
       this.ensureDirectory(dir);
 
-      const content = (header ? header : '') + JSON.stringify(data, null, 2);
+      const content = (header ? header : '') + (typeof data === 'string' ? data : JSON.stringify(data, null, 2));
       const tempPath = `${filePath}.${crypto.randomBytes(6).toString('hex')}.tmp`;
 
       await fs.promises.writeFile(tempPath, content, 'utf8');
@@ -81,7 +81,7 @@ export class FileStore {
   static writeJsonSync(filePath, data, header = '') {
     const dir = path.dirname(filePath);
     this.ensureDirectory(dir);
-    const content = (header ? header : '') + JSON.stringify(data, null, 2);
+    const content = (header ? header : '') + (typeof data === 'string' ? data : JSON.stringify(data, null, 2));
     const tempPath = `${filePath}.${crypto.randomBytes(6).toString('hex')}.tmp`;
     fs.writeFileSync(tempPath, content, 'utf8');
     try {

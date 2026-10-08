@@ -25,3 +25,6 @@ server/data/*.bak*
 
 # Real configuration (never commit; deploy-time only)
 portal.config.yaml
+
+# Local migration audit artifacts
+migration_audit_output/

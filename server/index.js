@@ -17,6 +17,7 @@ import { SessionController } from './controllers/sessionController.js';
 import { ProbeController } from './controllers/probeController.js';
 import { LookingGlassController } from './controllers/lgController.js';
 import { generateInstallProbeScript } from './services/installScriptService.js';
+import { SessionTelemetryManager } from './services/sessionTelemetryManager.js';
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -443,6 +444,9 @@ export function createServer() {
   server.closeAll = function() {
     stopConfigWatcher();
     RegistryService.stopPeriodicSync();
+    try {
+      SessionTelemetryManager.saveTelemetrySync();
+    } catch {}
     if (typeof server.closeAllConnections === 'function') {
       server.closeAllConnections();
     }
@@ -457,6 +461,14 @@ export function createServer() {
 // Start standalone if executed directly (normalize windows path separator via pathToFileURL)
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const server = createServer();
+  const cleanup = () => {
+    try {
+      SessionTelemetryManager.saveTelemetrySync();
+    } catch {}
+    process.exit(0);
+  };
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
   server.listen(ENV.PORT, ENV.HOST, () => {
     console.log(`[DN42-Portal-2.0] Server running at http://${ENV.HOST}:${ENV.PORT}`);
     console.log(`[DN42-Portal-2.0] Terminal CLI: http://${ENV.HOST}:${ENV.PORT}/`);

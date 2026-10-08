@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { getDataDir } from '../config.js';
@@ -8,6 +9,7 @@ import { PortLedgerService } from './portLedgerService.js';
 import { ConfigEngine } from './configEngine.js';
 import { AuthService } from './authService.js';
 import { NotificationService } from './notificationService.js';
+import { SessionTelemetryManager } from './sessionTelemetryManager.js';
 
 // In-process commit mutex: serializes the read-modify-write session table cycle
 // (getSessions -> mutate -> saveSessions) so concurrent submissions cannot
@@ -76,11 +78,14 @@ export function extractCleanPeerName(rawName = '', nodeTag = '') {
  * Updates session traffic metrics and maintains a rolling 24-hour ring buffer of samples (up to 48 points)
  */
 export function recordSessionTrafficMetrics(session, peer) {
+  if (!session) return;
   if (!session.runtime) session.runtime = {};
   const currentRx = peer.rxBytes || 0;
   const currentTx = peer.txBytes || 0;
   session.runtime.rxBytes = currentRx;
   session.runtime.txBytes = currentTx;
+  if (peer.latestHandshake) session.runtime.latestHandshake = peer.latestHandshake;
+  if (peer.endpoint !== undefined) session.runtime.endpoint = peer.endpoint;
 
   const nowSec = Math.floor(Date.now() / 1000);
   const WINDOW_24H_SEC = 86400;
@@ -110,6 +115,11 @@ export function recordSessionTrafficMetrics(session, peer) {
     session.runtime.rx24h = currentRx;
     session.runtime.tx24h = currentTx;
   }
+
+  // Also sync into SessionTelemetryManager if session.id is present
+  if (session.id) {
+    SessionTelemetryManager.setTelemetry(session.id, session.runtime, session.status);
+  }
 }
 
 export class SessionService {
@@ -125,15 +135,104 @@ export class SessionService {
     return path.join(getDataDir(), 'peering_sessions.json');
   }
 
+  /**
+   * Automatically migrates legacy peering_sessions.json containing inline trafficSeries
+   * and volatile runtime telemetry into decoupled storage (peering_sessions.json + session_telemetry.json).
+   * Creates an exact backup of the original file beforehand.
+   */
+  static async ensureMigrated() {
+    const filePath = this.getSessionsPath();
+    if (!fs.existsSync(filePath)) return;
+
+    let rawSessions = null;
+    try {
+      rawSessions = await FileStore.readJson(filePath, null);
+    } catch {
+      return;
+    }
+    if (!Array.isArray(rawSessions) || rawSessions.length === 0) return;
+
+    const hasLegacyTelemetry = rawSessions.some(
+      s => s && s.runtime && (
+        (Array.isArray(s.runtime.trafficSeries) && s.runtime.trafficSeries.length > 0) ||
+        typeof s.runtime.rxBytes === 'number' ||
+        s.runtime.latestHandshake !== undefined
+      )
+    );
+
+    if (!hasLegacyTelemetry) return;
+
+    // 1. Create timestamped backup
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupPath = `${filePath}.bak.${timestamp}`;
+    try {
+      fs.copyFileSync(filePath, backupPath);
+      console.log(`[SessionService] Created backup of legacy peering_sessions.json at ${backupPath}`);
+    } catch (err) {
+      console.error(`[SessionService] Failed to create backup before migration: ${err.message}`);
+      throw err;
+    }
+
+    // 2. Extract telemetry into SessionTelemetryManager
+    SessionTelemetryManager.ensureLoaded();
+    const sanitizedSessions = [];
+    for (const s of rawSessions) {
+      if (!s || typeof s !== 'object') continue;
+      const { runtime, ...staticProps } = s;
+      if (runtime && s.id) {
+        SessionTelemetryManager.setTelemetry(s.id, runtime, s.status);
+      }
+      sanitizedSessions.push(staticProps);
+    }
+
+    // 3. Persist telemetry and write slimmed sessions
+    await SessionTelemetryManager.saveTelemetry();
+    await FileStore.writeJson(filePath, sanitizedSessions);
+    console.log(`[SessionService] Successfully migrated ${sanitizedSessions.length} sessions. Telemetry decoupled to session_telemetry.json.`);
+  }
+
   static async getSessions() {
+    await this.ensureMigrated();
     const filePath = this.getSessionsPath();
     const sessions = await FileStore.readJson(filePath, []);
-    return Array.isArray(sessions) ? sessions : [];
+    const list = Array.isArray(sessions) ? sessions : [];
+    SessionTelemetryManager.ensureLoaded();
+
+    return list.map(session => {
+      const telemetry = SessionTelemetryManager.getTelemetry(session.id);
+      return {
+        ...session,
+        status: (telemetry && telemetry.status) ? telemetry.status : (session.status || 'pending'),
+        runtime: telemetry || {
+          stage: 1,
+          stageText: 'pending',
+          latestHandshake: 0,
+          endpoint: '',
+          rxBytes: 0,
+          txBytes: 0,
+          rx24h: 0,
+          tx24h: 0,
+          bgpState: 'Pending',
+          bgpInfo: '',
+          bgpProtocolName: '',
+          trafficSeries: []
+        }
+      };
+    });
   }
 
   static async saveSessions(sessions) {
     const filePath = this.getSessionsPath();
-    return FileStore.writeJson(filePath, sessions);
+    SessionTelemetryManager.ensureLoaded();
+    const sanitized = (sessions || []).map(s => {
+      if (!s) return s;
+      const { runtime, ...rest } = s;
+      if (runtime && s.id) {
+        SessionTelemetryManager.setTelemetry(s.id, runtime, s.status);
+      }
+      return rest;
+    });
+    return FileStore.writeJson(filePath, sanitized);
   }
 
   static getIgnoredPeersPath() {
@@ -532,6 +631,10 @@ export class SessionService {
       }
 
       sessions.splice(sessionIndex, 1);
+      SessionTelemetryManager.deleteTelemetry(session.id);
+      if (sessionId && sessionId !== session.id) {
+        SessionTelemetryManager.deleteTelemetry(sessionId);
+      }
       await this.saveSessions(sessions);
 
       // Fire async Telegram deletion notification with actor context and teardown advice
@@ -650,7 +753,10 @@ export class SessionService {
 
         if (peer.interface) {
           session.peering = session.peering || {};
-          session.peering.interface = peer.interface;
+          if (session.peering.interface !== peer.interface) {
+            session.peering.interface = peer.interface;
+            updated = true;
+          }
         }
 
         // Backfill hostPort/listenPort if not present or discovered
@@ -682,7 +788,6 @@ export class SessionService {
             updated = true;
           }
         }
-        updated = true;
       }
     }
 
@@ -775,7 +880,11 @@ export class SessionService {
       if (placeholderIndex !== -1) {
         // Upgrade the placeholder pure BGP session into a full WireGuard session with its canonical ID
         const existingSession = sessions[placeholderIndex];
+        const oldId = existingSession.id;
         existingSession.id = baseId;
+        if (oldId && oldId !== baseId) {
+          SessionTelemetryManager.renameSession(oldId, baseId);
+        }
         existingSession.peering = existingSession.peering || {};
         existingSession.peering.publicKey = peer.publicKey;
         if (peer.endpoint) existingSession.peering.endpoint = peer.endpoint;
@@ -855,6 +964,7 @@ export class SessionService {
       };
 
       sessions.push(newDiscSession);
+      SessionTelemetryManager.setTelemetry(newDiscSession.id, newDiscSession.runtime, newDiscSession.status);
       updated = true;
     }
 
@@ -984,7 +1094,7 @@ export class SessionService {
             session.runtime.stage = 2;
             session.runtime.stageText = `BGP ${bgp.bgpState}`;
           }
-          updated = true;
+          SessionTelemetryManager.setTelemetry(session.id, session.runtime, session.status);
         } else {
           session.runtime.bgpState = 'Pending';
           if (session.source === 'discovered') {
@@ -996,7 +1106,7 @@ export class SessionService {
               session.status = 'pending';
             }
           }
-          updated = true;
+          SessionTelemetryManager.setTelemetry(session.id, session.runtime, session.status);
         }
       }
 
@@ -1064,6 +1174,7 @@ export class SessionService {
           if (!existingSession.asn && (bgp.cleanAsn || bgp.asn)) {
             existingSession.asn = bgp.cleanAsn || bgp.asn;
             existingSession.asName = `AS${existingSession.asn}`;
+            updated = true;
           }
           if (bgp.neighborAddress) {
             const cleanAddr = bgp.neighborAddress.replace(/%[a-zA-Z0-9_-]+$/, '').trim();
@@ -1072,19 +1183,22 @@ export class SessionService {
               if (/^fe80:/i.test(cleanAddr) && cleanAddr.toLowerCase() !== 'fe80::') {
                 if (!existingSession.peering.linkLocal || existingSession.peering.linkLocal === 'fe80::') {
                   existingSession.peering.linkLocal = cleanAddr;
+                  updated = true;
                 }
               } else if (/^(?:172\.(?:2[0-9]|3[0-1])|10\.)/.test(cleanAddr) && cleanAddr !== '172.16.0.0' && cleanAddr !== '10.0.0.0' && !cleanAddr.endsWith('.0')) {
                 if (!existingSession.peering.ipv4 || existingSession.peering.ipv4 === '172.16.0.0' || existingSession.peering.ipv4 === '10.0.0.0') {
                   existingSession.peering.ipv4 = cleanAddr;
+                  updated = true;
                 }
               } else if (/^fd[0-9a-fA-F:]+/i.test(cleanAddr) && cleanAddr.toLowerCase() !== 'fd00::') {
                 if (!existingSession.peering.ipv6Ula || existingSession.peering.ipv6Ula.toLowerCase() === 'fd00::') {
                   existingSession.peering.ipv6Ula = cleanAddr;
+                  updated = true;
                 }
               }
             }
           }
-          updated = true;
+          SessionTelemetryManager.setTelemetry(existingSession.id, existingSession.runtime, existingSession.status);
           continue;
         }
 
@@ -1169,6 +1283,7 @@ export class SessionService {
         };
 
         sessions.push(newBgpDiscSession);
+        SessionTelemetryManager.setTelemetry(newBgpDiscSession.id, newBgpDiscSession.runtime, newBgpDiscSession.status);
         updated = true;
       }
     }
@@ -1234,6 +1349,7 @@ export class SessionService {
       if (isDuplicateGhost || isServerDeleted) {
         const canonicalId = s.id;
         sessions.splice(i, 1);
+        SessionTelemetryManager.deleteTelemetry(canonicalId);
         updated = true;
 
         // If this ghost had displaced a real WireGuard session to a _1, _2 suffix,
@@ -1254,7 +1370,9 @@ export class SessionService {
           );
 
           if (displacedSession && !sessions.some(other => other.id === canonicalId)) {
+            const oldDisplacedId = displacedSession.id;
             displacedSession.id = canonicalId;
+            SessionTelemetryManager.renameSession(oldDisplacedId, canonicalId);
           }
         }
       }
