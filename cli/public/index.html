@@ -81,20 +81,29 @@
     window.addEventListener("resize", () => termFit.fit());
     window.term = term;
 
-    // U6: Register OSC handler for startx automatic GUI redirect
+    // U6: Register OSC handler for startx automatic GUI redirect (SEC-08 hardened)
+    function safeNavigate(rawTarget) {
+      const target = (rawTarget || '').trim();
+      // Only permit safe relative paths starting with a single '/' (e.g. '/gui/')
+      // Strictly block protocol-relative '//', external schemes (http:, javascript:), data:, or backslashes
+      if (target.startsWith('/') && !target.startsWith('//') && !target.includes('\\')) {
+        window.location.href = target;
+      } else {
+        window.location.href = '/gui/';
+      }
+    }
+
     if (term.parser && term.parser.registerOscHandler) {
       term.parser.registerOscHandler(1337, (data) => {
         if (data && data.startsWith('OpenUrl=')) {
-          const target = data.slice(8).trim();
-          window.location.href = target || '/gui/';
+          safeNavigate(data.slice(8));
           return true;
         }
         return false;
       });
       term.parser.registerOscHandler(50, (data) => {
         if (data && data.startsWith('AgyJump=')) {
-          const target = data.slice(8).trim();
-          window.location.href = target || '/gui/';
+          safeNavigate(data.slice(8));
           return true;
         }
         return false;
@@ -385,7 +394,6 @@
           gatewayMac: randMac(),
           syntheticIp: "203.0.113.1",
           forceHttps: false,
-          execPort: 20728,
           fetch: (...args) => {
             const urlStr = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url ? args[0].url : '');
             // 把发往虚拟网关(10.0.2.2)的请求重写为同源路径：

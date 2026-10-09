@@ -635,7 +635,7 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
                   type="text"
                   translate="no"
                   value={endpoint}
-                  onChange={(e) => setEndpoint(e.target.value.replace(/:\d+$/, ''))}
+                  onChange={(e) => setEndpoint(e.target.value)}
                   placeholder="node.example.dn42"
                   className={`notranslate w-full px-3.5 py-3 rounded-xl bg-[#040813] border font-mono text-xs focus:outline-none placeholder:text-slate-600 transition-colors shadow-inner ${
                     !endpointValid || fieldErrors.endpoint

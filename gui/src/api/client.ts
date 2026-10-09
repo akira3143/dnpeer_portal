@@ -161,6 +161,10 @@ export class ApiClient {
     } else {
       localStorage.removeItem('dn42_auth_token');
       sessionStorage.setItem('dn42_auth_token', token);
+      syncTokenToOPFS(null).catch(() => {});
+      if (typeof window !== 'undefined' && typeof (window as any).syncTokenToPersist === 'function') {
+        (window as any).syncTokenToPersist(null);
+      }
     }
   }
 

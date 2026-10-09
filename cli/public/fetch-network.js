@@ -59,15 +59,6 @@ export function buildUpstreamUrl(scheme, port, hostHeader, path) {
   return `${scheme}://${hostName}${portSuffix}${path}`;
 }
 
-async function evalJS(src) {
-  try {
-    let r = (0, eval)(src);
-    if (r && typeof r.then === "function") r = await r;
-    return r === undefined || r === null ? "" : String(r);
-  } catch (e) {
-    return "Error: " + (e && e.message ? e.message : String(e));
-  }
-}
 
 async function fetchWithFallback(gw, url, init) {
   try {
@@ -259,15 +250,6 @@ function makeProxyHandler(gw, scheme, port) {
   };
 }
 
-// jsexec handler：读请求体当 JS 执行，回文本结果。
-async function execHandler(request) {
-  const src = await request.text();
-  const result = await evalJS(src);
-  return new Response(result, {
-    status: 200,
-    headers: { "content-type": "text/plain; charset=utf-8" },
-  });
-}
 
 // ---------------------------------------------------------------------------
 // DNS 服务
@@ -673,7 +655,6 @@ export async function fetchInternetGateway(network, options = {}) {
     gatewayMac: macToString(options.gatewayMac || "52:55:0a:00:02:02"),
     syntheticIp: options.syntheticIp || "203.0.113.1",
     dnsPort: options.dnsPort || 53,
-    execPort: options.execPort || 8080,
     forceHttps: options.forceHttps !== false,
     corsProxy: options.corsProxy !== undefined ? options.corsProxy : "https://cors-anywhere.mayx.eu.org/?",
     dohWire: options.dohWire || "https://dns.mayx.eu.org/dns-query",
@@ -739,7 +720,6 @@ export async function fetchInternetGateway(network, options = {}) {
   // 80：明文代理（forceHttps 时升级 https）；4242：主项目后端业务端口，CLI 直连
   const proxyServer = await http.serve({ port: 80 }, makeProxyHandler(gw, gw.forceHttps ? "https" : "http", 80));
   const proxyServerApi = await http.serve({ port: 4242 }, makeProxyHandler(gw, "http", 4242));
-  const execServer = await http.serve({ host: gw.gatewayIp, port: gw.execPort }, execHandler);
 
   // --- 443：TLS 终结，握手读到明文请求后回 301 -> 明文代理 ---
   const tlsListener = await stack.tcp.listen({ port: 443 });
@@ -755,7 +735,6 @@ export async function fetchInternetGateway(network, options = {}) {
     closed = true;
     try { proxyServer.close(); } catch { }
     try { proxyServerApi.close(); } catch { }
-    try { execServer.close(); } catch { }
     try { dnsServer.close(); } catch { }
     try { tlsListener.close(); } catch { }
     try { port.close(); } catch { }
@@ -766,4 +745,4 @@ export async function fetchInternetGateway(network, options = {}) {
   return gw;
 }
 
-export { evalJS, fetchWithFallback, generateTlsCert, toPemCert, toPemKey };
+export { fetchWithFallback, generateTlsCert, toPemCert, toPemKey };

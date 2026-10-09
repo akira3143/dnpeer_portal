@@ -7,11 +7,15 @@ const fileQueues = new Map();
 
 function stripJsonComments(str) {
   if (!str) return '{}';
-  return str
-    .replace(/("(?:\\.|[^"\\])*")|(\/\/[^\r\n]*|#[^\r\n]*|\/\*[\s\S]*?\*\/)/g, (match, strLiteral) => {
-      return strLiteral || '';
-    })
-    .replace(/,\s*([\]}])/g, '$1');
+  // 1. Strip comments while preserving string literals (ENG-06)
+  const withoutComments = str.replace(/("(?:\\.|[^"\\])*")|(\/\/[^\r\n]*|#[^\r\n]*|\/\*[\s\S]*?\*\/)/g, (match, strLiteral) => {
+    return strLiteral || '';
+  });
+  // 2. Strip trailing commas before } or ] while preserving string literals
+  return withoutComments.replace(/("(?:\\.|[^"\\])*")|(,\s*([\]}]))/g, (match, strLiteral, _commaGroup, closeBracket) => {
+    if (strLiteral) return strLiteral;
+    return closeBracket;
+  });
 }
 
 export class FileStore {

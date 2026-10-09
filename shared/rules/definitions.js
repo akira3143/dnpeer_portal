@@ -44,7 +44,7 @@ export const RULES = {
   ipv6Ula: {
     name: 'IPv6 ULA',
     description: 'DN42 IPv6 Unique Local Address (starts with fd)',
-    regexStr: '^fd[0-9a-fA-F]{2}:[0-9a-fA-F:]+(?:\\/(?:[0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?$',
+    regexStr: '^(?:fd|FD)[0-9a-fA-F]{2}:(?::|(?:(?::[0-9a-fA-F]{1,4}){1,7})|(?:(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4})|(?:(?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4})|(?:[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4}){0,6}::(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}))(?:\\/(?:[0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?$',
     example: 'fd00:4242:3143::1',
     errorMessage: 'IPv6 ULA must start with fd (e.g. fd00:4242:3143::1)'
   },

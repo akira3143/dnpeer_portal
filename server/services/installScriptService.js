@@ -6,7 +6,12 @@
  */
 
 export function generateInstallProbeScript({ masterUrl }) {
-  const url = (masterUrl || '').replace(/\/+$/, '');
+  let url = (masterUrl || '').replace(/\/+$/, '');
+  // SEC-03: Ensure URL has valid HTTP/HTTPS scheme and no shell metacharacters
+  if (!/^https?:\/\/[a-zA-Z0-9\-._:\[\]]+$/.test(url)) {
+    url = 'http://127.0.0.1:4242';
+  }
+  const safeMasterUrl = url.replace(/'/g, "'\\''");
 
   return `#!/usr/bin/env bash
 set -euo pipefail
@@ -35,7 +40,7 @@ echo "       AkiLab DN42 Node Agent and Looking Glass Proxy Automated Installer"
 echo "==============================================================================="
 echo "Target Node ID: \${NODE_ID_ARG}"
 
-MASTER_URL="${url}"
+MASTER_URL='${safeMasterUrl}'
 
 # 1. Install prerequisites
 echo "[1/5] Updating package cache and installing prerequisites..."

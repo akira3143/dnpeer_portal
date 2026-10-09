@@ -197,7 +197,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         return;
       }
 
-      ApiClient.setToken(res.data.token);
+      ApiClient.setToken(res.data.token, rememberMe);
       onSuccess(res.data.token, res.data.user || res.data, rememberMe);
       handleClose();
       showToast(
@@ -297,7 +297,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         return;
       }
 
-      ApiClient.setToken(res.data.token);
+      ApiClient.setToken(res.data.token, rememberMe);
       setTempAuthResult(res.data);
 
       if (authCheckData.hasPassword) {
@@ -331,7 +331,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         return;
       }
 
-      ApiClient.setToken(res.data.token);
+      ApiClient.setToken(res.data.token, rememberMe);
       setTempAuthResult(res.data);
 
       if (authCheckData.hasPassword) {
@@ -363,7 +363,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     setIsLoading(true);
     try {
       if (tempAuthResult?.token) {
-        ApiClient.setToken(tempAuthResult.token);
+        ApiClient.setToken(tempAuthResult.token, rememberMe);
       }
       const res = await ApiClient.setPassword(newPassword);
       if (!res.success) {
@@ -372,7 +372,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       }
 
       if (tempAuthResult) {
-        ApiClient.setToken(tempAuthResult.token);
+        ApiClient.setToken(tempAuthResult.token, rememberMe);
         onSuccess(tempAuthResult.token, tempAuthResult.user || tempAuthResult, rememberMe);
       }
       handleClose();
@@ -386,7 +386,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
   const handleSkipPassword = () => {
     if (tempAuthResult) {
-      ApiClient.setToken(tempAuthResult.token);
+      ApiClient.setToken(tempAuthResult.token, rememberMe);
       onSuccess(tempAuthResult.token, tempAuthResult.user || tempAuthResult, rememberMe);
     }
     handleClose();

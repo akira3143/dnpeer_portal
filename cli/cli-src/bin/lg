@@ -139,7 +139,7 @@ fi
 
 echo ""
 out=$(json_field "$resp" output)
-formatted_out=$(printf '%b\n' "$out" | sed 's/\\n/\n/g; s/\\r//g; s/\\"/"/g; s/\\\\/\\/g; s/\\t/\t/g')
+formatted_out=$(printf '%s\n' "$out" | sed 's/\\n/\n/g; s/\\r//g; s/\\"/"/g; s/\\\\/\\/g; s/\\t/\t/g')
 
 if [ "$cmd" = "protocols" ] || [ "$cmd" = "status" ] || [ "$cmd" = "route" ]; then
   echo "$formatted_out" | colorize_bird_output

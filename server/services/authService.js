@@ -32,6 +32,14 @@ if (typeof challengeCleanupTimer?.unref === 'function') {
   challengeCleanupTimer.unref();
 }
 
+// Global mutex commit queue for auth_users.json (ENG-02)
+let authUsersCommitQueue = Promise.resolve();
+export function withAuthUsersLock(action) {
+  const result = authUsersCommitQueue.then(action, action);
+  authUsersCommitQueue = result.catch(() => {});
+  return result;
+}
+
 const scryptAsync = promisify(crypto.scrypt);
 
 /**
@@ -84,6 +92,16 @@ export function verifyPassword(password, salt, storedHash) {
 }
 
 export class AuthService {
+  /**
+   * Authoritative admin check strictly derived from portal.config.yaml (ENG-02)
+   */
+  static isAdmin(asn) {
+    const cleanAsn = parseInt(String(asn || '').replace(/^AS/i, ''), 10);
+    if (isNaN(cleanAsn) || cleanAsn <= 0) return false;
+    const config = getActiveConfig();
+    return Array.isArray(config.admins) && config.admins.includes(cleanAsn);
+  }
+
   /**
    * Simplify a mntner handle for display: AKI001-MNT -> aki001 (lowercase, no suffix)
    */
@@ -310,8 +328,7 @@ export class AuthService {
     }
 
     // 3. Issue Token
-    const config = getActiveConfig();
-    const isAdmin = Array.isArray(config.admins) && config.admins.includes(cleanAsn);
+    const isAdmin = this.isAdmin(cleanAsn);
 
     const maintainer = registryInfo?.maintainer || '';
     const mnt = this.simplifyMnt(maintainer) || this.simplifyMnt(registryInfo?.asName) || `as${cleanAsn}`;
@@ -374,15 +391,17 @@ export class AuthService {
     const authUsers = await this.getAuthUsers();
 
     const recordFailure = () => {
-      const isLockExpired = attemptRecord && attemptRecord.lockedUntil > 0 && attemptRecord.lockedUntil <= now;
-      const isStale = attemptRecord && (now - (attemptRecord.lastAttempt || 0)) > 300 * 1000;
-      const count = (isLockExpired || isStale || !attemptRecord ? 0 : attemptRecord.attempts) + 1;
+      const current = passwordAttemptTracker.get(lockKey);
+      const currentTime = Date.now();
+      const isLockExpired = current && current.lockedUntil > 0 && current.lockedUntil <= currentTime;
+      const isStale = current && (currentTime - (current.lastAttempt || 0)) > 300 * 1000;
+      const count = (isLockExpired || isStale || !current ? 0 : (current.attempts || 0)) + 1;
 
       if (count >= 5) {
         passwordAttemptTracker.set(lockKey, {
           attempts: count,
-          lockedUntil: now + 60 * 1000,
-          lastAttempt: now
+          lockedUntil: currentTime + 60 * 1000,
+          lastAttempt: currentTime
         });
         return {
           success: false,
@@ -392,7 +411,7 @@ export class AuthService {
         passwordAttemptTracker.set(lockKey, {
           attempts: count,
           lockedUntil: 0,
-          lastAttempt: now
+          lastAttempt: currentTime
         });
         return { success: false, error: 'Invalid username or password' };
       }
@@ -414,8 +433,7 @@ export class AuthService {
     passwordAttemptTracker.delete(lockKey);
 
     const userAsn = userEntry.asn || cleanAsn;
-    const config = getActiveConfig();
-    const isAdmin = userEntry.role === 'admin' || (Array.isArray(config.admins) && config.admins.includes(userAsn));
+    const isAdmin = this.isAdmin(userAsn);
 
     let maintainer = '';
     try {
@@ -459,24 +477,25 @@ export class AuthService {
     }
 
     const { salt, hash } = await hashPasswordAsync(newPassword);
-    const authUsers = await this.getAuthUsers();
 
-    const config = getActiveConfig();
-    const isAdmin = Array.isArray(config.admins) && config.admins.includes(cleanAsn);
+    return withAuthUsersLock(async () => {
+      const authUsers = await this.getAuthUsers();
+      const isAdmin = this.isAdmin(cleanAsn);
 
-    const now = new Date().toISOString();
-    authUsers[String(cleanAsn)] = {
-      asn: cleanAsn,
-      asName: `AS${cleanAsn}`,
-      role: isAdmin ? 'admin' : 'user',
-      salt,
-      hash,
-      createdAt: authUsers[String(cleanAsn)]?.createdAt || now,
-      updatedAt: now
-    };
+      const now = new Date().toISOString();
+      authUsers[String(cleanAsn)] = {
+        asn: cleanAsn,
+        asName: `AS${cleanAsn}`,
+        role: isAdmin ? 'admin' : 'user',
+        salt,
+        hash,
+        createdAt: authUsers[String(cleanAsn)]?.createdAt || now,
+        updatedAt: now
+      };
 
-    await this.saveAuthUsers(authUsers);
-    return { success: true, message: 'Password updated successfully' };
+      await this.saveAuthUsers(authUsers);
+      return { success: true, message: 'Password updated successfully' };
+    });
   }
 
   /**
@@ -510,8 +529,7 @@ export class AuthService {
       registryInfo = await this.getAsnRegistryInfo(cleanAsn);
     } catch {}
 
-    const config = getActiveConfig();
-    const isAdmin = Array.isArray(config.admins) && config.admins.includes(cleanAsn);
+    const isAdmin = this.isAdmin(cleanAsn);
     const maintainer = registryInfo?.maintainer || '';
     const mnt = this.simplifyMnt(maintainer) || this.simplifyMnt(registryInfo?.asName) || `as${cleanAsn}`;
 

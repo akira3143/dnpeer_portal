@@ -56,8 +56,6 @@ export const LookingGlass: React.FC<LookingGlassProps> = ({ nodes, networkMeta: 
 
   const handleRunQuery = async () => {
     if (isLoading) return;
-    setIsLoading(true);
-    setQueryError('');
 
     if (qtype === 'route') {
       const trimmed = targetInput.trim();
@@ -72,6 +70,9 @@ export const LookingGlass: React.FC<LookingGlassProps> = ({ nodes, networkMeta: 
         return;
       }
     }
+
+    setIsLoading(true);
+    setQueryError('');
 
     try {
       const targetParam = qtype === 'route' ? targetInput.trim() : undefined;

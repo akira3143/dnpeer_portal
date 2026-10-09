@@ -26,10 +26,11 @@ export class PeeringController {
       return errorEnvelope('Cannot submit peering application for another ASN', null, 403);
     }
 
-    const result = await SessionService.submitPeering(body);
+    const result = await SessionService.submitPeering(body, user);
 
     if (!result.success) {
-      return errorEnvelope(result.message || 'Submission validation failed', result.fieldErrors || null, 200);
+      const statusCode = result.statusCode || 200;
+      return errorEnvelope(result.message || 'Submission validation failed', result.fieldErrors || null, statusCode);
     }
 
     return successEnvelope(result.data, 200);

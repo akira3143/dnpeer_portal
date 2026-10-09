@@ -69,13 +69,19 @@ api_post() {
   printf '%s' "$resp"
 }
 
+json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
 # api_delete <path> [optional_id] → stdout response body
 api_delete() {
   local target_id="$2"
   if [ -z "$target_id" ]; then
     target_id="${1##*/}"
   fi
-  api_post "/api/sessions/remove" "{\"sessionId\":\"$target_id\"}"
+  local safe_id
+  safe_id=$(json_escape "$target_id")
+  api_post "/api/sessions/remove" "{\"sessionId\":\"$safe_id\"}"
 }
 
 json_field() {

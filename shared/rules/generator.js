@@ -154,8 +154,12 @@ export function validatePort(val, isOptional = false) {
     if (isOptional || val === 'auto') return { valid: true, value: 'auto' };
     return { valid: false, error: 'Port is required' };
   }
-  const num = parseInt(val, 10);
-  if (isNaN(num) || num < ${RULES.port.min} || num > ${RULES.port.max}) {
+  const cleanStr = String(val).trim();
+  if (!/^[0-9]+$/.test(cleanStr)) {
+    return { valid: false, error: ${JSON.stringify(RULES.port.errorMessage)} };
+  }
+  const num = parseInt(cleanStr, 10);
+  if (num < ${RULES.port.min} || num > ${RULES.port.max}) {
     return { valid: false, error: ${JSON.stringify(RULES.port.errorMessage)} };
   }
   return { valid: true, value: num };
@@ -163,8 +167,12 @@ export function validatePort(val, isOptional = false) {
 
 export function validateMtu(val) {
   if (val === null || val === undefined || val === '') return { valid: true, value: ${RULES.mtu.default} };
-  const num = parseInt(val, 10);
-  if (isNaN(num) || num < ${RULES.mtu.min} || num > ${RULES.mtu.max}) {
+  const cleanStr = String(val).trim();
+  if (!/^[0-9]+$/.test(cleanStr)) {
+    return { valid: false, error: ${JSON.stringify(RULES.mtu.errorMessage)} };
+  }
+  const num = parseInt(cleanStr, 10);
+  if (num < ${RULES.mtu.min} || num > ${RULES.mtu.max}) {
     return { valid: false, error: ${JSON.stringify(RULES.mtu.errorMessage)} };
   }
   return { valid: true, value: num };
@@ -542,8 +550,12 @@ export function validatePort(val, isOptional = false) {
     if (isOptional || val === 'auto') return { valid: true, value: 'auto' };
     return { valid: false, error: 'Port is required' };
   }
-  const num = parseInt(val, 10);
-  if (isNaN(num) || num < ${RULES.port.min} || num > ${RULES.port.max}) {
+  const cleanStr = String(val).trim();
+  if (!/^[0-9]+$/.test(cleanStr)) {
+    return { valid: false, error: ${JSON.stringify(RULES.port.errorMessage)} };
+  }
+  const num = parseInt(cleanStr, 10);
+  if (num < ${RULES.port.min} || num > ${RULES.port.max}) {
     return { valid: false, error: ${JSON.stringify(RULES.port.errorMessage)} };
   }
   return { valid: true, value: num };
@@ -551,8 +563,12 @@ export function validatePort(val, isOptional = false) {
 
 export function validateMtu(val) {
   if (val === null || val === undefined || val === '') return { valid: true, value: ${RULES.mtu.default} };
-  const num = parseInt(val, 10);
-  if (isNaN(num) || num < ${RULES.mtu.min} || num > ${RULES.mtu.max}) {
+  const cleanStr = String(val).trim();
+  if (!/^[0-9]+$/.test(cleanStr)) {
+    return { valid: false, error: ${JSON.stringify(RULES.mtu.errorMessage)} };
+  }
+  const num = parseInt(cleanStr, 10);
+  if (num < ${RULES.mtu.min} || num > ${RULES.mtu.max}) {
     return { valid: false, error: ${JSON.stringify(RULES.mtu.errorMessage)} };
   }
   return { valid: true, value: num };

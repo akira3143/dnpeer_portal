@@ -97,21 +97,38 @@ function loadPortalConfig() {
           admins: Array.isArray(parsed.admins) ? parsed.admins : DEFAULT_CONFIG.admins
         };
         return cachedConfig;
+      } else {
+        console.warn(`[ConfigLoader] Invalid configuration format in ${configPath}`);
+        if (cachedConfig) {
+          console.warn('[ConfigLoader] Retaining last-known-good cached configuration.');
+          return cachedConfig;
+        }
       }
     }
   } catch (err) {
     console.error(`[ConfigLoader] Failed to parse ${configPath}:`, err.message);
+    // ENG-07: Retain last-known-good cachedConfig on parse error
+    if (cachedConfig) {
+      console.warn('[ConfigLoader] Retaining last-known-good cached configuration due to parse error.');
+      return cachedConfig;
+    }
   }
 
-  cachedConfig = DEFAULT_CONFIG;
+  if (!cachedConfig) {
+    cachedConfig = DEFAULT_CONFIG;
+  }
   return cachedConfig;
 }
 
-export function getActiveConfig() {
-  if (!cachedConfig) {
+export function getActiveConfig(options = {}) {
+  if (!cachedConfig || options.reload) {
     loadPortalConfig();
   }
   return cachedConfig;
+}
+
+export function reloadConfig() {
+  return loadPortalConfig();
 }
 
 export function initConfigWatcher() {
@@ -122,13 +139,14 @@ export function initConfigWatcher() {
 
   const configPath = getConfigYamlPath();
   const configDir = path.dirname(configPath);
+  const configBasename = path.basename(configPath);
   if (!fs.existsSync(configDir)) {
     fs.mkdirSync(configDir, { recursive: true });
   }
 
   try {
     watcherInstance = fs.watch(configDir, (eventType, filename) => {
-      if (filename && filename.includes('portal.config')) {
+      if (filename && (filename.includes('portal.config') || filename === configBasename)) {
         if (reloadTimer) clearTimeout(reloadTimer);
         reloadTimer = setTimeout(() => {
           console.log('[ConfigLoader] portal.config changed, hot reloading configuration...');

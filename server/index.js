@@ -9,6 +9,7 @@ import { getActiveConfig, initConfigWatcher, stopConfigWatcher } from './storage
 import { AuthService } from './services/authService.js';
 import { RegistryService } from './services/registryService.js';
 import { sendJson, successEnvelope, errorEnvelope } from './utils/envelope.js';
+import { safeResolveStaticPath } from './utils/pathSafety.js';
 
 import { MetaController } from './controllers/metaController.js';
 import { PeeringController } from './controllers/peeringController.js';
@@ -79,7 +80,15 @@ export function createServer() {
   RegistryService.startPeriodicSync();
 
   const server = http.createServer(async (req, res) => {
-    const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    let parsedUrl;
+    try {
+      // Safe base origin prevents crashes from malformed Host headers (SEC-06)
+      parsedUrl = new URL(req.url, 'http://127.0.0.1');
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, code: 400, error: { message: 'Bad Request: Malformed URL' } }));
+    }
+
     const pathname = parsedUrl.pathname;
     const method = req.method.toUpperCase();
 
@@ -273,9 +282,17 @@ export function createServer() {
       // Unified One-Click Probe Installer & Agent Distribution
       // -------------------------------------------------------------
       if (pathname === '/install-probe.sh' && method === 'GET') {
-        const host = req.headers['x-forwarded-host'] || req.headers.host || `127.0.0.1:${ENV.PORT}`;
-        const proto = req.headers['x-forwarded-proto'] || (req.socket.encrypted ? 'https' : 'http');
-        const masterUrl = `${proto}://${host}`;
+        let masterUrl;
+        if (process.env.PORTAL_MASTER_URL) {
+          masterUrl = process.env.PORTAL_MASTER_URL.trim();
+        } else {
+          const rawHost = (req.headers['x-forwarded-host'] || req.headers.host || `127.0.0.1:${ENV.PORT}`).trim();
+          // Strictly validate host format: domain name, IPv4, or [IPv6] with optional port (SEC-03)
+          const safeHostRegex = /^(?:[a-zA-Z0-9\-._]+|\[[a-fA-F0-9:.]+\])(?::\d{1,5})?$/;
+          const host = safeHostRegex.test(rawHost) ? rawHost : `127.0.0.1:${ENV.PORT}`;
+          const proto = req.headers['x-forwarded-proto'] === 'https' || req.socket.encrypted ? 'https' : 'http';
+          masterUrl = `${proto}://${host}`;
+        }
         const script = generateInstallProbeScript({ masterUrl });
         res.writeHead(200, {
           'Content-Type': 'text/x-shellscript; charset=utf-8',
@@ -295,18 +312,22 @@ export function createServer() {
         }
       }
 
-      // Direct Brand Logos Hosting (/logos/*)
+      // Direct Brand Logos Hosting (/logos/*) - SEC-01 hardened
       if (pathname.startsWith('/logos/') && method === 'GET') {
         const logoRel = pathname.slice('/logos/'.length);
-        const logoFile = path.resolve(ROOT_DIR, 'gui/public/logos', logoRel);
-        if (fs.existsSync(logoFile) && !fs.statSync(logoFile).isDirectory()) {
-          const ext = path.extname(logoFile);
+        const logosDir = path.resolve(ROOT_DIR, 'gui/public/logos');
+        const logoFile = safeResolveStaticPath(logosDir, logoRel, {
+          allowedExtensions: ['.png', '.jpg', '.jpeg', '.svg', '.webp', '.ico']
+        });
+        if (logoFile && fs.existsSync(logoFile) && !fs.statSync(logoFile).isDirectory()) {
+          const ext = path.extname(logoFile).toLowerCase();
           res.writeHead(200, {
             'Content-Type': MIME_TYPES[ext] || 'image/png',
             'Cache-Control': 'no-cache, no-store, must-revalidate'
           });
           return fs.createReadStream(logoFile).pipe(res);
         }
+        return sendJson(res, 404, errorEnvelope('Not Found', null, 404));
       }
 
       // -------------------------------------------------------------
@@ -326,17 +347,10 @@ export function createServer() {
 
       if (pathname.startsWith(`${guiRoute}/`)) {
         const guiDist = path.resolve(ROOT_DIR, 'gui/dist');
-        let rawRel = pathname.slice(guiRoute.length).replace(/^\/+/, '');
-        let relPath = rawRel;
-        try {
-          relPath = decodeURIComponent(rawRel);
-        } catch {
-          return sendJson(res, 400, errorEnvelope('Bad Request: Invalid URI encoding', null, 400));
-        }
-        if (!relPath) relPath = 'index.html';
-
-        let targetFile = path.resolve(guiDist, relPath);
-        if (!targetFile.startsWith(guiDist)) {
+        const rawRel = pathname.slice(guiRoute.length).replace(/^\/+/, '');
+        const targetRel = rawRel || 'index.html';
+        let targetFile = safeResolveStaticPath(guiDist, targetRel);
+        if (!targetFile) {
           return sendJson(res, 403, errorEnvelope('Forbidden: Access Denied', null, 403));
         }
 
@@ -345,7 +359,7 @@ export function createServer() {
         }
 
         if (fs.existsSync(targetFile)) {
-          const ext = path.extname(targetFile);
+          const ext = path.extname(targetFile).toLowerCase();
           const mime = MIME_TYPES[ext] || 'application/octet-stream';
           const headers = {
             'Content-Type': mime,
@@ -365,29 +379,22 @@ export function createServer() {
 
       // 2. Terminal CLI (Root / and all other static resources)
       const cliPublic = path.resolve(ROOT_DIR, 'cli/public');
-      let rawCliRel = pathname.replace(/^\/+/, '');
-      let cliRel = rawCliRel;
-      try {
-        cliRel = decodeURIComponent(rawCliRel);
-      } catch {
-        return sendJson(res, 400, errorEnvelope('Bad Request: Invalid URI encoding', null, 400));
-      }
-      if (!cliRel) cliRel = 'index.html';
-
-      let cliFile = path.resolve(cliPublic, cliRel);
-      if (!cliFile.startsWith(cliPublic)) {
+      const rawCliRel = pathname.replace(/^\/+/, '') || 'index.html';
+      const cliFile = safeResolveStaticPath(cliPublic, rawCliRel);
+      if (!cliFile) {
         return sendJson(res, 403, errorEnvelope('Forbidden: Access Denied', null, 403));
       }
 
       if (fs.existsSync(cliFile) && !fs.statSync(cliFile).isDirectory()) {
         const stat = fs.statSync(cliFile);
-        const ext = path.extname(cliFile);
+        const ext = path.extname(cliFile).toLowerCase();
         const mime = MIME_TYPES[ext] || 'application/octet-stream';
         // Weak ETag from size+mtime: unchanged files get 304, no re-download
         const etag = `W/"${stat.size.toString(16)}-${Math.floor(stat.mtimeMs).toString(16)}"`;
         // Third-party vendor assets (4.3MB WASM kernel etc.) rarely change: cache 7 days;
         // rootfs.dat and app files stay no-cache (revalidated via ETag each load).
-        const cacheControl = cliRel.startsWith('vendor/') ? 'public, max-age=604800' : 'no-cache';
+        const relWithinCli = path.relative(cliPublic, cliFile).replace(/\\/g, '/');
+        const cacheControl = relWithinCli.startsWith('vendor/') ? 'public, max-age=604800' : 'no-cache';
         const headers = {
           'Content-Type': mime,
           'Content-Length': stat.size,

@@ -41,7 +41,7 @@ export const RULES = {
   "ipv6Ula": {
     "name": "IPv6 ULA",
     "description": "DN42 IPv6 Unique Local Address (starts with fd)",
-    "regexStr": "^fd[0-9a-fA-F]{2}:[0-9a-fA-F:]+(?:\\/(?:[0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?$",
+    "regexStr": "^(?:fd|FD)[0-9a-fA-F]{2}:(?::|(?:(?::[0-9a-fA-F]{1,4}){1,7})|(?:(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4})|(?:(?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4})|(?:[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4}){0,6}::(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}))(?:\\/(?:[0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?$",
     "example": "fd00:4242:3143::1",
     "errorMessage": "IPv6 ULA must start with fd (e.g. fd00:4242:3143::1)"
   },
@@ -87,7 +87,7 @@ export const ASN_REGEX = new RegExp("^(424242[0-9]{4}|6451[2-9]|645[2-9][0-9]|64
 export const PUBLIC_KEY_REGEX = new RegExp("^[A-Za-z0-9+/]{43}=$");
 export const IPV4_REGEX = new RegExp("^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\\/(?:[0-9]|[12][0-9]|3[0-2]))?$");
 export const ENDPOINT_REGEX = new RegExp("^(?:(?:(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])|(?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4}|(?:::|::[0-9a-fA-F:]+|[0-9a-fA-F:]+::[0-9a-fA-F:]*)|(?:\\[[0-9a-fA-F:]+\\]))$");
-export const IPV6_ULA_REGEX = new RegExp("^fd[0-9a-fA-F]{2}:[0-9a-fA-F:]+(?:\\/(?:[0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?$");
+export const IPV6_ULA_REGEX = new RegExp("^(?:fd|FD)[0-9a-fA-F]{2}:(?::|(?:(?::[0-9a-fA-F]{1,4}){1,7})|(?:(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4})|(?:(?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4})|(?:[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4}){0,6}::(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}))(?:\\/(?:[0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?$");
 export const LINK_LOCAL_REGEX = new RegExp("^(?:fe80|FE80):(?::|(?:(?::[0-9a-fA-F]{1,4}){1,7})|(?:(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4})|(?:(?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4})|(?:[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4}){0,6}::(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}))(?:\\/(?:[0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?$");
 
 export function normalizeAsn(val) {
@@ -208,8 +208,12 @@ export function validatePort(val, isOptional = false) {
     if (isOptional || val === 'auto') return { valid: true, value: 'auto' };
     return { valid: false, error: 'Port is required' };
   }
-  const num = parseInt(val, 10);
-  if (isNaN(num) || num < 20000 || num > 65535) {
+  const cleanStr = String(val).trim();
+  if (!/^[0-9]+$/.test(cleanStr)) {
+    return { valid: false, error: "Port must be an integer between 20000 and 65535" };
+  }
+  const num = parseInt(cleanStr, 10);
+  if (num < 20000 || num > 65535) {
     return { valid: false, error: "Port must be an integer between 20000 and 65535" };
   }
   return { valid: true, value: num };
@@ -217,8 +221,12 @@ export function validatePort(val, isOptional = false) {
 
 export function validateMtu(val) {
   if (val === null || val === undefined || val === '') return { valid: true, value: 1420 };
-  const num = parseInt(val, 10);
-  if (isNaN(num) || num < 1280 || num > 1500) {
+  const cleanStr = String(val).trim();
+  if (!/^[0-9]+$/.test(cleanStr)) {
+    return { valid: false, error: "MTU must be between 1280 and 1500" };
+  }
+  const num = parseInt(cleanStr, 10);
+  if (num < 1280 || num > 1500) {
     return { valid: false, error: "MTU must be between 1280 and 1500" };
   }
   return { valid: true, value: num };

@@ -9,8 +9,11 @@ import {
 } from '../../server/services/authService.js';
 import { getAuthJwtSecret, ENV } from '../../server/config.js';
 import { ScannerService } from '../../server/services/scannerService.js';
+import { createIsolatedTestDataDir } from '../fixtures/tmpDataDir.js';
 
 test('Security Hardening & Secondary Issues: Async Scrypt, Rate Limiting & JWT Secret', async (t) => {
+  const { tmpDir, cleanup } = createIsolatedTestDataDir('dn42-sec-secondary-');
+  t.after(() => cleanup());
 
   await t.test('1. hashPasswordAsync and verifyPasswordAsync function properly non-blocking', async () => {
     const pass = 'superSecretPassword123!';

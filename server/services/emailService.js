@@ -5,8 +5,10 @@ const COOLDOWN_MS = 30 * 1000;       // 30 seconds cooldown
 const EXPIRATION_MS = 10 * 60 * 1000; // 10 minutes validity
 const MAX_ATTEMPTS = 5;
 
-// In-memory OTP storage: cleanAsn -> { code, email, expiresAt, lastSentAt, attempts }
+// In-memory OTP storage: cleanAsn -> { code, email, expiresAt, attempts }
 const otpStore = new Map();
+// Independent cooldown storage: cleanAsn -> lastSentAt timestamp (SEC-05 decoupled)
+const cooldownStore = new Map();
 
 function escapeHtml(str) {
   return String(str ?? '')
@@ -24,13 +26,21 @@ export class EmailService {
    */
   static getCooldownRemaining(asn) {
     const cleanAsn = parseInt(asn, 10);
-    const existing = otpStore.get(cleanAsn);
-    if (!existing || !existing.lastSentAt) return 0;
-    const elapsed = Date.now() - existing.lastSentAt;
+    const lastSentAt = cooldownStore.get(cleanAsn);
+    if (!lastSentAt) return 0;
+    const elapsed = Date.now() - lastSentAt;
     if (elapsed < COOLDOWN_MS) {
       return Math.ceil((COOLDOWN_MS - elapsed) / 1000);
     }
     return 0;
+  }
+
+  /**
+   * Reset cooldown for testing
+   */
+  static clearCooldown(asn) {
+    const cleanAsn = parseInt(asn, 10);
+    cooldownStore.delete(cleanAsn);
   }
 
   /**
@@ -50,11 +60,11 @@ export class EmailService {
     const code = String(crypto.randomInt(100000, 1000000));
     const now = Date.now();
 
+    cooldownStore.set(cleanAsn, now);
     otpStore.set(cleanAsn, {
       code,
       email: email.trim().toLowerCase(),
       expiresAt: now + EXPIRATION_MS,
-      lastSentAt: now,
       attempts: 0
     });
 
@@ -86,6 +96,9 @@ export class EmailService {
     if (record.code !== cleanInput) {
       record.attempts += 1;
       const remaining = MAX_ATTEMPTS - record.attempts;
+      if (remaining <= 0) {
+        otpStore.delete(cleanAsn);
+      }
       return {
         valid: false,
         error: remaining > 0

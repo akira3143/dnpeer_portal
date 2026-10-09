@@ -3,8 +3,15 @@ import { getDataDir } from '../config.js';
 import { FileStore } from '../storage/fileStore.js';
 import { RULES } from '../utils/validator.js';
 
-// Node-level allocation transaction queue to prevent race conditions during concurrent requests
-const nodeAllocationQueues = new Map();
+// Global commit mutex queue for port_ledger.json (ENG-01)
+// Serializes all read-modify-write cycles across all nodes (allocation, release, probe merge, sync)
+let ledgerCommitQueue = Promise.resolve();
+
+export function withLedgerCommitLock(action) {
+  const result = ledgerCommitQueue.then(action, action);
+  ledgerCommitQueue = result.catch(() => {});
+  return result;
+}
 
 export class PortLedgerService {
   static getLedgerPath() {
@@ -40,10 +47,7 @@ export class PortLedgerService {
    * @returns {Promise<{ port: number, isShifted: boolean, expectedPort: number }>}
    */
   static async allocateAndLockPort({ nodeId, asn, requestedPort = 'auto', sessionId = '', description = '' }) {
-    const queueKey = String(nodeId || 'global');
-    const prevQueue = nodeAllocationQueues.get(queueKey) || Promise.resolve();
-
-    const transaction = async () => {
+    return withLedgerCommitLock(async () => {
       const cleanAsn = parseInt(String(asn).replace(/^AS/i, ''), 10);
       const expectedBasePort = (requestedPort && requestedPort !== 'auto')
         ? parseInt(requestedPort, 10)
@@ -117,129 +121,131 @@ export class PortLedgerService {
         isShifted,
         expectedPort: expectedBasePort
       };
-    };
-
-    const currentQueue = prevQueue.then(transaction, transaction);
-    nodeAllocationQueues.set(queueKey, currentQueue.catch(() => {}));
-    return currentQueue;
+    });
   }
 
   /**
    * Release port locked by sessionId
    */
   static async releaseSessionPort(nodeId, sessionId) {
-    const ledger = await this.getLedger();
-    if (Array.isArray(ledger[nodeId])) {
-      ledger[nodeId] = ledger[nodeId].filter(p => p.sessionId !== sessionId);
-      await this.saveLedger(ledger);
-    }
+    return withLedgerCommitLock(async () => {
+      const ledger = await this.getLedger();
+      if (Array.isArray(ledger[nodeId])) {
+        ledger[nodeId] = ledger[nodeId].filter(p => p.sessionId !== sessionId);
+        await this.saveLedger(ledger);
+      }
+    });
   }
 
   /**
    * Merge snapshot reported by probe agent
    */
   static async mergeProbeReport(nodeId, { ports = [], systemPorts = [] }) {
-    const ledger = await this.getLedger();
-    const existing = Array.isArray(ledger[nodeId]) ? ledger[nodeId] : [];
-    
-    // Retain peering_session locks, replace probe-discovered ports
-    const retainedSessions = existing.filter(p => p.source === 'peering_session');
-    const existingPortNumbers = new Set(retainedSessions.map(p => p.port));
+    return withLedgerCommitLock(async () => {
+      const ledger = await this.getLedger();
+      const existing = Array.isArray(ledger[nodeId]) ? ledger[nodeId] : [];
+      
+      // Retain peering_session locks, replace probe-discovered ports
+      const retainedSessions = existing.filter(p => p.source === 'peering_session');
+      const existingPortNumbers = new Set(retainedSessions.map(p => p.port));
 
-    const merged = [...retainedSessions];
+      const merged = [...retainedSessions];
 
-    // Merge system ports (ss -tulnp)
-    for (const sp of systemPorts) {
-      const portNum = parseInt(sp.port, 10);
-      if (!isNaN(portNum) && !existingPortNumbers.has(portNum)) {
-        merged.push({
-          port: portNum,
-          type: 'reserved',
-          source: 'system_service',
-          serviceName: sp.name || 'unknown',
-          lockedAt: new Date().toISOString(),
-          description: `Occupied by system service (${sp.name || 'system'})`
-        });
-        existingPortNumbers.add(portNum);
-      }
-    }
-
-    // Merge wg listen-ports
-    for (const wp of ports) {
-      const portNum = parseInt(wp.port, 10);
-      if (!isNaN(portNum)) {
-        const existingEntry = merged.find(p => p.port === portNum);
-        if (existingEntry) {
-          if (!existingEntry.interfaceName && wp.name) {
-            existingEntry.interfaceName = wp.name;
-          }
-        } else {
+      // Merge system ports (ss -tulnp)
+      for (const sp of systemPorts) {
+        const portNum = parseInt(sp.port, 10);
+        if (!isNaN(portNum) && !existingPortNumbers.has(portNum)) {
           merged.push({
             port: portNum,
-            type: 'in_use',
-            source: 'wireguard_probe',
-            interfaceName: wp.name || 'wg0',
+            type: 'reserved',
+            source: 'system_service',
+            serviceName: sp.name || 'unknown',
             lockedAt: new Date().toISOString(),
-            description: `Active WireGuard interface ${wp.name || ''}`
+            description: `Occupied by system service (${sp.name || 'system'})`
           });
           existingPortNumbers.add(portNum);
         }
       }
-    }
 
-    ledger[nodeId] = merged;
-    await this.saveLedger(ledger);
-    return merged;
+      // Merge wg listen-ports
+      for (const wp of ports) {
+        const portNum = parseInt(wp.port, 10);
+        if (!isNaN(portNum)) {
+          const existingEntry = merged.find(p => p.port === portNum);
+          if (existingEntry) {
+            if (!existingEntry.interfaceName && wp.name) {
+              existingEntry.interfaceName = wp.name;
+            }
+          } else {
+            merged.push({
+              port: portNum,
+              type: 'in_use',
+              source: 'wireguard_probe',
+              interfaceName: wp.name || 'wg0',
+              lockedAt: new Date().toISOString(),
+              description: `Active WireGuard interface ${wp.name || ''}`
+            });
+            existingPortNumbers.add(portNum);
+          }
+        }
+      }
+
+      ledger[nodeId] = merged;
+      await this.saveLedger(ledger);
+      return merged;
+    });
   }
 
   /**
    * Ensure sessions on this node with hostPort/listenPort are properly tracked in port_ledger.json
    */
   static async syncDiscoveredPorts(nodeId, sessions = []) {
-    const ledger = await this.getLedger();
-    if (!Array.isArray(ledger[nodeId])) {
-      ledger[nodeId] = [];
-    }
-    const nodeSessions = sessions.filter(s => s.nodeId === nodeId);
-    let modified = false;
-
-    for (const s of nodeSessions) {
-      const portNum = parseInt(s.assigned?.hostPort || s.peering?.listenPort, 10);
-      if (isNaN(portNum) || portNum <= 0) continue;
-
-      const existingEntry = ledger[nodeId].find(p => p.port === portNum);
-      const iface = s.assigned?.interface || s.peering?.interface || s.id;
-      if (existingEntry) {
-        if (!existingEntry.sessionId && s.id) {
-          existingEntry.sessionId = s.id;
-          modified = true;
-        }
-        if (!existingEntry.asn && s.asn) {
-          existingEntry.asn = s.asn;
-          modified = true;
-        }
-        if (!existingEntry.interfaceName && iface) {
-          existingEntry.interfaceName = iface;
-          modified = true;
-        }
-      } else {
-        ledger[nodeId].push({
-          port: portNum,
-          type: 'in_use',
-          source: s.source === 'discovered' ? 'wireguard_probe' : 'peering_session',
-          sessionId: s.id,
-          asn: s.asn || null,
-          interfaceName: iface,
-          lockedAt: s.createdAt || new Date().toISOString(),
-          description: `WireGuard interface ${iface} (ASN ${s.asn || 'unknown'})`
-        });
-        modified = true;
+    return withLedgerCommitLock(async () => {
+      const ledger = await this.getLedger();
+      if (!Array.isArray(ledger[nodeId])) {
+        ledger[nodeId] = [];
       }
-    }
+      const nodeSessions = sessions.filter(s => s.nodeId === nodeId);
+      let modified = false;
 
-    if (modified) {
-      await this.saveLedger(ledger);
-    }
-    return ledger[nodeId];
+      for (const s of nodeSessions) {
+        const portNum = parseInt(s.assigned?.hostPort || s.peering?.listenPort, 10);
+        if (isNaN(portNum) || portNum <= 0) continue;
+
+        const existingEntry = ledger[nodeId].find(p => p.port === portNum);
+        const iface = s.assigned?.interface || s.peering?.interface || s.id;
+        if (existingEntry) {
+          if (!existingEntry.sessionId && s.id) {
+            existingEntry.sessionId = s.id;
+            modified = true;
+          }
+          if (!existingEntry.asn && s.asn) {
+            existingEntry.asn = s.asn;
+            modified = true;
+          }
+          if (!existingEntry.interfaceName && iface) {
+            existingEntry.interfaceName = iface;
+            modified = true;
+          }
+        } else {
+          ledger[nodeId].push({
+            port: portNum,
+            type: 'in_use',
+            source: s.source === 'discovered' ? 'wireguard_probe' : 'peering_session',
+            sessionId: s.id,
+            asn: s.asn || null,
+            interfaceName: iface,
+            lockedAt: s.createdAt || new Date().toISOString(),
+            description: `WireGuard interface ${iface} (ASN ${s.asn || 'unknown'})`
+          });
+          modified = true;
+        }
+      }
+
+      if (modified) {
+        await this.saveLedger(ledger);
+      }
+      return ledger[nodeId];
+    });
   }
 }

@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import { getDataDir } from '../config.js';
 import { FileStore } from '../storage/fileStore.js';
 import { getActiveConfig } from '../storage/configLoader.js';
-import { validatePeeringSubmission } from '../utils/validator.js';
+import { validatePeeringSubmission, normalizeAsn } from '../utils/validator.js';
 import { PortLedgerService } from './portLedgerService.js';
 import { ConfigEngine } from './configEngine.js';
 import { AuthService } from './authService.js';
@@ -231,7 +231,7 @@ export class SessionService {
   /**
    * Authoritative Peer Submission: Validates, assigns server port, generates configs, persists session
    */
-  static async submitPeering(rawPayload) {
+  static async submitPeering(rawPayload, requesterUser = null) {
     // ---- Lock-free phase: validation, node lookup, registry fetch ----
     const valRes = validatePeeringSubmission(rawPayload);
     if (!valRes.valid) {
@@ -263,11 +263,11 @@ export class SessionService {
 
     // ---- Serialized commit phase: read-modify-write of the session table ----
     return this.withSessionCommitLock(() =>
-      this._commitSession({ norm, rawPayload, targetNode, config, registryInfo })
+      this._commitSession({ norm, rawPayload, targetNode, config, registryInfo, requesterUser })
     );
   }
 
-  static async _commitSession({ norm, rawPayload, targetNode, config, registryInfo }) {
+  static async _commitSession({ norm, rawPayload, targetNode, config, registryInfo, requesterUser = null }) {
     // 3. Check for existing session and validate WireGuard public key uniqueness on target node
     const sessions = await this.getSessions();
     let existingIndex = -1;
@@ -278,8 +278,39 @@ export class SessionService {
       if (existingIndex === -1) {
         return {
           success: false,
+          statusCode: 404,
           message: `Session with ID '${rawPayload.id}' not found.`
         };
+      }
+
+      const existingSession = sessions[existingIndex];
+      const existingSessionAsn = existingSession.asn ? parseInt(normalizeAsn(existingSession.asn), 10) : null;
+      const requesterAsn = requesterUser?.asn ? parseInt(normalizeAsn(requesterUser.asn), 10) : null;
+      const isAdmin = requesterUser?.role === 'admin' ||
+        (Array.isArray(config.admins) && requesterAsn && config.admins.includes(requesterAsn)) ||
+        (config.network?.asnNumber && requesterAsn === config.network?.asnNumber);
+
+      // Object-Level Authorization (SEC-02 BOLA / IDOR):
+      // Only the session owner (matching ASN) or an administrator may update an existing session.
+      if (requesterUser && !isAdmin && existingSessionAsn !== requesterAsn) {
+        return {
+          success: false,
+          statusCode: 403,
+          message: 'Forbidden: Cannot modify peering session owned by another ASN'
+        };
+      }
+
+      // Non-admins cannot alter the ASN or ownership of an existing session
+      if (!isAdmin && existingSessionAsn && norm.asn !== existingSessionAsn) {
+        return {
+          success: false,
+          statusCode: 403,
+          message: 'Forbidden: Cannot change ASN of an existing session'
+        };
+      }
+
+      if (isAdmin && requesterAsn && existingSessionAsn !== requesterAsn) {
+        console.log(`[SessionAudit] Admin (ASN ${requesterAsn}) updated peering session '${rawPayload.id}' owned by ASN ${existingSessionAsn}`);
       }
       // Check if updated public key conflicts with another session on the same node
       if (norm.publicKey) {
@@ -783,10 +814,10 @@ export class SessionService {
             const m = peer.interface.match(/(?:as|asn|peer|p|dn42|_|^)(\d{4,10})/i);
             if (m) {
               const parsedNum = parseInt(m[1], 10);
-              const targetAsn = (parsedNum < 10000 && parsedNum > 0) ? (4242420000 + parsedNum) : parsedNum;
-              matchedBgp = bgpSessions.find(b => b.asn === targetAsn || b.cleanAsn === targetAsn || b.asn === parsedNum);
-              if (!matchedBgp) {
-                matchedAsn = targetAsn;
+              // ENG-10: Match against active BGP session; do not falsely claim another ASN if unmatched
+              matchedBgp = bgpSessions.find(b => b.asn === parsedNum || b.cleanAsn === parsedNum || (parsedNum < 10000 && (b.asn === 4242420000 + parsedNum || b.cleanAsn === 4242420000 + parsedNum)));
+              if (!matchedBgp && peer.interface.match(/^as\d{9,10}$/i)) {
+                matchedAsn = parsedNum;
               }
             }
           }
