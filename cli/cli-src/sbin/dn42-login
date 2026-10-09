@@ -88,24 +88,38 @@ enter_shell() {
 
 # ---------- Auto Login via Persistent Token ----------
 try_autologin() {
-  local token saved_asn resp me_asn
+  local token saved_asn resp me_asn attempt
   token=$(cat /mnt/persist/.dn42/token 2>/dev/null)
   [ -z "$token" ] && return 1
   saved_asn=$(cat /mnt/persist/.dn42/asn 2>/dev/null)
 
-  resp=$(wget -q -T 15 -O - --header="Authorization: Bearer $token" "$API_BASE/api/auth/me" 2>/dev/null || curl -s -m 15 -H "Authorization: Bearer $token" "$API_BASE/api/auth/me" 2>/dev/null)
-  if ! echo "$resp" | grep -q '"success":true'; then
+  # 网络冷启动容错重试（最多3次，每次间隔1秒）
+  resp=""
+  for attempt in 1 2 3; do
+    resp=$(wget -q -T 10 -O - --header="Authorization: Bearer $token" "$API_BASE/api/auth/me" 2>/dev/null || curl -s -m 10 -H "Authorization: Bearer $token" "$API_BASE/api/auth/me" 2>/dev/null)
+    [ -n "$resp" ] && break
+    sleep 1
+  done
+
+  # 1. 成功验证
+  if echo "$resp" | grep -q '"success":true'; then
+    me_asn=$(json_field "$resp" asn)
+    [ -z "$me_asn" ] && me_asn="$saved_asn"
+
+    echo "$token" > /tmp/dn42_token
+    echo "$me_asn" > /tmp/dn42_asn
+    enter_shell "$me_asn"
+    return 0
+  fi
+
+  # 2. 仅在服务端明确返回认证失败（401 / Token expired）时清理凭据
+  if echo "$resp" | grep -q '"success":false'; then
     rm -f /mnt/persist/.dn42/token /mnt/persist/.dn42/asn 2>/dev/null
     return 1
   fi
 
-  me_asn=$(json_field "$resp" asn)
-  [ -z "$me_asn" ] && me_asn="$saved_asn"
-
-  echo "$token" > /tmp/dn42_token
-  echo "$me_asn" > /tmp/dn42_asn
-  enter_shell "$me_asn"
-  return 0
+  # 3. 网络不可达或未响应：不删除本地 Token，退回手动流程
+  return 1
 }
 
 save_token() {

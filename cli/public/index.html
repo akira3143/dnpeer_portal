@@ -325,18 +325,17 @@
         }
       };
 
-      // 宿主启动时：双向对账同步（localStorage <-> OPFS persist）
+      // 宿主启动时：双向对账同步（localStorage / sessionStorage <-> OPFS persist）
       try {
         const localToken = localStorage.getItem('dn42_auth_token');
-        if (localToken) {
-          // localStorage 有 token -> 镜像写入 persist
-          await window.syncTokenToPersist(localToken);
+        const sessionToken = sessionStorage.getItem('dn42_auth_token');
+        const activeToken = localToken || sessionToken;
+        if (activeToken) {
+          // 有活跃会话 (localStorage 记住我 或 同Tab sessionStorage) -> 镜像写入 persist 供虚机免登
+          await window.syncTokenToPersist(activeToken);
         } else {
-          // localStorage 无 token -> 从 persist 读取并反向写入 localStorage
-          const persistToken = await window.readTokenFromPersist();
-          if (persistToken) {
-            localStorage.setItem('dn42_auth_token', persistToken);
-          }
+          // 无任何活跃会话 (全新冷启动/未持久化关闭重启) -> 清理 OPFS 残留，杜绝未持久化会话复活 (SEC-11)
+          await window.syncTokenToPersist(null);
         }
       } catch (e) {
         console.warn('Token sync on boot warning:', e);
@@ -430,7 +429,7 @@
                   if (data && data.success && data.data && data.data.token) {
                     if (remember) {
                       localStorage.setItem('dn42_auth_token', data.data.token);
-                      sessionStorage.removeItem('dn42_auth_token');
+                      sessionStorage.setItem('dn42_auth_token', data.data.token);
                     } else {
                       localStorage.removeItem('dn42_auth_token');
                       sessionStorage.setItem('dn42_auth_token', data.data.token);
@@ -441,6 +440,7 @@
               if (rewritten.includes('/api/auth/logout')) {
                 localStorage.removeItem('dn42_auth_token');
                 sessionStorage.removeItem('dn42_auth_token');
+                window.syncTokenToPersist(null).catch(() => {});
               }
             }).catch(() => {});
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ApiClient, readTokenFromOPFS, type NetworkMeta, type PeeringSession } from './api/client';
+import { ApiClient, readTokenFromOPFS, syncTokenToOPFS, type NetworkMeta, type PeeringSession } from './api/client';
 import { ToastProvider, useToast } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Navbar } from './components/Navbar';
@@ -111,11 +111,12 @@ const AppContent: React.FC = () => {
         }
       }
 
-      // If localStorage has no token, check OPFS persist token
+      // If neither localStorage nor sessionStorage has a token, this is a clean cold start without an active session.
+      // Purge any un-remembered residual token in OPFS to prevent session resurrection (SEC-11).
       if (!ApiClient.getToken()) {
         const opfsToken = await readTokenFromOPFS();
         if (opfsToken) {
-          localStorage.setItem('dn42_auth_token', opfsToken);
+          await syncTokenToOPFS(null);
         }
       }
 
@@ -154,7 +155,7 @@ const AppContent: React.FC = () => {
   };
 
   const handleLogout = () => {
-    ApiClient.clearToken();
+    ApiClient.clearToken().catch(() => {});
     setUser(null);
     showToast('👋 Signed out successfully', 'info');
   };

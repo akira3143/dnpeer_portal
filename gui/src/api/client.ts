@@ -150,30 +150,31 @@ export class ApiClient {
     return localStorage.getItem('dn42_auth_token') || sessionStorage.getItem('dn42_auth_token');
   }
 
-  public static setToken(token: string, rememberMe: boolean = true) {
+  public static async setToken(token: string, rememberMe: boolean = true): Promise<void> {
     if (rememberMe) {
       localStorage.setItem('dn42_auth_token', token);
-      sessionStorage.removeItem('dn42_auth_token');
-      syncTokenToOPFS(token).catch(() => {});
+      sessionStorage.setItem('dn42_auth_token', token);
+      await syncTokenToOPFS(token);
       if (typeof window !== 'undefined' && typeof (window as any).syncTokenToPersist === 'function') {
-        (window as any).syncTokenToPersist(token);
+        try { await (window as any).syncTokenToPersist(token); } catch {}
       }
     } else {
       localStorage.removeItem('dn42_auth_token');
       sessionStorage.setItem('dn42_auth_token', token);
-      syncTokenToOPFS(null).catch(() => {});
+      // Active session in current tab: bridge token to OPFS for Linux guest VM
+      await syncTokenToOPFS(token);
       if (typeof window !== 'undefined' && typeof (window as any).syncTokenToPersist === 'function') {
-        (window as any).syncTokenToPersist(null);
+        try { await (window as any).syncTokenToPersist(token); } catch {}
       }
     }
   }
 
-  public static clearToken() {
+  public static async clearToken(): Promise<void> {
     localStorage.removeItem('dn42_auth_token');
     sessionStorage.removeItem('dn42_auth_token');
-    syncTokenToOPFS(null).catch(() => {});
+    await syncTokenToOPFS(null);
     if (typeof window !== 'undefined' && typeof (window as any).syncTokenToPersist === 'function') {
-      (window as any).syncTokenToPersist(null);
+      try { await (window as any).syncTokenToPersist(null); } catch {}
     }
   }
 

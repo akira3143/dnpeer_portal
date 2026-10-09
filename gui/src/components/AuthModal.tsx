@@ -49,7 +49,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
   // Step 1: Input ASN
   const [asnInput, setAsnInput] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [authCheckData, setAuthCheckData] = useState<AuthCheckData | null>(null);
 
   // Step 2: Password Login
@@ -131,6 +131,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     setConfirmPassword('');
     setTempAuthResult(null);
     setCustomKeyPath('');
+    setRememberMe(true);
   };
 
   // 1. Stage 1: Input ASN & Authoritatively Query Gateway / WHOIS
@@ -197,7 +198,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         return;
       }
 
-      ApiClient.setToken(res.data.token, rememberMe);
+      await ApiClient.setToken(res.data.token, rememberMe);
       onSuccess(res.data.token, res.data.user || res.data, rememberMe);
       handleClose();
       showToast(
@@ -297,7 +298,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         return;
       }
 
-      ApiClient.setToken(res.data.token, rememberMe);
+      await ApiClient.setToken(res.data.token, rememberMe);
       setTempAuthResult(res.data);
 
       if (authCheckData.hasPassword) {
@@ -331,7 +332,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         return;
       }
 
-      ApiClient.setToken(res.data.token, rememberMe);
+      await ApiClient.setToken(res.data.token, rememberMe);
       setTempAuthResult(res.data);
 
       if (authCheckData.hasPassword) {
@@ -363,7 +364,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     setIsLoading(true);
     try {
       if (tempAuthResult?.token) {
-        ApiClient.setToken(tempAuthResult.token, rememberMe);
+        await ApiClient.setToken(tempAuthResult.token, rememberMe);
       }
       const res = await ApiClient.setPassword(newPassword);
       if (!res.success) {
@@ -372,7 +373,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       }
 
       if (tempAuthResult) {
-        ApiClient.setToken(tempAuthResult.token, rememberMe);
+        await ApiClient.setToken(tempAuthResult.token, rememberMe);
         onSuccess(tempAuthResult.token, tempAuthResult.user || tempAuthResult, rememberMe);
       }
       handleClose();
@@ -384,9 +385,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     }
   };
 
-  const handleSkipPassword = () => {
+  const handleSkipPassword = async () => {
     if (tempAuthResult) {
-      ApiClient.setToken(tempAuthResult.token, rememberMe);
+      await ApiClient.setToken(tempAuthResult.token, rememberMe);
       onSuccess(tempAuthResult.token, tempAuthResult.user || tempAuthResult, rememberMe);
     }
     handleClose();
@@ -439,16 +440,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                 className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-white/10 text-white text-xs font-mono focus:border-cyan-400 focus:outline-none"
               />
             </div>
-
-            <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-slate-400 hover:text-slate-200 select-none">
-              <input
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="rounded bg-slate-900 border-white/20 text-cyan-400 focus:ring-cyan-500 w-4 h-4 cursor-pointer"
-              />
-              <span>Remember login for 30 days &middot; 保持登录 30 天</span>
-            </label>
 
             <button
               onClick={handleCheckAsn}
@@ -514,7 +505,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                   onChange={(e) => setRememberMe(e.target.checked)}
                   className="rounded bg-slate-900 border-white/20 text-cyan-400 focus:ring-cyan-500 w-4 h-4 cursor-pointer"
                 />
-                <span>Remember 30 days</span>
+                <span>Remember login for 30 days &middot; 保持登录 30 天</span>
               </label>
 
               <button
@@ -759,6 +750,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               </button>
             </div>
 
+            <div className="pt-1">
+              <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-slate-400 hover:text-slate-200 select-none">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="rounded bg-slate-900 border-white/20 text-cyan-400 focus:ring-cyan-500 w-4 h-4 cursor-pointer"
+                />
+                <span>Remember login for 30 days &middot; 保持登录 30 天</span>
+              </label>
+            </div>
+
             <div className="flex gap-2 pt-2">
               <button
                 type="button"
@@ -834,6 +837,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                 onChange={(e) => setSignatureInput(e.target.value)}
                 className="w-full px-3.5 py-2 rounded-xl bg-slate-900/90 border border-white/10 text-white text-xs font-mono focus:border-cyan-400 focus:outline-none"
               />
+            </div>
+
+            <div className="pt-1">
+              <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-slate-400 hover:text-slate-200 select-none">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="rounded bg-slate-900 border-white/20 text-cyan-400 focus:ring-cyan-500 w-4 h-4 cursor-pointer"
+                />
+                <span>Remember login for 30 days &middot; 保持登录 30 天</span>
+              </label>
             </div>
 
             <div className="flex gap-2 pt-1">
