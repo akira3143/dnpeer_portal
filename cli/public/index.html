@@ -327,15 +327,24 @@
 
       // 宿主启动时：双向对账同步（localStorage / sessionStorage <-> OPFS persist）
       try {
-        const localToken = localStorage.getItem('dn42_auth_token');
-        const sessionToken = sessionStorage.getItem('dn42_auth_token');
-        const activeToken = localToken || sessionToken;
-        if (activeToken) {
-          // 有活跃会话 (localStorage 记住我 或 同Tab sessionStorage) -> 镜像写入 persist 供虚机免登
-          await window.syncTokenToPersist(activeToken);
-        } else {
-          // 无任何活跃会话 (全新冷启动/未持久化关闭重启) -> 清理 OPFS 残留，杜绝未持久化会话复活 (SEC-11)
+        const expiresAtStr = localStorage.getItem('dn42_auth_expires_at');
+        const isExpired = expiresAtStr && !isNaN(parseInt(expiresAtStr, 10)) && Date.now() > parseInt(expiresAtStr, 10);
+        if (isExpired) {
+          localStorage.removeItem('dn42_auth_token');
+          localStorage.removeItem('dn42_auth_expires_at');
+          sessionStorage.removeItem('dn42_auth_token');
           await window.syncTokenToPersist(null);
+        } else {
+          const localToken = localStorage.getItem('dn42_auth_token');
+          const sessionToken = sessionStorage.getItem('dn42_auth_token');
+          const activeToken = localToken || sessionToken;
+          if (activeToken) {
+            // 有活跃会话 (30天持久化 或 2小时兜底有效) -> 镜像写入 persist 供虚机免登
+            await window.syncTokenToPersist(activeToken);
+          } else {
+            // 无任何活跃会话 -> 清理 OPFS 残留，杜绝会话复活
+            await window.syncTokenToPersist(null);
+          }
         }
       } catch (e) {
         console.warn('Token sync on boot warning:', e);
@@ -427,18 +436,16 @@
                   const clone = res.clone();
                   const data = await clone.json();
                   if (data && data.success && data.data && data.data.token) {
-                    if (remember) {
-                      localStorage.setItem('dn42_auth_token', data.data.token);
-                      sessionStorage.setItem('dn42_auth_token', data.data.token);
-                    } else {
-                      localStorage.removeItem('dn42_auth_token');
-                      sessionStorage.setItem('dn42_auth_token', data.data.token);
-                    }
+                    const duration = remember ? (30 * 24 * 3600 * 1000) : (2 * 3600 * 1000);
+                    localStorage.setItem('dn42_auth_token', data.data.token);
+                    localStorage.setItem('dn42_auth_expires_at', String(Date.now() + duration));
+                    sessionStorage.setItem('dn42_auth_token', data.data.token);
                   }
                 } catch {}
               }
               if (rewritten.includes('/api/auth/logout')) {
                 localStorage.removeItem('dn42_auth_token');
+                localStorage.removeItem('dn42_auth_expires_at');
                 sessionStorage.removeItem('dn42_auth_token');
                 window.syncTokenToPersist(null).catch(() => {});
               }

@@ -147,30 +147,53 @@ export async function syncTokenToOPFS(token: string | null): Promise<void> {
 
 export class ApiClient {
   public static getToken(): string | null {
-    return localStorage.getItem('dn42_auth_token') || sessionStorage.getItem('dn42_auth_token');
+    const token = localStorage.getItem('dn42_auth_token') || sessionStorage.getItem('dn42_auth_token');
+    if (!token) return null;
+
+    // Check expiration timestamp (30 days vs 2 hours fallback)
+    const expiresAtStr = localStorage.getItem('dn42_auth_expires_at');
+    if (expiresAtStr) {
+      const expiresAt = parseInt(expiresAtStr, 10);
+      if (!isNaN(expiresAt) && Date.now() > expiresAt) {
+        ApiClient.clearToken().catch(() => {});
+        return null;
+      }
+    } else {
+      // Decode JWT payload as fallback check
+      try {
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+          if (payload && payload.exp && Date.now() > payload.exp * 1000) {
+            ApiClient.clearToken().catch(() => {});
+            return null;
+          }
+        }
+      } catch {}
+    }
+
+    return token;
   }
 
   public static async setToken(token: string, rememberMe: boolean = true): Promise<void> {
-    if (rememberMe) {
-      localStorage.setItem('dn42_auth_token', token);
-      sessionStorage.setItem('dn42_auth_token', token);
-      await syncTokenToOPFS(token);
-      if (typeof window !== 'undefined' && typeof (window as any).syncTokenToPersist === 'function') {
-        try { await (window as any).syncTokenToPersist(token); } catch {}
-      }
-    } else {
-      localStorage.removeItem('dn42_auth_token');
-      sessionStorage.setItem('dn42_auth_token', token);
-      // Active session in current tab: bridge token to OPFS for Linux guest VM
-      await syncTokenToOPFS(token);
-      if (typeof window !== 'undefined' && typeof (window as any).syncTokenToPersist === 'function') {
-        try { await (window as any).syncTokenToPersist(token); } catch {}
-      }
+    // 选 Remember: 30 天有效期 (30 * 24 * 3600 * 1000)
+    // 不选 Remember: 2 小时兜底有效期 (2 * 3600 * 1000)，防误退与关闭误销毁
+    const duration = rememberMe ? (30 * 24 * 3600 * 1000) : (2 * 3600 * 1000);
+    const expiresAt = Date.now() + duration;
+
+    localStorage.setItem('dn42_auth_token', token);
+    localStorage.setItem('dn42_auth_expires_at', String(expiresAt));
+    sessionStorage.setItem('dn42_auth_token', token);
+
+    await syncTokenToOPFS(token);
+    if (typeof window !== 'undefined' && typeof (window as any).syncTokenToPersist === 'function') {
+      try { await (window as any).syncTokenToPersist(token); } catch {}
     }
   }
 
   public static async clearToken(): Promise<void> {
     localStorage.removeItem('dn42_auth_token');
+    localStorage.removeItem('dn42_auth_expires_at');
     sessionStorage.removeItem('dn42_auth_token');
     await syncTokenToOPFS(null);
     if (typeof window !== 'undefined' && typeof (window as any).syncTokenToPersist === 'function') {
