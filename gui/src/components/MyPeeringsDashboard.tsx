@@ -279,6 +279,23 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
     });
   }, [sessions, searchQuery, statusFilter]);
 
+  const counts = useMemo(() => {
+    let operational = 0;
+    let pending = 0;
+    for (const s of sessions) {
+      if (s.status === 'active' || s.runtime?.bgpState === 'Established') {
+        operational++;
+      } else {
+        pending++;
+      }
+    }
+    return {
+      all: sessions.length,
+      operational,
+      pending
+    };
+  }, [sessions]);
+
   // ----------------- 7.2 Login Guard for Unauthenticated Users -----------------
   if (!user) {
     return (
@@ -369,26 +386,33 @@ export const MyPeeringsDashboard: React.FC<MyPeeringsDashboardProps> = ({
             <button
               onClick={() => setStatusFilter('all')}
               className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
-                statusFilter === 'all' ? 'bg-cyan-500/20 text-cyan-300 font-semibold' : 'text-slate-400'
+                statusFilter === 'all' ? 'bg-cyan-500/20 text-cyan-300 font-semibold' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              All ({sessions.length})
+              All ({counts.all})
             </button>
             <button
               onClick={() => setStatusFilter('active')}
               className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
-                statusFilter === 'active' ? 'bg-cyan-500/20 text-cyan-300 font-semibold' : 'text-slate-400'
+                statusFilter === 'active' ? 'bg-cyan-500/20 text-cyan-300 font-semibold' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Operational
+              Operational ({counts.operational})
             </button>
             <button
               onClick={() => setStatusFilter('pending')}
-              className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
-                statusFilter === 'pending' ? 'bg-cyan-500/20 text-cyan-300 font-semibold' : 'text-slate-400'
+              className={`px-3 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+                statusFilter === 'pending'
+                  ? 'bg-cyan-500/20 text-cyan-300 font-semibold'
+                  : counts.pending > 0
+                  ? 'text-amber-400 font-medium hover:text-amber-300'
+                  : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Pending
+              <span>Pending ({counts.pending})</span>
+              {counts.pending > 0 && statusFilter !== 'pending' && (
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+              )}
             </button>
           </div>
         </div>
