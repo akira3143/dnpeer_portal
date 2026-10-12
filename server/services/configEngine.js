@@ -45,7 +45,6 @@ export class ConfigEngine {
   }) {
     const config = getActiveConfig();
     const node = config.nodes.find(n => n.id === nodeId) || config.nodes[0] || {};
-    const cleanAsn = parseInt(String(asn).replace(/^AS/i, ''), 10);
 
     // 1. Client WireGuard Address Lines: LLA /64 prioritized first, then IPv4 /32, ULA /128
     const clientAddresses = [];

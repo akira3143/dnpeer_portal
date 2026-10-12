@@ -1,6 +1,6 @@
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { getDataDir } from '../config.js';
+import { getDataDir, ENV } from '../config.js';
 import { FileStore } from '../storage/fileStore.js';
 import { getActiveConfig } from '../storage/configLoader.js';
 import { validatePeeringSubmission, normalizeAsn } from '../utils/validator.js';
@@ -215,6 +215,11 @@ export class SessionService {
     return true;
   }
 
+  /**
+   * Diagnostic lookup by ID (@internal / reserved for diagnostic inspection)
+   * @param {string} id
+   * @returns {Promise<any | null>}
+   */
   static async getSessionById(id) {
     const sessions = await this.getSessions();
     return sessions.find(s => s.id === id) || null;
@@ -226,6 +231,96 @@ export class SessionService {
       ? [...sessions]
       : sessions.filter(s => s.asn === parseInt(asn, 10));
     return filtered.sort((a, b) => String(a.nodeId || '').localeCompare(String(b.nodeId || '')));
+  }
+
+  /**
+   * Asynchronously dispatch Telegram notification and record outcome in session data
+   */
+  static _dispatchNotification(sessionId, sessionObj, isNew = true) {
+    (async () => {
+      try {
+        const result = await NotificationService.notifyPeeringSubmission(sessionObj, isNew);
+        if (result === true) {
+          await this.updateNotificationStatus(sessionId, {
+            status: 'delivered',
+            deliveredAt: new Date().toISOString(),
+            lastError: null
+          });
+        } else if (result === false) {
+          await this.updateNotificationStatus(sessionId, {
+            status: 'failed',
+            lastError: 'Telegram API returned unsuccessful status'
+          });
+        }
+      } catch (err) {
+        await this.updateNotificationStatus(sessionId, {
+          status: 'failed',
+          lastError: err?.message || 'Telegram notification error'
+        });
+      }
+    })().catch(() => {});
+  }
+
+  /**
+   * Update notification status for a specific session with commit lock
+   */
+  static async updateNotificationStatus(sessionId, updates) {
+    if (!sessionId) return;
+    return this.withSessionCommitLock(async () => {
+      const sessions = await this.getSessions();
+      const s = sessions.find(item => item.id === sessionId);
+      if (!s) {
+        // Session was deleted or pruned before notification completed
+        return;
+      }
+      const prevAttempts = s.notification?.attempts || 0;
+      const incAttempts = (updates.status === 'delivered' || updates.status === 'failed') ? 1 : 0;
+      s.notification = {
+        ...(s.notification || { status: 'pending', attempts: 0 }),
+        ...updates,
+        attempts: prevAttempts + incAttempts,
+        lastAttemptAt: new Date().toISOString()
+      };
+      await this.saveSessions(sessions);
+    });
+  }
+
+  /**
+   * Retry failed Telegram notifications with exponential backoff / attempt limit
+   */
+  static async retryPendingNotifications(maxAttempts = 3) {
+    return this.withSessionCommitLock(async () => {
+      const sessions = await this.getSessions();
+      const failedSessions = sessions.filter(s =>
+        s.notification &&
+        s.notification.status === 'failed' &&
+        (s.notification.attempts || 0) < maxAttempts
+      );
+
+      for (const s of failedSessions) {
+        try {
+          const result = await NotificationService.notifyPeeringSubmission(s, false);
+          if (result === true) {
+            s.notification.status = 'delivered';
+            s.notification.deliveredAt = new Date().toISOString();
+            s.notification.lastError = null;
+          } else {
+            s.notification.attempts = (s.notification.attempts || 0) + 1;
+            s.notification.lastAttemptAt = new Date().toISOString();
+            s.notification.lastError = 'Telegram retry returned unsuccessful status';
+          }
+        } catch (err) {
+          s.notification.attempts = (s.notification.attempts || 0) + 1;
+          s.notification.lastAttemptAt = new Date().toISOString();
+          s.notification.lastError = err?.message || 'Telegram retry error';
+        }
+      }
+
+      if (failedSessions.length > 0) {
+        await this.saveSessions(sessions);
+      }
+      return failedSessions.length;
+    });
   }
 
   /**
@@ -490,7 +585,18 @@ export class SessionService {
         stageText: 'Awaiting admin configuration',
         latestHandshake: 0,
         bgpState: 'Idle'
-      } : sessions[existingIndex].runtime
+      } : sessions[existingIndex].runtime,
+      notification: isNew ? {
+        status: Boolean(ENV.TELEGRAM_BOT_TOKEN && ENV.TELEGRAM_CHAT_ID) ? 'pending' : 'skipped',
+        attempts: 0,
+        lastAttemptAt: null,
+        lastError: Boolean(ENV.TELEGRAM_BOT_TOKEN && ENV.TELEGRAM_CHAT_ID) ? null : 'Telegram bot credentials not configured',
+        deliveredAt: null
+      } : {
+        ...(sessions[existingIndex].notification || {}),
+        status: Boolean(ENV.TELEGRAM_BOT_TOKEN && ENV.TELEGRAM_CHAT_ID) ? 'pending' : 'skipped',
+        lastError: Boolean(ENV.TELEGRAM_BOT_TOKEN && ENV.TELEGRAM_CHAT_ID) ? null : 'Telegram bot credentials not configured'
+      }
     };
 
     if (isNew) {
@@ -501,8 +607,10 @@ export class SessionService {
 
     await this.saveSessions(sessions);
 
-    // 7. Fire async Telegram notification
-    NotificationService.notifyPeeringSubmission(newSession, isNew).catch(() => {});
+    // 7. Fire async Telegram notification with delivery tracking and retry support if configured
+    if (ENV.TELEGRAM_BOT_TOKEN && ENV.TELEGRAM_CHAT_ID) {
+      this._dispatchNotification(newSession.id, newSession, isNew);
+    }
 
     let conflictMessage = null;
     if (portResult.isShifted) {

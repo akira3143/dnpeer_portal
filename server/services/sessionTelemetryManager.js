@@ -7,7 +7,6 @@ export class SessionTelemetryManager {
   static _telemetryMap = new Map();
   static _loadedPath = null;
   static _saveTimer = null;
-  static _savePromise = null;
   static _isDirty = false;
 
   static getTelemetryPath() {
@@ -73,7 +72,7 @@ export class SessionTelemetryManager {
 
     try {
       if (fs.existsSync(currentPath)) {
-        const raw = FileStore.readJsonSync(currentPath, null);
+        const raw = FileStore.readJsonSync(currentPath, null, { failClosed: false });
         const data = raw?.sessions || raw || {};
         for (const [id, item] of Object.entries(data)) {
           if (item && typeof item === 'object') {
@@ -83,6 +82,11 @@ export class SessionTelemetryManager {
       }
     } catch (err) {
       console.warn('[SessionTelemetryManager] Notice: Could not load telemetry file:', err.message);
+      try {
+        if (fs.existsSync(currentPath)) {
+          fs.renameSync(currentPath, `${currentPath}.corrupted.${Date.now()}`);
+        }
+      } catch {}
     }
   }
 

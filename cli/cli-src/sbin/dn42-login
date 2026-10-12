@@ -156,7 +156,9 @@ do_password_login() {
     fi
 
     echo -e "\033[90mVerifying password credentials...\033[0m"
-    resp=$(api_post "/api/auth/login-password" "{\"asn\":\"$clean\",\"password\":\"$pwd\",\"rememberMe\":$remember}")
+    safe_clean=$(json_escape "$clean")
+    safe_pwd=$(json_escape "$pwd")
+    resp=$(api_post "/api/auth/login-password" "{\"asn\":\"$safe_clean\",\"password\":\"$safe_pwd\",\"rememberMe\":$remember}")
     if echo "$resp" | grep -q '"success":true'; then
       token=$(json_field "$resp" token)
       user_asn=$(json_field "$resp" asn)
@@ -193,7 +195,8 @@ do_set_password() {
       continue
     fi
 
-    resp=$(api_post "/api/auth/set-password" "{\"password\":\"$new_pwd\"}")
+    safe_new_pwd=$(json_escape "$new_pwd")
+    resp=$(api_post "/api/auth/set-password" "{\"password\":\"$safe_new_pwd\"}")
     if echo "$resp" | grep -q '"success":true'; then
       echo -e "\033[32mPassword saved successfully! You can use this password for fast logins next time.\033[0m"
       return 0
@@ -352,7 +355,9 @@ do_ssh_login() {
     fi
 
     echo -e "\033[90mVerifying cryptographic signature with gateway...\033[0m"
-    payload="{\"asn\":$clean,\"challengeText\":\"$chal_text\",\"signature\":\"$sig\",\"rememberMe\":$remember}"
+    safe_chal=$(json_escape "$chal_text")
+    safe_sig=$(json_escape "$sig")
+    payload="{\"asn\":$clean,\"challengeText\":\"$safe_chal\",\"signature\":\"$safe_sig\",\"rememberMe\":$remember}"
     resp=$(api_post "/api/auth/verify-ssh" "$payload")
     if echo "$resp" | grep -q '"success":true'; then
       token=$(json_field "$resp" token)

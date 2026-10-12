@@ -52,25 +52,10 @@ class NodeTokenStorageService {
    */
   saveTokens(tokens) {
     const filePath = this.getFilePath();
-    const dir = path.dirname(filePath);
-    FileStore.ensureDirectory(dir);
-
-    const content = JSON.stringify(tokens, null, 2) + '\n';
-    const tempPath = `${filePath}.${crypto.randomBytes(6).toString('hex')}.tmp`;
-
     try {
-      fs.writeFileSync(tempPath, content, 'utf8');
-      try {
-        fs.renameSync(tempPath, filePath);
-      } catch (renameErr) {
-        fs.copyFileSync(tempPath, filePath);
-        try { fs.unlinkSync(tempPath); } catch {}
-      }
+      FileStore.writeJsonSync(filePath, tokens);
     } catch (err) {
       console.error(`[NodeTokenStorage] Failed to persist node tokens:`, err.message);
-      try {
-        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-      } catch {}
       throw err;
     }
   }

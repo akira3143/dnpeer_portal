@@ -34,6 +34,12 @@ export class PortLedgerService {
     return Array.isArray(ledger[nodeId]) ? ledger[nodeId] : [];
   }
 
+  /**
+   * Check if a port is currently recorded on a node (@internal / test harness verification)
+   * @param {string} nodeId
+   * @param {number | string} port
+   * @returns {Promise<boolean>}
+   */
   static async isPortOccupied(nodeId, port) {
     const ports = await this.getNodePorts(nodeId);
     const targetPort = parseInt(port, 10);

@@ -121,7 +121,10 @@ fi
 
 echo -e "\033[90mExecuting Looking Glass query on \033[36m$node\033[90m: \033[32m$cmd $target\033[0m..."
 
-payload="{\"nodeId\":\"$node\",\"commandType\":\"$cmd\",\"target\":\"$target\"}"
+safe_node=$(json_escape "$node")
+safe_cmd=$(json_escape "$cmd")
+safe_target=$(json_escape "$target")
+payload="{\"nodeId\":\"$safe_node\",\"commandType\":\"$safe_cmd\",\"target\":\"$safe_target\"}"
 resp=$(api_post "/api/looking-glass" "$payload")
 
 if [ -z "$resp" ]; then

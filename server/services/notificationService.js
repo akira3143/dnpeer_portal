@@ -8,8 +8,8 @@ export class NotificationService {
    */
   static async notifyPeeringSubmission(session, isNew = true) {
     if (!ENV.TELEGRAM_BOT_TOKEN || !ENV.TELEGRAM_CHAT_ID) {
-      // Telegram notification not configured
-      return false;
+      // Telegram notification not configured: return null to indicate skipped
+      return null;
     }
 
     try {
@@ -22,6 +22,8 @@ export class NotificationService {
       const clientPort = session.assigned?.clientPort || session.peering?.clientPort || 23143;
       const peerEndpoint = session.peering?.endpoint || '<roaming>';
 
+      // [D-08 Legacy Fallback]: In standard workflows, serverWireguardSnippet is pre-generated
+      // by ConfigEngine. If missing (e.g. from historical imported sessions), format emergency fallback.
       let snippet = session.assigned?.serverWireguardSnippet;
       if (!snippet) {
         const pubKey = session.peering?.publicKey || '';
@@ -112,7 +114,13 @@ PersistentKeepalive = 25
         signal: AbortSignal.timeout(5000)
       });
 
-      return response.ok;
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        console.error(`[NotificationService] Telegram API error (${response.status}):`, errText);
+        return false;
+      }
+
+      return true;
     } catch (err) {
       console.error('[NotificationService] Failed to send Telegram notification:', err.message);
       return false;
@@ -125,7 +133,7 @@ PersistentKeepalive = 25
    */
   static async notifySessionDeletion(session, metadata = {}) {
     if (!ENV.TELEGRAM_BOT_TOKEN || !ENV.TELEGRAM_CHAT_ID) {
-      return false;
+      return null;
     }
 
     try {

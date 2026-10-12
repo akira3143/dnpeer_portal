@@ -70,7 +70,17 @@ api_post() {
 }
 
 json_escape() {
-  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+  printf '%s' "$1" | awk '
+    BEGIN { ORS = "" }
+    NR > 1 { printf "\\n" }
+    {
+      gsub(/\\/, "\\\\")
+      gsub(/"/, "\\\"")
+      gsub(/\r/, "\\r")
+      gsub(/\t/, "\\t")
+      printf "%s", $0
+    }
+  '
 }
 
 # api_delete <path> [optional_id] → stdout response body

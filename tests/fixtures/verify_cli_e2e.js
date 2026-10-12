@@ -46,7 +46,6 @@ async function main() {
       authKeys: [pubKey]
     }
   };
-  fs.writeFileSync('server/data/registry_cache.json', JSON.stringify(registry, null, 2), 'utf8');
 
   console.log('\n================ 1. TEST nodes ===============');
   const nodesRes = execFileSync(SH_PATH, ['cli-src/bin/nodes'], {

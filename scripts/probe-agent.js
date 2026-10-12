@@ -516,6 +516,11 @@ export async function resolveIdentity({ masterUrl, authToken, stateFile, tokenFi
   }
 }
 
+/**
+ * Resolve node ID from identity (@internal / legacy compatibility and test helper)
+ * @param {Object} options
+ * @returns {Promise<string | null>}
+ */
 export async function resolveNodeId(options = {}) {
   const identity = await resolveIdentity(options);
   return identity ? identity.nodeId : null;
@@ -605,13 +610,19 @@ export async function collectAndReport(options = {}) {
   }
   const bgpSessions = parseBgpProtocols(bgpOutput);
 
+  const MAX_RAW_BGP_BYTES = 131072;
+  let safeRawBgp = typeof bgpOutput === 'string' ? bgpOutput : '';
+  if (safeRawBgp.length > MAX_RAW_BGP_BYTES) {
+    safeRawBgp = safeRawBgp.slice(0, MAX_RAW_BGP_BYTES) + '\n[TRUNCATED: Output exceeded 128KB limit]';
+  }
+
   const payload = {
     nodeId,
     ports,
     systemPorts,
     peers,
     bgpSessions,
-    rawBgpOutput: typeof bgpOutput === 'string' ? bgpOutput : ''
+    rawBgpOutput: safeRawBgp
   };
 
   const targetUrl = `${masterUrl.replace(/\/+$/, '')}/api/probe/report`;

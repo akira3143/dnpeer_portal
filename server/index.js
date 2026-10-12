@@ -4,9 +4,11 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { URL, pathToFileURL } from 'node:url';
 
-import { ENV, ROOT_DIR } from './config.js';
+import { ENV, ROOT_DIR, getDataDir } from './config.js';
 import { getActiveConfig, initConfigWatcher, stopConfigWatcher } from './storage/configLoader.js';
+import { FileStore } from './storage/fileStore.js';
 import { AuthService } from './services/authService.js';
+import { SessionService } from './services/sessionService.js';
 import { RegistryService } from './services/registryService.js';
 import { sendJson, successEnvelope, errorEnvelope } from './utils/envelope.js';
 import { safeResolveStaticPath } from './utils/pathSafety.js';
@@ -78,6 +80,18 @@ function extractUser(req) {
 export function createServer() {
   initConfigWatcher();
   RegistryService.startPeriodicSync();
+  FileStore.secureSensitiveFiles(getDataDir());
+
+  // Background retry for failed Telegram notifications (unref'd timers)
+  const retryTimer = setTimeout(() => {
+    SessionService.retryPendingNotifications().catch(() => {});
+  }, 5000);
+  if (typeof retryTimer?.unref === 'function') retryTimer.unref();
+
+  const retryInterval = setInterval(() => {
+    SessionService.retryPendingNotifications().catch(() => {});
+  }, 300000);
+  if (typeof retryInterval?.unref === 'function') retryInterval.unref();
 
   const server = http.createServer(async (req, res) => {
     let parsedUrl;
@@ -449,6 +463,8 @@ export function createServer() {
 
   // Resource cleanup helper to ensure 100% clean termination in tests
   server.closeAll = function() {
+    clearTimeout(retryTimer);
+    clearInterval(retryInterval);
     stopConfigWatcher();
     RegistryService.stopPeriodicSync();
     try {

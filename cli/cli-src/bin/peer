@@ -259,7 +259,27 @@ run_edit_flow() {
       return 0
     fi
 
-    eval "$(awk '
+    while IFS='=' read -r k v; do
+      case "$k" in
+        parsed_node) parsed_node="$v" ;;
+        parsed_lla) parsed_lla="$v" ;;
+        parsed_ipv4) parsed_ipv4="$v" ;;
+        parsed_ula) parsed_ula="$v" ;;
+        parsed_pubkey) parsed_pubkey="$v" ;;
+        parsed_ep) parsed_ep="$v" ;;
+        parsed_peer_port) parsed_peer_port="$v" ;;
+        parsed_listen_port) parsed_listen_port="$v" ;;
+        parsed_mtu) parsed_mtu="$v" ;;
+        unknown_keys)
+          if [ -z "$unknown_keys" ]; then
+            unknown_keys="$v"
+          else
+            unknown_keys="$unknown_keys, $v"
+          fi
+          ;;
+      esac
+    done <<EOF
+$(awk '
       {
         line=$0; sub(/\r$/, "", line)
         if (line ~ /^[[:space:]]*#/ || line ~ /^[[:space:]]*$/) next
@@ -270,33 +290,33 @@ run_edit_flow() {
           key=tolower(key)
           sub(/^[ \t]+/, "", val); sub(/[ \t]+$/, "", val)
           gsub(/[^A-Za-z0-9.:\/+_<>= -]/, "", val)
-          if (key=="node") printf "parsed_node=\"%s\"\n", val
-          else if (key=="link-localipv6(lla)" || key=="link-local" || key=="lla" || key=="linklocal") printf "parsed_lla=\"%s\"\n", val
-          else if (key=="dn42ipv4(optional)" || key=="dn42ipv4" || key=="ipv4") printf "parsed_ipv4=\"%s\"\n", val
-          else if (key=="ipv6ula(optional)" || key=="ipv6ula" || key=="ula") printf "parsed_ula=\"%s\"\n", val
-          else if (key=="wireguardpublickey" || key=="publickey" || key=="pubkey") printf "parsed_pubkey=\"%s\"\n", val
-          else if (key=="wireguardendpoint" || key=="endpoint") printf "parsed_ep=\"%s\"\n", val
-          else if (key=="peerport" || key=="peer_port") { if (val!="") printf "parsed_peer_port=\"%s\"\n", val }
-          else if (key=="listenport" || key=="listen_port") { if (val!="") printf "parsed_listen_port=\"%s\"\n", val }
-          else if (key=="mtu") { if (val!="") printf "parsed_mtu=\"%s\"\n", val }
-          else { if (unk=="") unk=key; else unk=unk ", " key }
+          if (key=="node") printf "parsed_node=%s\n", val
+          else if (key=="link-localipv6(lla)" || key=="link-local" || key=="lla" || key=="linklocal") printf "parsed_lla=%s\n", val
+          else if (key=="dn42ipv4(optional)" || key=="dn42ipv4" || key=="ipv4") printf "parsed_ipv4=%s\n", val
+          else if (key=="ipv6ula(optional)" || key=="ipv6ula" || key=="ula") printf "parsed_ula=%s\n", val
+          else if (key=="wireguardpublickey" || key=="publickey" || key=="pubkey") printf "parsed_pubkey=%s\n", val
+          else if (key=="wireguardendpoint" || key=="endpoint") printf "parsed_ep=%s\n", val
+          else if (key=="peerport" || key=="peer_port") { if (val!="") printf "parsed_peer_port=%s\n", val }
+          else if (key=="listenport" || key=="listen_port") { if (val!="") printf "parsed_listen_port=%s\n", val }
+          else if (key=="mtu") { if (val!="") printf "parsed_mtu=%s\n", val }
+          else printf "unknown_keys=%s\n", key
         } else {
           bare=line; gsub(/[ \t]/, "", bare)
           if (bare=="") next
-          if (bare ~ /^[fF][eE]80:[0-9a-fA-F:]+$/) printf "parsed_lla=\"%s\"\n", bare
-          else if (bare ~ /^[A-Za-z0-9+\/]{43}=$/) printf "parsed_pubkey=\"%s\"\n", bare
-          else if (bare ~ /^(172\.(2[0-3]|[0-9])\.|10\.)/) printf "parsed_ipv4=\"%s\"\n", bare
-          else if (bare ~ /^[fF][dD][0-9a-fA-F:]+/) printf "parsed_ula=\"%s\"\n", bare
-          else if (bare ~ /^[A-Za-z0-9.-]+$/) printf "parsed_ep=\"%s\"\n", bare
+          if (bare ~ /^[fF][eE]80:[0-9a-fA-F:]+$/) printf "parsed_lla=%s\n", bare
+          else if (bare ~ /^[A-Za-z0-9+\/]{43}=$/) printf "parsed_pubkey=%s\n", bare
+          else if (bare ~ /^(172\.(2[0-3]|[0-9])\.|10\.)/) printf "parsed_ipv4=%s\n", bare
+          else if (bare ~ /^[fF][dD][0-9a-fA-F:]+/) printf "parsed_ula=%s\n", bare
+          else if (bare ~ /^[A-Za-z0-9.-]+$/) printf "parsed_ep=%s\n", bare
           else if (bare ~ /^[0-9]+$/) {
-            if (bare+0>=1280 && bare+0<=1500) printf "parsed_mtu=\"%s\"\n", bare
-            else { if (unk=="") unk="ambiguous port " bare; else unk=unk ", ambiguous port " bare }
+            if (bare+0>=1280 && bare+0<=1500) printf "parsed_mtu=%s\n", bare
+            else printf "unknown_keys=ambiguous port %s\n", bare
           }
-          else { if (unk=="") unk="unrecognized " bare; else unk=unk ", unrecognized " bare }
+          else printf "unknown_keys=unrecognized %s\n", bare
         }
       }
-      END { if (unk!="") printf "unknown_keys=\"%s\"\n", unk }
-    ' "$draft_file")"
+    ' "$draft_file")
+EOF
 
     # 3. Content Comparison: if completely untouched baseline -> Cancelled
     if [ "$parsed_node" = "$init_node" ] && \
@@ -500,10 +520,22 @@ run_edit_flow() {
 
   # 7. Construct and Submit Payload
   # Mapping: PeerPort -> listenPort (hostPort), ListenPort -> clientPort
+  local safe_id safe_node safe_pubkey safe_lla safe_v4 safe_ula safe_ep safe_pport safe_lport safe_mtu
+  safe_id=$(json_escape "$edit_session_id")
+  safe_node=$(json_escape "$parsed_node")
+  safe_pubkey=$(json_escape "$parsed_pubkey")
+  safe_lla=$(json_escape "$parsed_lla")
+  safe_v4=$(json_escape "$parsed_ipv4")
+  safe_ula=$(json_escape "$parsed_ula")
+  safe_ep=$(json_escape "$parsed_ep")
+  safe_pport=$(json_escape "$parsed_peer_port")
+  safe_lport=$(json_escape "$parsed_listen_port")
+  safe_mtu=$(json_escape "$parsed_mtu")
+
   if [ "$action_mode" = "update" ] && [ -n "$edit_session_id" ]; then
-    payload="{\"id\":\"$edit_session_id\",\"asn\":$clean_asn,\"nodeId\":\"$parsed_node\",\"publicKey\":\"$parsed_pubkey\",\"linkLocal\":\"$parsed_lla\",\"ipv4\":\"$parsed_ipv4\",\"ipv6Ula\":\"$parsed_ula\",\"endpoint\":\"$parsed_ep\",\"listenPort\":\"$parsed_peer_port\",\"clientPort\":\"$parsed_listen_port\",\"mtu\":$parsed_mtu,\"bgpMode\":\"mpbgp_enh\"}"
+    payload="{\"id\":\"$safe_id\",\"asn\":$clean_asn,\"nodeId\":\"$safe_node\",\"publicKey\":\"$safe_pubkey\",\"linkLocal\":\"$safe_lla\",\"ipv4\":\"$safe_v4\",\"ipv6Ula\":\"$safe_ula\",\"endpoint\":\"$safe_ep\",\"listenPort\":\"$safe_pport\",\"clientPort\":\"$safe_lport\",\"mtu\":$safe_mtu,\"bgpMode\":\"mpbgp_enh\"}"
   else
-    payload="{\"asn\":$clean_asn,\"nodeId\":\"$parsed_node\",\"publicKey\":\"$parsed_pubkey\",\"linkLocal\":\"$parsed_lla\",\"ipv4\":\"$parsed_ipv4\",\"ipv6Ula\":\"$parsed_ula\",\"endpoint\":\"$parsed_ep\",\"listenPort\":\"$parsed_peer_port\",\"clientPort\":\"$parsed_listen_port\",\"mtu\":$parsed_mtu,\"bgpMode\":\"mpbgp_enh\"}"
+    payload="{\"asn\":$clean_asn,\"nodeId\":\"$safe_node\",\"publicKey\":\"$safe_pubkey\",\"linkLocal\":\"$safe_lla\",\"ipv4\":\"$safe_v4\",\"ipv6Ula\":\"$safe_ula\",\"endpoint\":\"$safe_ep\",\"listenPort\":\"$safe_pport\",\"clientPort\":\"$safe_lport\",\"mtu\":$safe_mtu,\"bgpMode\":\"mpbgp_enh\"}"
   fi
 
   echo ""

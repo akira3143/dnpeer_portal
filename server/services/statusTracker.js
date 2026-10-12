@@ -23,7 +23,7 @@ class StatusTrackerService {
 
     try {
       if (fs.existsSync(cachePath)) {
-        const data = FileStore.readJsonSync(cachePath, {}) || {};
+        const data = FileStore.readJsonSync(cachePath, {}, { failClosed: false }) || {};
         for (const [nodeId, info] of Object.entries(data)) {
           const lastSeen = typeof info === 'string' ? info : info?.lastSeen;
           if (lastSeen) {
@@ -194,8 +194,13 @@ class StatusTrackerService {
   recordBgpSnapshot(nodeId, snapshot = {}) {
     if (!nodeId || typeof nodeId !== 'string') return;
     const cleanId = nodeId.trim();
+    const MAX_BGP_SNAPSHOT_BYTES = 131072;
+    let rawOutput = typeof snapshot.rawBgpOutput === 'string' ? snapshot.rawBgpOutput : '';
+    if (rawOutput.length > MAX_BGP_SNAPSHOT_BYTES) {
+      rawOutput = rawOutput.slice(0, MAX_BGP_SNAPSHOT_BYTES) + '\n[TRUNCATED: Output exceeded 128KB limit]';
+    }
     const data = {
-      rawBgpOutput: snapshot.rawBgpOutput || '',
+      rawBgpOutput: rawOutput,
       bgpSessions: snapshot.bgpSessions || [],
       updatedAt: snapshot.updatedAt || new Date().toISOString()
     };
