@@ -63,8 +63,14 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
   // 6. WireGuard Endpoint Host
   const [endpoint, setEndpoint] = useState('');
   // 7. PeerPort & ListenPort
-  const [peerPort, setPeerPort] = useState('auto');
-  const [listenPort, setListenPort] = useState('auto');
+  const [peerPort, setPeerPort] = useState('');
+  const [listenPort, setListenPort] = useState('');
+
+  const defaultListenPort = useMemo(() => {
+    const hostAsn = _network?.asnNumber || (_network?.asn ? parseInt(String(_network.asn).replace(/\D/g, ''), 10) : 4242423143);
+    return String(20000 + (hostAsn % 10000)) || '23143';
+  }, [_network]);
+
   // 8. WireGuard MTU
   const [mtu, setMtu] = useState<number>(1420);
 
@@ -128,11 +134,13 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
 
       const assignedHostPort = editingSession.assigned?.hostPort;
       const peeringListenPort = editingSession.peering?.listenPort;
-      setPeerPort(String(assignedHostPort || peeringListenPort || 'auto'));
+      const resolvedHostPort = assignedHostPort || peeringListenPort;
+      setPeerPort(resolvedHostPort && String(resolvedHostPort) !== 'auto' ? String(resolvedHostPort) : '');
 
       const assignedClientPort = editingSession.assigned?.clientPort;
       const peeringClientPort = editingSession.peering?.clientPort;
-      setListenPort(String(assignedClientPort || peeringClientPort || epPort || 'auto'));
+      const resolvedClientPort = assignedClientPort || peeringClientPort || epPort;
+      setListenPort(resolvedClientPort && String(resolvedClientPort) !== 'auto' ? String(resolvedClientPort) : '');
 
       setMtu(editingSession.peering?.mtu || 1420);
       setSubmitResult(null);
@@ -175,8 +183,8 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
     setIpv6Ula('');
     setIpv4('');
     setEndpoint('');
-    setPeerPort('auto');
-    setListenPort('auto');
+    setPeerPort('');
+    setListenPort('');
     setMtu(1420);
     if (user?.asn) {
       setLinkLocal(formatDefaultLinkLocal(user.asn));
@@ -418,7 +426,7 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
                 </h3>
               </div>
 
-              {(wgPublicKey || ipv6Ula || ipv4 || endpoint || peerPort !== 'auto' || listenPort !== 'auto') && (
+              {(wgPublicKey || ipv6Ula || ipv4 || endpoint || peerPort || listenPort) && (
                 <button
                   onClick={handleClearForm}
                   type="button"
@@ -667,7 +675,7 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
                     translate="no"
                     value={peerPort}
                     onChange={(e) => setPeerPort(e.target.value)}
-                    placeholder="auto"
+                    placeholder="20000 + (Your ASN % 10000)"
                     className={`notranslate w-full px-3.5 py-3 rounded-xl bg-[#040813] border font-mono text-xs focus:outline-none placeholder:text-slate-600 transition-colors shadow-inner ${
                       !peerPortValid || fieldErrors.listenPort
                         ? 'border-red-500/80 text-red-200 focus:border-red-400'
@@ -696,7 +704,7 @@ export const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({
                     translate="no"
                     value={listenPort}
                     onChange={(e) => setListenPort(e.target.value)}
-                    placeholder="auto"
+                    placeholder={defaultListenPort}
                     className={`notranslate w-full px-3.5 py-3 rounded-xl bg-[#040813] border font-mono text-xs focus:outline-none placeholder:text-slate-600 transition-colors shadow-inner ${
                       !listenPortValid || fieldErrors.clientPort
                         ? 'border-red-500/80 text-red-200 focus:border-red-400'
