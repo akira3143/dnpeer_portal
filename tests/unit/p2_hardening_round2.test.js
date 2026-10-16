@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -39,11 +39,62 @@ describe('Round 2 P2 Hardening: CLI Robustness & Resource Control', () => {
   // ---------------------------------------------------------------------------
   // F-05: peer draft parsing has no eval
   // ---------------------------------------------------------------------------
-  test('2. F-05: peer script draft parsing does not contain eval and handles unknown keys safely', () => {
+  test('2. F-05: peer script draft parsing does not contain eval and preserves trailing = in Base64 keys', () => {
     const peerScript = fs.readFileSync('cli/cli-src/bin/peer', 'utf8');
     // Ensure eval "$(awk is completely gone
     assert.ok(!peerScript.includes('eval "$(awk'), 'peer script must not use eval to parse awk output');
-    assert.ok(peerScript.includes("while IFS='=' read -r k v; do"), 'peer script must parse via safe while-read loop');
+    assert.ok(peerScript.includes('while IFS= read -r _entry; do'), 'peer script must parse via safe while-read loop');
+
+    // Functional verification: test that a draft with WireGuard public key ending in = retains the = character
+    const testKey = '3C/iVpKcM86rEvLn63xP/qqcD0T5K9NEyrAnqxDmCyw=';
+    const draftContent = [
+      'Node = HK-1',
+      `WireGuard Public Key = ${testKey}`,
+      'Link-Local IPv6 (LLA) = fe80::2054:1'
+    ].join('\n');
+
+    const tmpDraft = 'temp_draft_test.txt';
+    const tmpScript = 'temp_draft_test.sh';
+    fs.writeFileSync(tmpDraft, draftContent, 'utf8');
+    const shScriptContent = `#!/bin/sh
+while IFS= read -r _entry; do
+  [ -z "$_entry" ] && continue
+  case "$_entry" in
+    *=*) k="\${_entry%%=*}"; v="\${_entry#*=}" ;;
+    *) k="$_entry"; v="" ;;
+  esac
+  case "$k" in
+    parsed_pubkey) parsed_pubkey="$v" ;;
+  esac
+done <<EOF
+$(awk '
+  {
+    line=$0; sub(/\\r$/, "", line)
+    if (line ~ /^[[:space:]]*#/ || line ~ /^[[:space:]]*$/) next
+    if (index(line, "=") > 0) {
+      key=substr(line, 1, index(line, "=")-1)
+      val=substr(line, index(line, "=")+1)
+      gsub(/[ \\t]/, "", key); key=tolower(key)
+      sub(/^[ \\t]+/, "", val); sub(/[ \\t]+$/, "", val)
+      gsub(/[^A-Za-z0-9.:\\/+_<>= -]/, "", val)
+      if (key=="wireguardpublickey" || key=="publickey" || key=="pubkey") printf "parsed_pubkey=%s\\n", val
+    }
+  }
+' "${tmpDraft}")
+EOF
+echo "$parsed_pubkey"
+`;
+    fs.writeFileSync(tmpScript, shScriptContent, 'utf8');
+    try {
+      const res = spawnSync('bash', [tmpScript], { encoding: 'utf8' });
+      assert.strictEqual(res.status, 0, `Shell parsing script must exit with 0: ${res.stderr}`);
+      const parsedKey = (res.stdout || '').trim();
+      assert.strictEqual(parsedKey, testKey, 'Parsed public key must exactly match original key with trailing =');
+      assert.strictEqual(parsedKey.length, 44, 'Parsed key must have length 44');
+    } finally {
+      if (fs.existsSync(tmpDraft)) fs.unlinkSync(tmpDraft);
+      if (fs.existsSync(tmpScript)) fs.unlinkSync(tmpScript);
+    }
   });
 
   // ---------------------------------------------------------------------------

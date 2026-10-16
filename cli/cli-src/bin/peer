@@ -259,7 +259,18 @@ run_edit_flow() {
       return 0
     fi
 
-    while IFS='=' read -r k v; do
+    while IFS= read -r _entry; do
+      [ -z "$_entry" ] && continue
+      case "$_entry" in
+        *=*)
+          k="${_entry%%=*}"
+          v="${_entry#*=}"
+          ;;
+        *)
+          k="$_entry"
+          v=""
+          ;;
+      esac
       case "$k" in
         parsed_node) parsed_node="$v" ;;
         parsed_lla) parsed_lla="$v" ;;
