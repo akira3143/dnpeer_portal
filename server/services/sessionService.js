@@ -844,17 +844,17 @@ export class SessionService {
           }
         }
 
-        // Backfill hostPort/listenPort if not present or discovered
+        // Sync hostPort/listenPort from live probe (ground-truth reconciliation)
         const ifaceName = peer.interface || session.peering?.interface || session.id;
         const resolvedPort = peer.listenPort || (ifaceName ? portByIface.get(ifaceName.toLowerCase()) : null);
-        if (resolvedPort) {
+        if (resolvedPort && resolvedPort > 0) {
           session.assigned = session.assigned || {};
-          if (!session.assigned.hostPort) {
+          if (session.assigned.hostPort !== resolvedPort) {
             session.assigned.hostPort = resolvedPort;
             updated = true;
           }
           session.peering = session.peering || {};
-          if (!session.peering.listenPort) {
+          if (session.peering.listenPort !== resolvedPort) {
             session.peering.listenPort = resolvedPort;
             updated = true;
           }

@@ -121,4 +121,80 @@ describe('PortLedgerService Unit Tests', () => {
     assert.equal(await PortLedgerService.isPortOccupied('JP-TYO-1', 21000), true);
     assert.equal(await PortLedgerService.isPortOccupied('JP-TYO-1', 22466), true);
   });
+
+  test('syncs session and ledger when host WireGuard ListenPort changes (e.g. 23383 -> 22966) while preserving undeployed locks', async () => {
+    const { ScannerService } = await import('../../server/services/scannerService.js');
+    const { SessionService } = await import('../../server/services/sessionService.js');
+    const sessionsFile = path.join(testDataDir, 'peering_sessions.json');
+    fs.writeFileSync(sessionsFile, JSON.stringify([]), 'utf8');
+
+    const nodeId = 'JP-7';
+    const harukaPubKey = '36H8iHILF9NhB4e0NChzcYvJc5PIAQNDvtFqch/pyiY=';
+
+    // 1. Create an undeployed portal session (locked on 25555)
+    await PortLedgerService.allocateAndLockPort({
+      nodeId,
+      asn: 4242425555,
+      requestedPort: 25555,
+      sessionId: 'peer_undeployed_jp7'
+    });
+
+    // 2. Initial probe report: haruka01_jp created on ListenPort 23383
+    await ScannerService.handleProbeReport({
+      nodeId,
+      ports: [{ port: 23383, name: 'haruka01_jp', source: 'wg' }],
+      systemPorts: [],
+      peers: [{
+        interface: 'haruka01_jp',
+        publicKey: harukaPubKey,
+        endpoint: 'tyo-haruka-01.ling0.rest:23383',
+        allowedIps: '172.20.0.0/14, fe80::/64',
+        listenPort: 23383,
+        latestHandshake: 1725500000
+      }],
+      bgpSessions: [{
+        name: 'haruka01_jp',
+        asn: 4242422966,
+        cleanAsn: 4242422966,
+        bgpState: 'Established'
+      }]
+    });
+
+    let sessions = await SessionService.getSessions();
+    let haruka = sessions.find(s => s.peering?.publicKey === harukaPubKey);
+    assert.ok(haruka);
+    assert.equal(haruka.assigned.hostPort, 23383);
+    assert.equal(haruka.peering.listenPort, 23383);
+    assert.equal(await PortLedgerService.isPortOccupied(nodeId, 23383), true);
+    assert.equal(await PortLedgerService.isPortOccupied(nodeId, 25555), true);
+
+    // 3. Host changes haruka01_jp ListenPort from 23383 to 22966 and restarts wg-quick
+    await ScannerService.handleProbeReport({
+      nodeId,
+      ports: [{ port: 22966, name: 'haruka01_jp', source: 'wg' }],
+      systemPorts: [],
+      peers: [{
+        interface: 'haruka01_jp',
+        publicKey: harukaPubKey,
+        endpoint: 'tyo-haruka-01.ling0.rest:23383',
+        allowedIps: '172.20.0.0/14, fe80::/64',
+        listenPort: 22966,
+        latestHandshake: 1725500100
+      }],
+      bgpSessions: [{
+        name: 'haruka01_jp',
+        asn: 4242422966,
+        cleanAsn: 4242422966,
+        bgpState: 'Established'
+      }]
+    });
+
+    sessions = await SessionService.getSessions();
+    haruka = sessions.find(s => s.peering?.publicKey === harukaPubKey);
+    assert.equal(haruka.assigned.hostPort, 22966, 'session.assigned.hostPort must update to 22966');
+    assert.equal(haruka.peering.listenPort, 22966, 'session.peering.listenPort must update to 22966');
+    assert.equal(await PortLedgerService.isPortOccupied(nodeId, 22966), true, 'New port 22966 must be in ledger');
+    assert.equal(await PortLedgerService.isPortOccupied(nodeId, 23383), false, 'Old port 23383 must be evicted from ledger');
+    assert.equal(await PortLedgerService.isPortOccupied(nodeId, 25555), true, 'Undeployed portal session lock 25555 must remain intact');
+  });
 });

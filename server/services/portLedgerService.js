@@ -218,25 +218,40 @@ export class PortLedgerService {
         const portNum = parseInt(s.assigned?.hostPort || s.peering?.listenPort, 10);
         if (isNaN(portNum) || portNum <= 0) continue;
 
-        const existingEntry = ledger[nodeId].find(p => p.port === portNum);
         const iface = s.assigned?.interface || s.peering?.interface || s.id;
+
+        // Evict stale ledger entries previously bound to this same sessionId on a different port
+        if (s.id) {
+          const beforeLen = ledger[nodeId].length;
+          ledger[nodeId] = ledger[nodeId].filter(p => !(p.sessionId === s.id && p.port !== portNum));
+          if (ledger[nodeId].length !== beforeLen) {
+            modified = true;
+          }
+        }
+
+        const existingEntry = ledger[nodeId].find(p => p.port === portNum);
         if (existingEntry) {
-          if (!existingEntry.sessionId && s.id) {
+          if (s.id && existingEntry.sessionId !== s.id) {
             existingEntry.sessionId = s.id;
             modified = true;
           }
-          if (!existingEntry.asn && s.asn) {
+          if (s.asn && existingEntry.asn !== s.asn) {
             existingEntry.asn = s.asn;
             modified = true;
           }
-          if (!existingEntry.interfaceName && iface) {
+          if (iface && existingEntry.interfaceName !== iface) {
             existingEntry.interfaceName = iface;
+            modified = true;
+          }
+          if (s.source && s.source !== 'discovered' && existingEntry.source === 'wireguard_probe') {
+            existingEntry.source = 'peering_session';
+            existingEntry.type = 'locked';
             modified = true;
           }
         } else {
           ledger[nodeId].push({
             port: portNum,
-            type: 'in_use',
+            type: s.source === 'discovered' ? 'in_use' : 'locked',
             source: s.source === 'discovered' ? 'wireguard_probe' : 'peering_session',
             sessionId: s.id,
             asn: s.asn || null,
