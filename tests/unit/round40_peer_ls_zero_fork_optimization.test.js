@@ -144,6 +144,33 @@ describe('Round 40: CLI peer ls Zero-Fork & Cold-Start Optimization', () => {
       assert.equal(liteResp.data[0].notification, undefined, 'Lite CLI response strips notification');
       assert.equal(liteResp.data[0].assigned.hostPort, 23143, 'Lite CLI response retains hostPort');
       assert.equal(liteResp.data[0].runtime.stageText, 'BGP Established', 'Lite CLI response retains stageText');
+
+      // Also verify HTTP route GET /api/sessions and GET /api/sessions?view=lite end-to-end
+      const { createServer } = await import('../../server/index.js');
+      const { AuthService } = await import('../../server/services/authService.js');
+      const { token } = AuthService.signJwt({ asn: 4242423143, role: 'admin', mnt: 'AKIRA-MNT' });
+      const srv = createServer();
+      await new Promise(resolve => srv.listen(0, '127.0.0.1', resolve));
+      const port = srv.address().port;
+      try {
+        const resLite = await fetch(`http://127.0.0.1:${port}/api/sessions?view=lite`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        assert.equal(resLite.status, 200);
+        const bodyLite = await resLite.json();
+        assert.equal(bodyLite.success, true);
+        assert.equal(bodyLite.data[0].runtime.trafficSeries, undefined);
+
+        const resFull = await fetch(`http://127.0.0.1:${port}/api/sessions`, {
+          headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'Mozilla/5.0' }
+        });
+        assert.equal(resFull.status, 200);
+        const bodyFull = await resFull.json();
+        assert.equal(bodyFull.success, true);
+        assert.equal(bodyFull.data[0].runtime.trafficSeries.length, 48);
+      } finally {
+        await srv.closeAll();
+      }
     } finally {
       SessionService.getSessionsByAsn = origGet;
     }
