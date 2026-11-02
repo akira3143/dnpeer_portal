@@ -100,4 +100,52 @@ describe('Round 40: CLI peer ls Zero-Fork & Cold-Start Optimization', () => {
     const rootfsStat = fs.statSync(path.resolve(ROOT_DIR, 'cli/public/rootfs.dat'));
     assert.ok(rootfsStat.size > 500000, 'Compiled rootfs.dat must exist and exceed 500KB');
   });
+
+  it('5. do_ls uses temp-file redirection instead of NOMMU pipeline subshell and requests view=lite', async () => {
+    assert.ok(
+      doLsBody.includes('/api/sessions?view=lite'),
+      'do_ls must request /api/sessions?view=lite to strip heavy trafficSeries'
+    );
+    assert.ok(
+      doLsBody.includes('done < /tmp/dn42_sessions_lines'),
+      'do_ls must use file redirection instead of pipeline subshell to prevent NOMMU sh: can\'t re-execute the shell (E2BIG)'
+    );
+    assert.ok(
+      !doLsBody.includes('echo "$resp" |'),
+      'do_ls must not pass full JSON payload in a shell variable across subshell execve'
+    );
+
+    const { SessionController } = await import('../../server/controllers/sessionController.js');
+    const { SessionService } = await import('../../server/services/sessionService.js');
+    const origGet = SessionService.getSessionsByAsn;
+    SessionService.getSessionsByAsn = async () => [
+      {
+        id: 'peer_test_jp7',
+        nodeId: 'JP-7',
+        asn: 4242423143,
+        status: 'active',
+        peering: { interface: 'test_jp', listenPort: 23143, endpoint: '1.2.3.4:23143' },
+        assigned: { hostPort: 23143, serverWireguardSnippet: '[Interface]\nListenPort = 23143' },
+        notification: { status: 'delivered' },
+        runtime: {
+          stage: 3,
+          stageText: 'BGP Established',
+          trafficSeries: Array.from({ length: 48 }, (_, i) => ({ t: 1700000000 + i * 1800, rx: i * 1000, tx: i * 2000 }))
+        }
+      }
+    ];
+    try {
+      const fullResp = await SessionController.listSessions({ asn: 4242423143, role: 'admin' });
+      assert.equal(fullResp.data[0].runtime.trafficSeries.length, 48, 'Default GUI response retains trafficSeries');
+
+      const liteResp = await SessionController.listSessions({ asn: 4242423143, role: 'admin' }, { lite: true });
+      assert.equal(liteResp.data[0].runtime.trafficSeries, undefined, 'Lite CLI response strips trafficSeries');
+      assert.equal(liteResp.data[0].assigned.serverWireguardSnippet, undefined, 'Lite CLI response strips serverWireguardSnippet');
+      assert.equal(liteResp.data[0].notification, undefined, 'Lite CLI response strips notification');
+      assert.equal(liteResp.data[0].assigned.hostPort, 23143, 'Lite CLI response retains hostPort');
+      assert.equal(liteResp.data[0].runtime.stageText, 'BGP Established', 'Lite CLI response retains stageText');
+    } finally {
+      SessionService.getSessionsByAsn = origGet;
+    }
+  });
 });

@@ -115,11 +115,12 @@ do_new() {
   fi
 
   # Check if user already has existing session(s) on target node
-  sessions_resp=$(api_get "/api/sessions")
-  rm -f /tmp/dn42_node_existing_sessions
-  if echo "$sessions_resp" | grep -q '"id"'; then
-    echo "$sessions_resp" | sed 's/},{/}\n{/g' | grep "\"nodeId\":\"$sel_nid\"" > /tmp/dn42_node_existing_sessions
+  rm -f /tmp/dn42_sessions_raw /tmp/dn42_node_existing_sessions
+  api_get "/api/sessions?view=lite" > /tmp/dn42_sessions_raw
+  if grep -q '"id"' /tmp/dn42_sessions_raw 2>/dev/null; then
+    sed 's/},{/}\n{/g' /tmp/dn42_sessions_raw | grep "\"nodeId\":\"$sel_nid\"" > /tmp/dn42_node_existing_sessions
   fi
+  rm -f /tmp/dn42_sessions_raw
 
   node_sess_count=0
   if [ -s /tmp/dn42_node_existing_sessions ]; then
@@ -379,10 +380,12 @@ EOF
       err_msg_list="${err_msg_list}  • WireGuard Public Key: Must be 44-character Base64 ending with =.\n"
     elif [ "$action_mode" = "new" ]; then
       _existing_key_conflict=""
-      _sessions_chk=$(api_get "/api/sessions")
-      if echo "$_sessions_chk" | grep -q "\"nodeId\":\"$parsed_node\""; then
-        _existing_key_conflict=$(echo "$_sessions_chk" | sed 's/},{/}\n{/g' | grep "\"nodeId\":\"$parsed_node\"" | grep "\"publicKey\":\"$parsed_pubkey\"")
+      rm -f /tmp/dn42_sessions_chk
+      api_get "/api/sessions?view=lite" > /tmp/dn42_sessions_chk
+      if grep -q "\"nodeId\":\"$parsed_node\"" /tmp/dn42_sessions_chk 2>/dev/null; then
+        _existing_key_conflict=$(sed 's/},{/}\n{/g' /tmp/dn42_sessions_chk | grep "\"nodeId\":\"$parsed_node\"" | grep "\"publicKey\":\"$parsed_pubkey\"")
       fi
+      rm -f /tmp/dn42_sessions_chk
       if [ -n "$_existing_key_conflict" ]; then
         _conflict_sid=${_existing_key_conflict#*\"id\":\"}; _conflict_sid=${_conflict_sid%%\"*}
         err_count=$((err_count + 1))
@@ -390,10 +393,12 @@ EOF
       fi
     elif [ "$action_mode" = "update" ] && [ -n "$edit_session_id" ]; then
       _existing_key_conflict=""
-      _sessions_chk=$(api_get "/api/sessions")
-      if echo "$_sessions_chk" | grep -q "\"nodeId\":\"$parsed_node\""; then
-        _existing_key_conflict=$(echo "$_sessions_chk" | sed 's/},{/}\n{/g' | grep "\"nodeId\":\"$parsed_node\"" | grep "\"publicKey\":\"$parsed_pubkey\"" | grep -v "\"id\":\"$edit_session_id\"")
+      rm -f /tmp/dn42_sessions_chk
+      api_get "/api/sessions?view=lite" > /tmp/dn42_sessions_chk
+      if grep -q "\"nodeId\":\"$parsed_node\"" /tmp/dn42_sessions_chk 2>/dev/null; then
+        _existing_key_conflict=$(sed 's/},{/}\n{/g' /tmp/dn42_sessions_chk | grep "\"nodeId\":\"$parsed_node\"" | grep "\"publicKey\":\"$parsed_pubkey\"" | grep -v "\"id\":\"$edit_session_id\"")
       fi
+      rm -f /tmp/dn42_sessions_chk
       if [ -n "$_existing_key_conflict" ]; then
         _conflict_sid=${_existing_key_conflict#*\"id\":\"}; _conflict_sid=${_conflict_sid%%\"*}
         err_count=$((err_count + 1))
@@ -597,19 +602,22 @@ EOF
 # ---------- peer edit ----------
 do_edit() {
   require_login || return 1
-  local resp line choice sel_line sel_id sel_nid rest target_idx="$1"
+  local line choice sel_line sel_id sel_nid rest target_idx="$1"
   local i sess_count full_line peer_block
 
   echo -e "\033[90mFetching your peering sessions...\033[0m"
-  resp=$(api_get "/api/sessions")
-  if ! echo "$resp" | grep -q '"success":true'; then
-    echo -e "\033[31merror: $(json_field "$resp" message)\033[0m"
+  rm -f /tmp/dn42_sessions_raw /tmp/dn42_sessions_lines /tmp/dn42_my_sessions
+  api_get "/api/sessions?view=lite" > /tmp/dn42_sessions_raw
+  if ! grep -q '"success":true' /tmp/dn42_sessions_raw 2>/dev/null; then
+    echo -e "\033[31merror: $(json_field "$(cat /tmp/dn42_sessions_raw 2>/dev/null)" message)\033[0m"
+    rm -f /tmp/dn42_sessions_raw
     return 1
   fi
 
-  rm -f /tmp/dn42_my_sessions
   touch /tmp/dn42_my_sessions
-  echo "$resp" | sed 's/},{/}\n{/g' | grep '"id"' | while IFS= read -r line; do
+  sed 's/},{/}\n{/g' /tmp/dn42_sessions_raw | grep '"id"' > /tmp/dn42_sessions_lines
+  rm -f /tmp/dn42_sessions_raw
+  while IFS= read -r line; do
     _sid=${line#*\"id\":\"}; _sid=${_sid%%\"*}
     _snode=${line#*\"nodeId\":\"}; _snode=${_snode%%\"*}
     _sstat=${line#*\"status\":\"}; _sstat=${_sstat%%\"*}
@@ -617,12 +625,13 @@ do_edit() {
     _siface=${line#*\"interface\":\"}; _siface=${_siface%%\"*}
     [ "$_siface" = "$line" ] && _siface=""
     echo "$_sid|$_snode|$_sstat|$_sport|$_siface" >> /tmp/dn42_my_sessions
-  done
+  done < /tmp/dn42_sessions_lines
 
   sess_count=0
   while IFS= read -r _; do sess_count=$((sess_count + 1)); done < /tmp/dn42_my_sessions
   if [ "$sess_count" -eq 0 ]; then
     echo -e "\033[90mNo peering sessions yet. Run 'peer new' to create one.\033[0m"
+    rm -f /tmp/dn42_sessions_lines /tmp/dn42_my_sessions
     return 0
   fi
 
@@ -645,6 +654,7 @@ do_edit() {
 
     if [ -z "$sel_line" ]; then
       echo -e "\033[31merror: Session '$target_idx' not found. Use 1-$sess_count, node ID (e.g. JP-7), session ID, or interface name.\033[0m"
+      rm -f /tmp/dn42_sessions_lines /tmp/dn42_my_sessions
       return 1
     fi
   else
@@ -663,7 +673,7 @@ do_edit() {
       printf "Select session to edit \033[33m[1-%s]\033[0m: " "$i"
       read -r choice
       choice=$(echo "$choice" | tr -d ' \t\r\n')
-      { [ "$choice" = "q" ] || [ "$choice" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; return 0; }
+      { [ "$choice" = "q" ] || [ "$choice" = "quit" ]; } && { echo -e "\033[90mCancelled.\033[0m"; rm -f /tmp/dn42_sessions_lines /tmp/dn42_my_sessions; return 0; }
       if echo "$choice" | grep -q '^[0-9][0-9]*$' && [ "$choice" -ge 1 ] && [ "$choice" -le "$i" ]; then
         sel_line=$(sed -n "${choice}p" /tmp/dn42_my_sessions)
         break
@@ -677,7 +687,8 @@ do_edit() {
   rest=${sel_line#*|}; sel_nid=${rest%%|*}
 
   # Extract this session's peering block for prefill
-  full_line=$(echo "$resp" | sed 's/},{/}\n{/g' | grep "\"id\":\"$sel_id\"")
+  full_line=$(grep "\"id\":\"$sel_id\"" /tmp/dn42_sessions_lines 2>/dev/null)
+  rm -f /tmp/dn42_sessions_lines /tmp/dn42_my_sessions
   peer_block=$(echo "$full_line" | sed 's/.*"peering":{//; s/},"assigned".*//')
 
   pfill_pubkey=$(echo "$peer_block" | sed -n 's/.*"publicKey":"\([^"]*\)".*/\1/p')
@@ -725,13 +736,18 @@ do_edit() {
 # ---------- peer ls ----------
 do_ls() {
   require_login || return 1
-  local resp line id asn node status port stage disp_id disp_asn disp_port color node_name ep ep_port divider iface disp_iface host_port listen_port client_port
+  local line id asn node status port stage disp_id disp_asn disp_port color node_name ep ep_port divider iface disp_iface host_port listen_port client_port
   echo -e "\033[90mFetching peering sessions...\033[0m"
-  resp=$(api_get "/api/sessions")
-  if ! echo "$resp" | grep -q '"success":true'; then
-    echo -e "\033[31merror: $(json_field "$resp" message)\033[0m"
+  rm -f /tmp/dn42_sessions_raw /tmp/dn42_sessions_lines
+  api_get "/api/sessions?view=lite" > /tmp/dn42_sessions_raw
+  if ! grep -q '"success":true' /tmp/dn42_sessions_raw 2>/dev/null; then
+    echo -e "\033[31merror: $(json_field "$(cat /tmp/dn42_sessions_raw 2>/dev/null)" message)\033[0m"
+    rm -f /tmp/dn42_sessions_raw
     return 1
   fi
+
+  sed 's/},{/}\n{/g' /tmp/dn42_sessions_raw | grep '"id"' > /tmp/dn42_sessions_lines
+  rm -f /tmp/dn42_sessions_raw
 
   divider="-----------------------------------------------------------------------------------------------------------------"
   echo ""
@@ -739,7 +755,7 @@ do_ls() {
   printf "\033[90m%s\033[0m\n" "$divider"
 
   last_node=""
-  echo "$resp" | sed 's/},{/}\n{/g' | grep '"id"' | while IFS= read -r line; do
+  while IFS= read -r line; do
     id=${line#*\"id\":\"}; id=${id%%\"*}
     asn=${line#*\"asn\":}; asn=${asn%%,*}; asn=${asn%%\}*}
     node=${line#*\"nodeId\":\"}; node=${node%%\"*}
@@ -821,7 +837,8 @@ do_ls() {
     esac
 
     printf "%-10s %-26s %-18s %-14s %-10s %-12s %b%s\033[0m\n" "$node_name" "$disp_id" "$disp_iface" "$disp_asn" "$disp_pport" "$disp_lport" "$color" "$stage"
-  done
+  done < /tmp/dn42_sessions_lines
+  rm -f /tmp/dn42_sessions_lines
   echo ""
   echo -e "\033[90mTip: Run 'peer edit' to update an existing session; 'peer new' for a new one.\033[0m"
   echo ""

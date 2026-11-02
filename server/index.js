@@ -239,7 +239,9 @@ export function createServer() {
         if (pathname === '/api/sessions' && method === 'GET') {
           const user = extractUser(req);
           if (!user) return sendJson(res, 401, errorEnvelope('Unauthorized', null, 401));
-          const resp = await SessionController.listSessions(user);
+          const view = urlObj.searchParams.get('view') || '';
+          const isLite = view === 'lite' || req.headers['x-client'] === 'cli' || /^Wget|^curl/i.test(req.headers['user-agent'] || '');
+          const resp = await SessionController.listSessions(user, { lite: isLite });
           return sendJson(res, resp.code || 200, resp);
         }
 

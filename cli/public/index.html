@@ -407,7 +407,10 @@
             // 把发往虚拟网关(10.0.2.2)的请求重写为同源路径：
             // Linux 内视角不变(10.0.2.2:4242)，宿主侧直接打本域 API，零 CORS 问题。
             // cache:no-store —— API 响应绝不能进浏览器缓存（否则认证数据会串）
-            const rewritten = urlStr.replace(/^https?:\/\/10\.0\.2\.2(?::\d+)?\//, '/');
+            let rewritten = urlStr.replace(/^https?:\/\/10\.0\.2\.2(?::\d+)?\//, '/');
+            if (rewritten === '/api/sessions') {
+              rewritten = '/api/sessions?view=lite';
+            }
             const resPromise = fetch(rewritten, { ...(args[1] || {}), cache: 'no-store' });
 
             // 双端同步：网关拦截 CLI 认证响应并按 rememberMe 分流存储
